@@ -42,10 +42,9 @@
         stage: 'brief', inDebrief: 'edit' },
       { id: 'q_goals',      label: 'יעדים',        type: 'goals', role: 'goals',
         stage: 'brief', inDebrief: 'edit' },
+      // דגשים are written per exercise inside the syllabus, not as one blob
       { id: 'q_syllabus',   label: 'סילבוס',       type: 'syllabus',
         stage: 'brief', inDebrief: 'edit' },
-      { id: 'q_focus',      label: 'דגשים',        type: 'textarea',
-        stage: 'brief', inDebrief: 'readonly' },
       { id: 'q_safety_b',   label: 'בטיחות',       type: 'textarea',
         stage: 'brief', inDebrief: 'none' },
 
@@ -197,12 +196,14 @@
       status: ['open', 'met', 'missed'].indexOf(g.status) === -1 ? 'open' : g.status
     };
   }
-  /** A syllabus row: the exercise, plus notes written after flying it. */
+  /** A syllabus row. `focus` is the דגש written at the תדריך, `notes` is what
+   *  actually happened, written at the תחקיר. */
   function normalizeEx(x) {
     if (typeof x === 'string') x = { text: x };
     return {
       id: x.id || uid('x'),
       text: String(x.text == null ? '' : x.text),
+      focus: String(x.focus == null ? '' : x.focus),
       notes: String(x.notes == null ? '' : x.notes)
     };
   }
@@ -282,7 +283,11 @@
     }
     if (q.type === 'syllabus') {
       return (Array.isArray(v) ? v : []).filter(function (x) { return x.text.trim(); })
-        .map(function (x) { return x.text + (x.notes.trim() ? ' — ' + x.notes : ''); }).join(' | ');
+        .map(function (x) {
+          return x.text +
+            (x.focus.trim() ? ' (דגש: ' + x.focus + ')' : '') +
+            (x.notes.trim() ? ' — ' + x.notes : '');
+        }).join(' | ');
     }
     if (q.type === 'minutes') return v ? String(v) : '';
     return v == null ? '' : String(v);
@@ -560,7 +565,9 @@
         } else if (q.type === 'syllabus') {
           L.push(q.label + ':');
           (v || []).filter(function (x) { return x.text.trim(); }).forEach(function (x) {
-            L.push('  • ' + x.text + (x.notes.trim() ? '\n      ' + x.notes : ''));
+            L.push('  • ' + x.text);
+            if (x.focus.trim()) L.push('      דגש: ' + x.focus);
+            if (x.notes.trim()) L.push('      ' + x.notes);
           });
         } else if (q.type === 'minutes') {
           L.push(q.label + ': ' + txt + ' דק׳');

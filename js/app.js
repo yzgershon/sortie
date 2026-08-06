@@ -122,7 +122,7 @@
 
   function go(p) { location.hash = '#/' + p; }
 
-  var ROUTES = ['home', 'brief', 'debrief', 'log', 'flight', 'trends', 'settings'];
+  var ROUTES = ['home', 'brief', 'debrief', 'log', 'flight', 'trends', 'settings', 'summary'];
 
   function navigate() {
     var h = (location.hash || '#/').replace(/^#\/?/, '').split('/');
@@ -176,7 +176,8 @@
     viewEl.classList.toggle('view--noTabs', formish);
     if (!formish) renderTabs();
     ({ home: screenHome, brief: screenForm, debrief: screenForm, log: screenLog,
-       flight: screenDetail, trends: screenTrends, settings: screenSettings })[route.name]();
+       flight: screenDetail, trends: screenTrends, settings: screenSettings,
+       summary: screenSummary })[route.name]();
     autosizeAll();
   }
 
@@ -319,22 +320,31 @@
     }
   }
 
-  function flightRow(r) {
+  function weekday(iso) {
+    return parseISO(iso).toLocaleDateString('he-IL', { weekday: 'long' });
+  }
+
+  function flightRow(r, selectable) {
     var dm = dayMon(r.flownAt);
     var qs = Store.question('q_subject');
     var subj = qs ? (r.answers[qs.id] || '') : '';
     var qi = Store.question('q_instructor');
     var inst = qi ? (r.answers[qi.id] || '') : '';
     var pending = r.stage !== 'done';
-    return '<button class="frow" data-id="' + esc(r.id) + '">' +
+    var on = !!selected[r.id];
+    return '<button class="frow' + (selectable ? ' frow--sel' : '') + (on ? ' is-on' : '') +
+      '" data-id="' + esc(r.id) + '"' + (selectable ? ' aria-pressed="' + on + '"' : '') + '>' +
+      (selectable ? '<span class="frow__check">' + icon('check') + '</span>' : '') +
       '<span class="frow__d"><b>' + dm.d + '</b><span>' + esc(dm.m) + '</span></span>' +
       '<span class="frow__body">' +
         '<span class="frow__top">' +
           '<span class="frow__t" dir="auto">' + esc(subj || fmtDate(r.flownAt)) + '</span>' +
           (pending ? '<span class="tagline tagline--amber">' + esc(T.awaiting) + '</span>' : '') +
         '</span>' +
-        (inst ? '<span class="frow__s" dir="auto">' + esc(inst) + '</span>' : '') +
-      '</span>' + icon('chevRight', { cls: 'frow__chev' }) + '</button>';
+        '<span class="frow__s" dir="auto">' + esc(weekday(r.flownAt)) +
+          (inst ? ' · ' + esc(inst) : '') + '</span>' +
+      '</span>' +
+      (selectable ? '' : icon('chevRight', { cls: 'frow__chev' })) + '</button>';
   }
 
   /* ================================================================= form */
@@ -472,17 +482,25 @@
         '</div></div>';
     }
 
+    /* At the תדריך each exercise carries its own דגש. At the תחקיר that דגש is
+       shown back as reference and the notes box records what happened. */
     function exRow(x, i, withNotes) {
-      return '<div class="ex' + (x.notes && x.notes.trim() ? ' ex--done' : '') + '" data-exid="' + esc(x.id) + '">' +
+      var focus = String(x.focus || '');
+      return '<div class="ex' + (x.notes && x.notes.trim() ? ' ex--done' : '') +
+        '" data-exid="' + esc(x.id) + '" data-focus="' + esc(focus) + '">' +
         '<div class="ex__top">' +
           '<span class="ex__n">' + (i + 1) + '</span>' +
           '<input class="ex__t" type="text" dir="auto" value="' + esc(x.text) + '" data-extext>' +
           '<button type="button" class="rowx" data-rowx aria-label="' + esc(T.remove) + '">' + icon('x') + '</button>' +
         '</div>' +
         (withNotes
-          ? '<textarea class="ex__notes ta" rows="1" dir="auto" data-exnotes placeholder="' +
-            esc(T.exerciseNotes) + '">' + esc(x.notes || '') + '</textarea>'
-          : '') +
+          ? (focus.trim()
+              ? '<div class="ex__focus" dir="auto">' + icon('flag') + '<span>' + esc(focus) + '</span></div>'
+              : '') +
+            '<textarea class="ex__notes" rows="1" dir="auto" data-exnotes placeholder="' +
+              esc(T.exerciseNotes) + '">' + esc(x.notes || '') + '</textarea>'
+          : '<input class="ex__focusin" type="text" dir="auto" data-exfocus placeholder="' +
+              esc(T.exerciseFocus) + '" value="' + esc(focus) + '">') +
       '</div>';
     }
 
@@ -538,8 +556,14 @@
           });
         } else if (q.type === 'syllabus') {
           out.answers[q.id] = $$('[data-ex="' + q.id + '"] .ex').map(function (row) {
-            var n = $('[data-exnotes]', row);
-            return { id: row.dataset.exid, text: $('[data-extext]', row).value, notes: n ? n.value : '' };
+            var n = $('[data-exnotes]', row), f = $('[data-exfocus]', row);
+            return {
+              id: row.dataset.exid,
+              text: $('[data-extext]', row).value,
+              // the דגש is only editable at the תדריך; carry it through after
+              focus: f ? f.value : (row.dataset.focus || ''),
+              notes: n ? n.value : ''
+            };
           });
         } else if (q.type === 'minutes') {
           var w = $('[data-wheel="' + q.id + '"]');
@@ -737,12 +761,44 @@
 
   /* ================================================================== log */
 
-  var logQuery = '', logFilter = '';
+  var logQuery = '', logFilter = '', logSelect = false;
+
+  /* Kept in sessionStorage so a reload on the summary screen does not lose the
+     selection. It is cleared when the app is closed, which is the right life. */
+  function readSel() {
+    try { return JSON.parse(sessionStorage.getItem('sortie:sel') || '{}') || {}; }
+    catch (e) { return {}; }
+  }
+  function writeSel() {
+    try { sessionStorage.setItem('sortie:sel', JSON.stringify(selected)); } catch (e) {}
+  }
+  var selected = readSel();
+
+  function selCount() { return Object.keys(selected).filter(function (k) { return selected[k]; }).length; }
+
+  /** Sunday to Saturday of the week we are in. */
+  function thisWeekRange() {
+    var end = new Date(); end.setHours(0, 0, 0, 0);
+    var start = new Date(end);
+    start.setDate(start.getDate() - start.getDay());   // back to Sunday
+    var stop = new Date(start); stop.setDate(stop.getDate() + 6);
+    return { start: start, stop: stop };
+  }
 
   function screenLog() {
     renderTopbar({
-      title: T.navLog, sub: String(Store.count()),
-      actions: [{ id: 'new', ic: 'plus', label: T.newBrief, lit: true, run: function () { go('brief'); } }]
+      title: logSelect ? T.nSelected(selCount()) : T.navLog,
+      sub: logSelect ? '' : String(Store.count()),
+      actions: logSelect
+        ? [{ id: 'done', ic: 'x', label: T.cancel, run: function () {
+            logSelect = false; selected = {}; writeSel(); screenLog();
+          } }]
+        : [
+            { id: 'sel', ic: 'checkCircle', label: T.selectMode, run: function () {
+              logSelect = true; screenLog();
+            } },
+            { id: 'new', ic: 'plus', label: T.newBrief, lit: true, run: function () { go('brief'); } }
+          ]
     });
 
     var qSubj = Store.question('q_subject');
@@ -753,29 +809,48 @@
     });
 
     viewEl.innerHTML = '<div class="stack-4" id="logRoot">' +
-      '<div class="search">' + icon('search') +
-        '<input class="input" id="q" type="search" dir="auto" autocomplete="off" placeholder="' +
-          esc(T.search) + '" value="' + esc(logQuery) + '"></div>' +
-      (opts.length ? '<div class="opts" id="logChips">' +
+      (logSelect
+        ? '<div class="opts">' +
+            '<button class="opt opt--sm" data-selweek>' + icon('calendar') + esc(T.selectWeek) + '</button>' +
+            '<button class="opt opt--sm" data-selclear>' + esc(T.clearSel) + '</button>' +
+          '</div>'
+        : '<div class="search">' + icon('search') +
+          '<input class="input" id="q" type="search" dir="auto" autocomplete="off" placeholder="' +
+            esc(T.search) + '" value="' + esc(logQuery) + '"></div>') +
+      (!logSelect && opts.length ? '<div class="opts" id="logChips">' +
         '<button class="opt opt--sm" data-f="" aria-pressed="' + (!logFilter) + '">' + esc(T.all) + '</button>' +
         opts.slice(0, 12).map(function (o) {
           return '<button class="opt opt--sm" data-f="' + esc(o) + '" dir="auto" aria-pressed="' +
             (logFilter === o) + '">' + esc(o) + '</button>';
         }).join('') + '</div>' : '') +
-      '<div id="logResults"></div></div>';
+      '<div id="logResults"></div></div>' +
+      (logSelect
+        ? '<div class="savebar"><div class="savebar__inner">' +
+            '<span class="savestate" id="selCount">' + selCount() + ' SELECTED</span>' +
+            '<span class="spacer"></span>' +
+            '<button class="btn btn--lit" data-summary>' + icon('list3') + esc(T.makeSummary) + '</button>' +
+          '</div></div>'
+        : '');
+
+    viewEl.classList.toggle('view--noTabs', logSelect);
 
     function paint() {
       var rows = Store.search(logQuery).filter(function (r) {
         return !logFilter || (qSubj && r.answers[qSubj.id] === logFilter);
       });
       $('#logResults').innerHTML = rows.length
-        ? '<div class="panel"><div class="list">' + rows.map(flightRow).join('') + '</div></div>'
+        ? '<div class="panel"><div class="list">' + rows.map(function (r) {
+            return flightRow(r, logSelect);
+          }).join('') + '</div></div>'
         : empty('search', Store.count() ? T.noMatches : T.noFlights,
                 Store.count() ? T.noMatchesHint : T.noFlightsHint);
     }
     paint();
 
-    $('#q').addEventListener('input', function (e) { logQuery = e.target.value; paint(); });
+    if (!logSelect) {
+      $('#q').addEventListener('input', function (e) { logQuery = e.target.value; paint(); });
+    }
+
     $('#logRoot').addEventListener('click', function (e) {
       var c = e.target.closest('#logChips .opt');
       if (c) {
@@ -785,8 +860,36 @@
         });
         paint(); return;
       }
+
+      if (e.target.closest('[data-selweek]')) {
+        var w = thisWeekRange();
+        Store.all().forEach(function (r) {
+          var t = parseISO(r.flownAt).getTime();
+          if (t >= w.start.getTime() && t <= w.stop.getTime()) selected[r.id] = true;
+        });
+        writeSel(); haptic(12); screenLog(); return;
+      }
+      if (e.target.closest('[data-selclear]')) { selected = {}; writeSel(); screenLog(); return; }
+
       var row = e.target.closest('.frow');
-      if (row) go('flight/' + row.dataset.id);
+      if (!row) return;
+      if (logSelect) {
+        selected[row.dataset.id] = !selected[row.dataset.id];
+        writeSel();
+        row.classList.toggle('is-on', !!selected[row.dataset.id]);
+        row.setAttribute('aria-pressed', String(!!selected[row.dataset.id]));
+        var n = selCount();
+        $('#selCount').textContent = n + ' SELECTED';
+        $('.topbar__title').textContent = T.nSelected(n);
+        haptic();
+      } else {
+        go('flight/' + row.dataset.id);
+      }
+    });
+
+    on(viewEl, '[data-summary]', 'click', function () {
+      if (!selCount()) { toast(T.noneSelected, 'alert'); return; }
+      go('summary');
     });
   }
 
@@ -879,6 +982,8 @@
               return '<div class="ex' + (x.notes.trim() ? ' ex--done' : '') + '">' +
                 '<div class="ex__top"><span class="ex__n">' + (i + 1) + '</span>' +
                 '<span class="ex__t" dir="auto" style="display:flex;align-items:center">' + esc(x.text) + '</span></div>' +
+                (x.focus.trim() ? '<div class="ex__focus" dir="auto">' + icon('flag') +
+                  '<span>' + esc(x.focus) + '</span></div>' : '') +
                 (x.notes.trim() ? '<div class="ex__notes" dir="auto">' + esc(x.notes) + '</div>' : '') +
               '</div>';
             }).join('') + '</div>'
@@ -1228,6 +1333,222 @@
         });
         setTimeout(function () { $('#qLabel', sh).focus(); }, 120);
       }
+    });
+  }
+
+  /* ============================================================== summary */
+
+  /** Rolls a set of flights into the things worth reviewing with an instructor:
+   *  which goals stuck, which keep coming back, and what was worked on. */
+  function buildSummary(recs) {
+    var qGoals = Store.roleQuestion('goals');
+    var qNext = Store.roleQuestion('goalsNext');
+    var qSyl = Store.questions().filter(function (q) { return q.type === 'syllabus'; })[0];
+    var qMin = Store.questions().filter(function (q) { return q.type === 'minutes'; })[0];
+    var qSubj = Store.question('q_subject'), qInst = Store.question('q_instructor');
+    var qPoints = Store.question('q_points'), qSafety = Store.question('q_safety_d');
+
+    var sorted = recs.slice().sort(function (a, b) { return a.flownAt < b.flownAt ? -1 : 1; });
+    var minutes = 0, met = {}, missed = {}, focus = {}, ex = {}, points = [], safety = [];
+
+    sorted.forEach(function (r) {
+      if (qMin) { var m = parseInt(r.answers[qMin.id], 10); if (!isNaN(m)) minutes += m; }
+      if (qGoals) (r.answers[qGoals.id] || []).forEach(function (g) {
+        var t = String(g.text || '').trim();
+        if (!t) return;
+        if (g.status === 'met') met[t] = (met[t] || 0) + 1;
+        else if (g.status === 'missed') missed[t] = (missed[t] || 0) + 1;
+      });
+      if (qSyl) (r.answers[qSyl.id] || []).forEach(function (x) {
+        var t = String(x.text || '').trim();
+        if (t) ex[t] = (ex[t] || 0) + 1;
+        var f = String(x.focus || '').trim();
+        if (f) focus[f] = (focus[f] || 0) + 1;
+      });
+      if (qPoints) {
+        var p = String(r.answers[qPoints.id] || '').trim();
+        if (p) points.push({ d: r.flownAt, t: p });
+      }
+      if (qSafety) {
+        var s = String(r.answers[qSafety.id] || '').trim();
+        if (s) safety.push({ d: r.flownAt, t: s });
+      }
+    });
+
+    function rank(obj) {
+      return Object.keys(obj).sort(function (a, b) { return obj[b] - obj[a] || a.localeCompare(b); })
+        .map(function (k) { return { t: k, n: obj[k] }; });
+    }
+    var metL = rank(met), missedL = rank(missed), focusL = rank(focus), exL = rank(ex);
+    var recurring = missedL.filter(function (x) { return x.n > 1; });
+    var repeatFocus = focusL.filter(function (x) { return x.n > 1; });
+
+    var from = sorted.length ? fmtLong(sorted[0].flownAt) : '';
+    var to = sorted.length ? fmtLong(sorted[sorted.length - 1].flownAt) : '';
+
+    return {
+      range: sorted.length ? (from === to ? from : T.summaryOf(from, to)) : '',
+      flights: sorted.length, minutes: minutes,
+      met: metL, missed: missedL, recurring: recurring,
+      focus: repeatFocus, exercises: exL, points: points, safety: safety,
+      records: sorted,
+      q: { qSubj: qSubj, qInst: qInst, qMin: qMin, qSyl: qSyl, qGoals: qGoals, qNext: qNext }
+    };
+  }
+
+  /** The same summary as a standalone HTML document, which Google Docs opens
+   *  and converts. There is no Docs API here on purpose: that would need an
+   *  account and a server, and nothing in this app leaves the phone. */
+  function summaryDocHTML(s) {
+    function esc2(x) { return esc(x); }
+    function list(items, fmt) {
+      return '<ul>' + items.map(function (i) { return '<li>' + fmt(i) + '</li>'; }).join('') + '</ul>';
+    }
+    var h = '';
+    h += '<h1>' + esc2(T.summaryTitle) + '</h1>';
+    h += '<p><b>' + esc2(s.range) + '</b><br>' + esc2(T.summaryStats(s.flights, s.minutes)) + '</p>';
+
+    h += '<h2>' + esc2(T.secGoals) + '</h2>';
+    if (s.met.length) {
+      h += '<h3>' + esc2(T.goalsMet) + ' (' + s.met.length + ')</h3>' +
+        list(s.met, function (i) { return esc2(i.t) + (i.n > 1 ? ' — ' + esc2(T.timesN(i.n)) : ''); });
+    }
+    if (s.missed.length) {
+      h += '<h3>' + esc2(T.goalsMissed) + ' (' + s.missed.length + ')</h3>' +
+        list(s.missed, function (i) {
+          return esc2(i.t) + (i.n > 1 ? ' — <b>' + esc2(T.timesN(i.n)) + '</b>' : '');
+        });
+    }
+    if (s.recurring.length) {
+      h += '<h2>' + esc2(T.secRepeatGoals) + '</h2>' +
+        list(s.recurring, function (i) { return '<b>' + esc2(i.t) + '</b> — ' + esc2(T.inNFlights(i.n)); });
+    }
+    if (s.focus.length) {
+      h += '<h2>' + esc2(T.secFocus) + '</h2>' +
+        list(s.focus, function (i) { return esc2(i.t) + ' — ' + esc2(T.timesN(i.n)); });
+    }
+    if (s.exercises.length) {
+      h += '<h2>' + esc2(T.secExercises) + '</h2>' +
+        list(s.exercises, function (i) { return esc2(i.t) + ' &times;' + i.n; });
+    }
+    if (s.points.length) {
+      h += '<h2>' + esc2(T.secPoints) + '</h2>' +
+        list(s.points, function (i) { return '<b>' + esc2(fmtDate(i.d)) + '</b> — ' + esc2(i.t); });
+    }
+    if (s.safety.length) {
+      h += '<h2>' + esc2(T.secSafety) + '</h2>' +
+        list(s.safety, function (i) { return '<b>' + esc2(fmtDate(i.d)) + '</b> — ' + esc2(i.t); });
+    }
+
+    h += '<h2>' + esc2(T.secFlights) + '</h2>';
+    s.records.forEach(function (r) {
+      var bits = [weekday(r.flownAt), fmtLong(r.flownAt)];
+      if (s.q.qSubj && r.answers[s.q.qSubj.id]) bits.push(r.answers[s.q.qSubj.id]);
+      if (s.q.qInst && r.answers[s.q.qInst.id]) bits.push(r.answers[s.q.qInst.id]);
+      if (s.q.qMin && r.answers[s.q.qMin.id]) bits.push(r.answers[s.q.qMin.id] + ' ' + T.minutesUnit);
+      h += '<h3>' + esc2(bits.join(' · ')) + '</h3>';
+      if (s.q.qSyl) {
+        var xs = (r.answers[s.q.qSyl.id] || []).filter(function (x) { return String(x.text || '').trim(); });
+        if (xs.length) h += list(xs, function (x) {
+          return esc2(x.text) +
+            (String(x.focus || '').trim() ? '<br><i>' + esc2(x.focus) + '</i>' : '') +
+            (String(x.notes || '').trim() ? '<br>' + esc2(x.notes) : '');
+        });
+      }
+    });
+
+    return '<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">' +
+      '<title>' + esc2(T.summaryTitle) + '</title><style>' +
+      'body{font-family:Arial,sans-serif;direction:rtl;text-align:right;line-height:1.6;color:#111}' +
+      'h1{font-size:22pt;margin:0 0 4pt}h2{font-size:14pt;margin:18pt 0 4pt;border-bottom:1px solid #ccc}' +
+      'h3{font-size:11pt;margin:10pt 0 2pt}ul{margin:2pt 0 8pt;padding-inline-start:18pt}' +
+      'li{margin:2pt 0}i{color:#8a6d00}</style></head><body>' + h + '</body></html>';
+  }
+
+  function screenSummary() {
+    var recs = Store.all().filter(function (r) { return selected[r.id]; });
+    renderTopbar({ title: T.summary, sub: 'SUMMARY', back: true, backTo: 'log' });
+
+    if (!recs.length) {
+      viewEl.innerHTML = empty('list3', T.noneSelected, T.noneSelectedHint);
+      return;
+    }
+
+    var s = buildSummary(recs);
+
+    function sec(title, tone, body) {
+      return '<section class="panel' + (tone ? ' panel--' + tone : '') + '">' +
+        '<div class="panel__head">' + icon('list3') + '<span class="panel__t">' + esc(title) + '</span></div>' +
+        '<div class="panel__body">' + body + '</div></section>';
+    }
+    function rows(items, cls) {
+      return '<div class="sumlist">' + items.map(function (i) {
+        return '<div class="sumrow' + (cls ? ' ' + cls : '') + '">' +
+          '<span class="sumrow__t" dir="auto">' + esc(i.t) + '</span>' +
+          '<span class="sumrow__n mono">' + i.n + '</span></div>';
+      }).join('') + '</div>';
+    }
+
+    var h = '<div class="stack-4 stagger">' +
+      '<div class="hero">' +
+        '<div class="hero__meta"><i></i>SUMMARY</div>' +
+        '<h1 class="hero__h">' + esc(T.summaryTitle) + '</h1>' +
+        '<div class="hero__date">' + esc(s.range) + '</div>' +
+      '</div>' +
+      '<div class="readouts">' +
+        '<div class="readout readout--cyan"><div class="readout__k">' + icon('layers') +
+          '<span>' + esc(T.rFlights) + '</span></div><div class="readout__v">' + s.flights +
+          '</div><div class="readout__s">FLIGHTS</div></div>' +
+        '<div class="readout readout--amber"><div class="readout__k">' + icon('clock') +
+          '<span>' + esc(T.rMinutes) + '</span></div><div class="readout__v">' + s.minutes +
+          '</div><div class="readout__s">MINUTES</div></div>' +
+      '</div>';
+
+    if (s.met.length) h += sec(T.goalsMet + ' (' + s.met.length + ')', 'green', rows(s.met, 'is-met'));
+    if (s.missed.length) h += sec(T.goalsMissed + ' (' + s.missed.length + ')', 'red', rows(s.missed, 'is-missed'));
+    if (s.recurring.length) h += sec(T.secRepeatGoals, 'red', rows(s.recurring, 'is-missed'));
+    if (s.focus.length) h += sec(T.secFocus, 'amber', rows(s.focus));
+    if (s.exercises.length) h += sec(T.secExercises, '', rows(s.exercises));
+    if (s.points.length) {
+      h += sec(T.secPoints, '', '<div class="tl">' + s.points.map(function (p) {
+        return '<div class="tlrow"><div class="tlrow__m">' + esc(fmtDate(p.d)) + '</div>' +
+          '<div class="tlrow__t" dir="auto">' + esc(p.t) + '</div></div>';
+      }).join('') + '</div>');
+    }
+    if (s.safety.length) {
+      h += sec(T.secSafety, 'amber', '<div class="tl">' + s.safety.map(function (p) {
+        return '<div class="tlrow"><div class="tlrow__m">' + esc(fmtDate(p.d)) + '</div>' +
+          '<div class="tlrow__t" dir="auto">' + esc(p.t) + '</div></div>';
+      }).join('') + '</div>');
+    }
+
+    h += '<div class="stack">' +
+      '<button class="btn btn--lit btn--block btn--lg" data-copydoc>' + icon('copy') + esc(T.copyDoc) + '</button>' +
+      '<button class="btn btn--block" data-exportdoc>' + icon('download') + esc(T.exportDoc) + '</button>' +
+      '<p class="dim" style="font-size:var(--t-12);line-height:1.6;text-align:center">' + esc(T.docHint) + '</p>' +
+    '</div></div>';
+
+    viewEl.innerHTML = h;
+
+    on(viewEl, '[data-copydoc]', 'click', function () {
+      var html = summaryDocHTML(s);
+      var plain = html.replace(/<[^>]+>/g, function (m) {
+        return /<\/(h1|h2|h3|li|p)>/.test(m) ? '\n' : '';
+      }).replace(/\n{3,}/g, '\n\n').trim();
+      if (global.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
+        navigator.clipboard.write([new ClipboardItem({
+          'text/html': new Blob([html], { type: 'text/html' }),
+          'text/plain': new Blob([plain], { type: 'text/plain' })
+        })]).then(function () { toast(T.copiedDoc); },
+                  function () { fallbackCopy(plain); });
+      } else { fallbackCopy(plain); }
+      function fallbackCopy(t) {
+        if (navigator.clipboard) navigator.clipboard.writeText(t).then(function () { toast(T.copiedToast); });
+      }
+    });
+
+    on(viewEl, '[data-exportdoc]', 'click', function () {
+      saveFile('tahkir-summary-' + stamp() + '.doc', summaryDocHTML(s), 'application/msword');
     });
   }
 

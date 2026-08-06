@@ -37,9 +37,13 @@
 /* --- night panel (default) ------------------------------------------------ */
 [data-theme="dark"] {
   --bg:        #03060A;
-  --bg-glow:   radial-gradient(90% 46% at 50% -6%, rgba(0,150,200,.16) 0%, transparent 62%);
-  --face:      #070C13;      /* instrument face */
-  --face-2:    #0B131C;      /* raised element */
+  --photo-opacity: .62;
+  /* darker at the bars, clearer through the middle where the cockpit reads */
+  --scrim-layer: linear-gradient(180deg,
+      rgba(3,6,10,.90) 0%, rgba(3,6,10,.72) 26%,
+      rgba(3,6,10,.70) 62%, rgba(3,6,10,.93) 100%);
+  --face:      rgba(7,12,19,.88);   /* instrument face, lets the cockpit through */
+  --face-2:    rgba(11,19,28,.86);  /* raised element */
   --face-3:    #101A25;
   --bezel:     #0A1119;
   --rule:      #16212E;      /* hairline */
@@ -79,7 +83,9 @@
 /* --- day panel ------------------------------------------------------------ */
 [data-theme="light"] {
   --bg:        #E8EDF2;
-  --bg-glow:   radial-gradient(90% 46% at 50% -6%, rgba(255,255,255,.9) 0%, transparent 62%);
+  /* the night cockpit would fight a daylight panel, so it stays out of the way */
+  --photo-opacity: .10;
+  --scrim-layer: linear-gradient(180deg, rgba(232,237,242,.94), rgba(232,237,242,.88));
   --face:      #FFFFFF;
   --face-2:    #F1F5F9;
   --face-3:    #E4EBF2;
@@ -126,12 +132,24 @@ html { -webkit-text-size-adjust: 100%; }
 
 body {
   margin: 0; min-height: 100dvh;
-  background: var(--bg); background-image: var(--bg-glow);
-  background-attachment: fixed; background-repeat: no-repeat;
+  background: var(--bg);
   color: var(--fg);
   font-family: var(--font-ui); font-size: var(--t-15); line-height: 1.5;
   -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent;
   overscroll-behavior-y: none;
+}
+
+/* The cockpit sits behind everything, pre-blurred so the phone renders no
+   filter. The scrim over it is what keeps text readable; the panels above are
+   slightly translucent so it glows through the gaps rather than being hidden. */
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: -2; pointer-events: none;
+  background: url("../assets/cockpit.jpg") center center / cover no-repeat;
+  opacity: var(--photo-opacity, .6);
+}
+body::after {
+  content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background: var(--scrim-layer);
 }
 
 button, input, textarea, select { font: inherit; color: inherit; }
@@ -216,7 +234,9 @@ a { color: var(--cyan); text-decoration: none; }
   position: relative; text-decoration: none; letter-spacing: .02em;
   transition: color var(--d-fast);
 }
-.tab + .tab { border-inline-end: 1px solid var(--rule); }
+/* the divider goes on the side facing the previous tab, so there is a line
+   between every pair including בית and טיסות */
+.tab + .tab { border-inline-start: 1px solid var(--rule); }
 .tab svg { width: 20px; height: 20px; }
 .tab[aria-current="page"] { color: var(--cyan); }
 .tab[aria-current="page"] svg { filter: drop-shadow(0 0 6px rgba(34,211,238,.55)); }
@@ -530,6 +550,24 @@ a { color: var(--cyan); text-decoration: none; }
 .ex__notes::placeholder { color: var(--fg-dim); }
 .ex--done .ex__n { color: var(--green); background: var(--green-dim); }
 
+/* the דגש: an input at the תדריך, read-back reference at the תחקיר */
+.ex__focusin {
+  width: 100%; padding: var(--s-2) var(--s-3); min-height: 40px;
+  background: transparent; border: 0; border-top: 1px dashed var(--rule-2);
+  font-size: var(--t-13); color: var(--amber);
+  unicode-bidi: plaintext; text-align: start;
+}
+.ex__focusin:focus { outline: none; background: var(--face); }
+.ex__focusin::placeholder { color: var(--fg-dim); }
+.ex__focus {
+  display: flex; align-items: flex-start; gap: 6px;
+  padding: var(--s-2) var(--s-3); border-top: 1px dashed var(--amber-line);
+  background: var(--amber-dim); color: var(--amber);
+  font-size: var(--t-12); line-height: 1.5;
+}
+.ex__focus svg { width: 13px; height: 13px; flex: none; margin-top: 2px; }
+.ex__focus span { unicode-bidi: plaintext; text-align: start; }
+
 /* ==========================================================================
    Flight rows
    ========================================================================== */
@@ -556,6 +594,34 @@ a { color: var(--cyan); text-decoration: none; }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .frow__chev { flex: none; color: var(--fg-dim); width: 16px; height: 16px; }
 [dir="rtl"] .frow__chev { transform: scaleX(-1); }
+
+/* selection mode, for building a weekly summary */
+.frow__check {
+  flex: none; width: 22px; height: 22px; display: grid; place-items: center;
+  border: 1px solid var(--rule-2); border-radius: var(--r-xs);
+  color: transparent; transition: all var(--d-fast);
+}
+.frow__check svg { width: 14px; height: 14px; stroke-width: 3; }
+.frow--sel.is-on { background: var(--cyan-dim); }
+.frow--sel.is-on .frow__check {
+  background: var(--cyan); border-color: var(--cyan); color: var(--on-lit);
+}
+
+/* summary lists */
+.sumlist { display: grid; gap: 1px; background: var(--rule); border: 1px solid var(--rule); }
+.sumrow {
+  display: flex; align-items: center; gap: var(--s-3);
+  padding: var(--s-2) var(--s-3); background: var(--face-2);
+}
+.sumrow__t { flex: 1; min-width: 0; font-size: var(--t-13); line-height: 1.45;
+  unicode-bidi: plaintext; text-align: start; }
+.sumrow__n {
+  flex: none; font-size: var(--t-11); color: var(--fg-dim);
+  border: 1px solid var(--rule-2); border-radius: var(--r-xs); padding: 1px 6px;
+}
+.sumrow.is-met { border-inline-start: 2px solid var(--green); }
+.sumrow.is-missed { border-inline-start: 2px solid var(--red); }
+.sumrow.is-missed .sumrow__n { color: var(--red); border-color: var(--red-line); }
 
 /* ==========================================================================
    Detail
@@ -708,8 +774,10 @@ body[data-route="brief"] .toaster, body[data-route="debrief-edit"] .toaster { bo
 @keyframes toastIn { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes toastOut { to { transform: translateY(4px); opacity: 0; } }
 
+/* transparent so the cockpit backdrop reads through on the lock screen */
 .lock { position: fixed; inset: 0; z-index: var(--z-lock); display: grid; place-items: center;
-  background: var(--bg); background-image: var(--bg-glow);
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
+  backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
   padding: var(--s-6) var(--gutter) calc(var(--s-8) + env(safe-area-inset-bottom)); }
 .lock__inner { display: grid; justify-items: center; gap: var(--s-2); width: 100%; max-width: 300px; }
 .lock__mark { width: 50px; height: 50px; border: 1px solid var(--cyan-line); background: var(--cyan-dim);

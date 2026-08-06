@@ -10,3 +10,6 @@ dev/
 # Firebase project binding is machine-local; firebase.json IS tracked
 .firebaserc
 .firebase/
+
+# the unmodified stock photo stays local; the blurred derivative is what ships
+assets/cockpit-source.jpg
