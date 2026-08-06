@@ -13,6 +13,8 @@
     chevRight:  '<path d="m9 18 6-6-6-6"/>',
     chevLeft:   '<path d="m15 18-6-6 6-6"/>',
     chevDown:   '<path d="m6 9 6 6 6-6"/>',
+    chevUp:     '<path d="m6 15 6-6 6 6"/>',
+    flag:       '<path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/>',
     check:      '<path d="m20 6-11 11-5-5"/>',
     checkCircle:'<circle cx="12" cy="12" r="9"/><path d="m9 12 2 2 4-4"/>',
     x:          '<path d="M18 6 6 18M6 6l12 12"/>',

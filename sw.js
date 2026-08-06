@@ -5,7 +5,7 @@
  * Nothing here ever uploads anything: there is no server to upload to.
  */
 /* Bump VERSION on every deploy: old caches are dropped on activate. */
-var VERSION = 'sortie-v2';
+var VERSION = 'sortie-v3';
 var SHELL = VERSION + '-shell';
 var ASSETS = VERSION + '-assets';
 
@@ -13,6 +13,7 @@ var SHELL_FILES = [
   './',
   './index.html',
   './css/app.css',
+  './js/strings.js',
   './js/icons.js',
   './js/store.js',
   './js/app.js',

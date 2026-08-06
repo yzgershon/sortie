@@ -1,9 +1,14 @@
-/* Sortie — data layer.
+/* תחקיר — data layer.
  *
- * Everything lives on the device. There is no server, no account, no analytics
- * and no network call after the app is installed. IndexedDB is the store of
- * record; localStorage keeps a mirror so a corrupt/blocked IDB can still be
- * recovered. Reads are served from an in-memory array so rendering stays sync.
+ * Everything lives on the device. No server, no account, no analytics, no
+ * network call after install. IndexedDB is the store of record with a
+ * localStorage mirror; the two are merged by id on boot so a half-committed
+ * write can never lose a debrief.
+ *
+ * v2 model: the debrief is no longer fixed fields in code. The pilot owns a
+ * list of QUESTIONS, and each debrief stores ANSWERS keyed by question id.
+ * Two questions carry the roles goalsThis / goalsNext and drive the goal
+ * carry-forward loop; they can be renamed and reordered but not deleted.
  */
 (function (global) {
   'use strict';
@@ -14,35 +19,61 @@
   var LS_MIRROR = 'sortie:mirror';
   var LS_SETTINGS = 'sortie:settings';
   var LS_DRAFT = 'sortie:draft';
-  var SCHEMA = 1;
-
-  var DEFAULT_CATEGORIES = ['הקפות', 'AW', 'מבנה', 'ניווט', 'BFM', 'שילוב'];
+  var SCHEMA = 2;
 
   var db = null;
-  var dbHealthy = false; // false => the localStorage mirror is the store of record
-  var cache = [];        // all sorties, newest first
+  var dbHealthy = false;
+  var cache = [];
   var settings = null;
+
+  /* ------------------------------------------------- default question set */
+
+  function defaultQuestions() {
+    return [
+      { id: 'q_sortie',     label: 'מספר גיחה',        type: 'text',     role: 'sortieNo' },
+      { id: 'q_period',     label: 'פיריט',             type: 'choice',   options: ['1', '2', '3', '4'] },
+      { id: 'q_category',   label: 'קטגוריית טיסה',     type: 'choice',
+        options: ['הקפות', 'AW', 'מבנה', 'ניווט', 'BFM', 'שילוב'] },
+      { id: 'q_subject',    label: 'נושא טיסה',         type: 'text' },
+      { id: 'q_instructor', label: 'מדריך',             type: 'text' },
+      { id: 'q_hours',      label: 'שעות טיסה',         type: 'number' },
+      { id: 'q_solo',       label: 'אישור לסולו',       type: 'choice',   options: ['כן', 'לא'] },
+      { id: 'q_deficit',    label: 'ליקוי שנצפה',       type: 'textarea' },
+      { id: 'q_cause',      label: 'שורש הבעיה',        type: 'textarea' },
+      { id: 'q_match',      label: 'נקודת השוואה',      type: 'textarea' },
+      { id: 'q_top3',       label: '3 מסקנות עיקריות',  type: 'textarea' },
+      { id: 'q_tags',       label: 'תגיות',             type: 'text' },
+      { id: 'q_goals_this', label: 'יעדים יומיים',      type: 'goals',    role: 'goalsThis' },
+      { id: 'q_goals_next', label: 'יעדים לטיסה הבאה',  type: 'goals',    role: 'goalsNext' }
+    ].map(function (q, i) {
+      q.order = i; q.archived = false; q.hint = q.hint || '';
+      return q;
+    });
+  }
+
+  var TYPES = ['text', 'textarea', 'choice', 'number', 'date', 'goals'];
+
+  // Only the two ends of the goal loop are undeletable. Everything else,
+  // including the sortie number, is his to remove.
+  var PROTECTED = ['goalsThis', 'goalsNext'];
+  function isProtected(q) { return !!q && PROTECTED.indexOf(q.role) !== -1; }
 
   /* ---------------------------------------------------------------- utils */
 
-  function uid() {
-    return 's_' + Date.now().toString(36) + '_' +
-      Math.random().toString(36).slice(2, 8);
+  function uid(p) {
+    return (p || 's') + '_' + Date.now().toString(36) + '_' +
+      Math.random().toString(36).slice(2, 7);
   }
 
   function todayISO(d) {
     d = d || new Date();
-    var m = String(d.getMonth() + 1).padStart(2, '0');
-    var day = String(d.getDate()).padStart(2, '0');
-    return d.getFullYear() + '-' + m + '-' + day;
+    return d.getFullYear() + '-' +
+      String(d.getMonth() + 1).padStart(2, '0') + '-' +
+      String(d.getDate()).padStart(2, '0');
   }
 
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
 
-  /* IndexedDB can hang instead of failing — a blocked version upgrade, Safari
-   * private browsing, storage pressure. Never let that stall the boot: every
-   * IDB call resolves within a deadline, and if it misses we fall back to the
-   * localStorage mirror rather than showing a blank screen after a flight. */
   function withTimeout(promise, ms, fallback) {
     return new Promise(function (resolve) {
       var settled = false;
@@ -63,12 +94,10 @@
       var req;
       try { req = indexedDB.open(DB_NAME, DB_VER); }
       catch (e) { return resolve(null); }
-
       req.onupgradeneeded = function (e) {
         var d = e.target.result;
         if (!d.objectStoreNames.contains(STORE)) {
-          var os = d.createObjectStore(STORE, { keyPath: 'id' });
-          os.createIndex('flownAt', 'flownAt');
+          d.createObjectStore(STORE, { keyPath: 'id' }).createIndex('flownAt', 'flownAt');
         }
       };
       req.onsuccess = function () { resolve(req.result); };
@@ -81,92 +110,36 @@
     return new Promise(function (resolve) {
       if (!db) return resolve(null);
       try {
-        var tx = db.transaction(STORE, 'readonly');
-        var rq = tx.objectStore(STORE).getAll();
+        var rq = db.transaction(STORE, 'readonly').objectStore(STORE).getAll();
         rq.onsuccess = function () { resolve(rq.result || []); };
         rq.onerror = function () { resolve(null); };
       } catch (e) { resolve(null); }
     });
   }
 
-  function idbPut(rec) {
+  function idbWrite(fn) {
     return new Promise(function (resolve) {
       if (!db) return resolve(false);
       try {
         var tx = db.transaction(STORE, 'readwrite');
-        tx.objectStore(STORE).put(rec);
+        fn(tx.objectStore(STORE));
         tx.oncomplete = function () { resolve(true); };
         tx.onerror = function () { resolve(false); };
       } catch (e) { resolve(false); }
     });
   }
 
-  function idbDelete(id) {
-    return new Promise(function (resolve) {
-      if (!db) return resolve(false);
-      try {
-        var tx = db.transaction(STORE, 'readwrite');
-        tx.objectStore(STORE).delete(id);
-        tx.oncomplete = function () { resolve(true); };
-        tx.onerror = function () { resolve(false); };
-      } catch (e) { resolve(false); }
-    });
-  }
-
-  function idbClear() {
-    return new Promise(function (resolve) {
-      if (!db) return resolve(false);
-      try {
-        var tx = db.transaction(STORE, 'readwrite');
-        tx.objectStore(STORE).clear();
-        tx.oncomplete = function () { resolve(true); };
-        tx.onerror = function () { resolve(false); };
-      } catch (e) { resolve(false); }
-    });
-  }
+  var idbPut = function (r) { return idbWrite(function (os) { os.put(r); }); };
+  var idbDelete = function (id) { return idbWrite(function (os) { os.delete(id); }); };
+  var idbClear = function () { return idbWrite(function (os) { os.clear(); }); };
 
   function mirror() {
-    try { localStorage.setItem(LS_MIRROR, JSON.stringify(cache)); }
-    catch (e) { /* quota — IDB is still the store of record */ }
+    try { localStorage.setItem(LS_MIRROR, JSON.stringify(cache)); } catch (e) {}
   }
-
   function readMirror() {
     try { return JSON.parse(localStorage.getItem(LS_MIRROR) || '[]'); }
     catch (e) { return []; }
   }
-
-  /* -------------------------------------------------------------- records */
-
-  function normalize(r) {
-    return {
-      id: r.id || uid(),
-      sortieNo: String(r.sortieNo == null ? '' : r.sortieNo).trim(),
-      category: r.category || '',
-      flownAt: r.flownAt || todayISO(),
-      observedDeficit: r.observedDeficit || '',
-      rootCause: r.rootCause || '',
-      matchPoint: r.matchPoint || '',
-      top3: Array.isArray(r.top3) ? r.top3.slice(0, 6) : ['', '', ''],
-      targetGoals: (Array.isArray(r.targetGoals) ? r.targetGoals : []).map(function (g) {
-        return typeof g === 'string'
-          ? { text: g, done: false }
-          : { text: g.text || '', done: !!g.done };
-      }),
-      tags: Array.isArray(r.tags) ? r.tags : [],
-      createdAt: r.createdAt || Date.now(),
-      // preserved, not stamped: load paths compare updatedAt to pick a winner.
-      // save() bumps it explicitly.
-      updatedAt: r.updatedAt || r.createdAt || Date.now()
-    };
-  }
-
-  /** Newest first: by flight date, then by creation time. */
-  function sortRecords(a, b) {
-    if (a.flownAt !== b.flownAt) return a.flownAt < b.flownAt ? 1 : -1;
-    return b.createdAt - a.createdAt;
-  }
-
-  function resort() { cache.sort(sortRecords); }
 
   /* ------------------------------------------------------------- settings */
 
@@ -174,7 +147,8 @@
     return {
       schema: SCHEMA,
       theme: 'dark',
-      categories: DEFAULT_CATEGORIES.slice(),
+      questions: defaultQuestions(),
+      nextGoals: [],          // the live list for the upcoming flight
       pin: null,
       lastExport: 0,
       installDismissed: false
@@ -190,93 +164,172 @@
       Object.keys(base).forEach(function (k) {
         if (s[k] !== undefined) base[k] = s[k];
       });
+      // v1 stored a flat `categories` array and no questions at all
+      if (!Array.isArray(s.questions) || !s.questions.length) {
+        base.questions = defaultQuestions();
+        if (Array.isArray(s.categories) && s.categories.length) {
+          base.questions.forEach(function (q) {
+            if (q.id === 'q_category') q.options = s.categories.slice();
+          });
+        }
+      }
     }
-    if (!Array.isArray(base.categories) || !base.categories.length) {
-      base.categories = DEFAULT_CATEGORIES.slice();
-    }
+    base.questions = base.questions.map(normalizeQuestion);
+    ensureRoles(base.questions);
+    if (!Array.isArray(base.nextGoals)) base.nextGoals = [];
+    base.nextGoals = base.nextGoals.map(normalizeGoal);
+    base.schema = SCHEMA;
     return base;
   }
 
   function saveSettings() {
-    try { localStorage.setItem(LS_SETTINGS, JSON.stringify(settings)); }
-    catch (e) { /* ignore */ }
+    try { localStorage.setItem(LS_SETTINGS, JSON.stringify(settings)); } catch (e) {}
   }
+
+  function normalizeQuestion(q, i) {
+    return {
+      id: q.id || uid('q'),
+      label: String(q.label || '').trim() || 'שאלה',
+      type: TYPES.indexOf(q.type) === -1 ? 'text' : q.type,
+      options: Array.isArray(q.options) ? q.options.filter(function (o) { return String(o).trim(); }) : [],
+      hint: q.hint || '',
+      role: q.role || null,
+      archived: !!q.archived,
+      order: typeof q.order === 'number' ? q.order : i
+    };
+  }
+
+  /** The goal loop needs one question at each end; put them back if lost. */
+  function ensureRoles(qs) {
+    ['goalsThis', 'goalsNext'].forEach(function (role) {
+      if (qs.some(function (q) { return q.role === role && !q.archived; })) return;
+      var def = defaultQuestions().filter(function (q) { return q.role === role; })[0];
+      def.order = qs.length;
+      qs.push(def);
+    });
+  }
+
+  function normalizeGoal(g) {
+    if (typeof g === 'string') g = { text: g };
+    return {
+      id: g.id || uid('g'),
+      text: String(g.text == null ? '' : g.text),
+      status: ['open', 'met', 'missed'].indexOf(g.status) === -1 ? 'open' : g.status
+    };
+  }
+
+  /* -------------------------------------------------------------- records */
+
+  function normalize(r) {
+    var out = {
+      id: r.id || uid('d'),
+      flownAt: r.flownAt || todayISO(),
+      answers: {},
+      createdAt: r.createdAt || Date.now(),
+      updatedAt: r.updatedAt || r.createdAt || Date.now()
+    };
+
+    if (r.answers && typeof r.answers === 'object') {
+      Object.keys(r.answers).forEach(function (k) { out.answers[k] = r.answers[k]; });
+    } else {
+      // migrate a v1 record onto the default question ids
+      var m = {
+        q_sortie: r.sortieNo, q_category: r.category,
+        q_deficit: r.observedDeficit, q_cause: r.rootCause, q_match: r.matchPoint,
+        q_top3: Array.isArray(r.top3)
+          ? r.top3.filter(Boolean).map(function (t, i) { return (i + 1) + '. ' + t; }).join('\n')
+          : r.top3,
+        q_tags: Array.isArray(r.tags) ? r.tags.join(', ') : r.tags
+      };
+      Object.keys(m).forEach(function (k) {
+        if (m[k] !== undefined && m[k] !== null && m[k] !== '') out.answers[k] = m[k];
+      });
+      if (Array.isArray(r.targetGoals) && r.targetGoals.length) {
+        out.answers.q_goals_next = r.targetGoals.map(function (g) {
+          return normalizeGoal({ text: g.text, status: g.done ? 'met' : 'open' });
+        });
+      }
+    }
+
+    // goal answers are always arrays of goal objects
+    goalQuestionIds().forEach(function (qid) {
+      var v = out.answers[qid];
+      out.answers[qid] = Array.isArray(v) ? v.map(normalizeGoal) : [];
+    });
+
+    return out;
+  }
+
+  function goalQuestionIds() {
+    if (!settings) return ['q_goals_this', 'q_goals_next'];
+    return settings.questions
+      .filter(function (q) { return q.type === 'goals'; })
+      .map(function (q) { return q.id; });
+  }
+
+  function roleQuestion(role) {
+    var live = settings.questions.filter(function (q) { return q.role === role && !q.archived; });
+    return live[0] || null;
+  }
+
+  function sortRecords(a, b) {
+    if (a.flownAt !== b.flownAt) return a.flownAt < b.flownAt ? 1 : -1;
+    return b.createdAt - a.createdAt;
+  }
+  function resort() { cache.sort(sortRecords); }
 
   /* ------------------------------------------------------------------ pin */
 
   function bufToB64(buf) {
-    var bytes = new Uint8Array(buf), s = '';
-    for (var i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+    var b = new Uint8Array(buf), s = '';
+    for (var i = 0; i < b.length; i++) s += String.fromCharCode(b[i]);
     return btoa(s);
   }
-
   function b64ToBuf(b64) {
     var s = atob(b64), a = new Uint8Array(s.length);
     for (var i = 0; i < s.length; i++) a[i] = s.charCodeAt(i);
     return a;
   }
-
   function cryptoReady() {
     return !!(global.crypto && global.crypto.subtle && global.isSecureContext);
   }
-
-  function derive(pin, saltBytes) {
-    var enc = new TextEncoder();
+  function derive(pin, salt) {
     return crypto.subtle
-      .importKey('raw', enc.encode(pin), 'PBKDF2', false, ['deriveBits'])
+      .importKey('raw', new TextEncoder().encode(pin), 'PBKDF2', false, ['deriveBits'])
       .then(function (key) {
         return crypto.subtle.deriveBits(
-          { name: 'PBKDF2', salt: saltBytes, iterations: 150000, hash: 'SHA-256' },
-          key, 256
-        );
+          { name: 'PBKDF2', salt: salt, iterations: 150000, hash: 'SHA-256' }, key, 256);
       });
   }
 
-  function setPin(pin) {
-    if (!cryptoReady()) return Promise.resolve(false);
-    var salt = crypto.getRandomValues(new Uint8Array(16));
-    return derive(pin, salt).then(function (bits) {
-      settings.pin = { salt: bufToB64(salt), hash: bufToB64(bits) };
-      saveSettings();
-      return true;
-    });
-  }
-
-  function checkPin(pin) {
-    if (!settings.pin || !cryptoReady()) return Promise.resolve(true);
-    return derive(pin, b64ToBuf(settings.pin.salt)).then(function (bits) {
-      return bufToB64(bits) === settings.pin.hash;
-    }).catch(function () { return false; });
-  }
-
-  function clearPin() { settings.pin = null; saveSettings(); }
-
   /* --------------------------------------------------------------- export */
+
+  var BOM = String.fromCharCode(0xFEFF);
 
   function csvCell(v) {
     v = String(v == null ? '' : v);
     return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
   }
 
-  // Byte-order mark, written as an escape so no tool can silently strip it.
-  var BOM = String.fromCharCode(0xFEFF);
+  function answerToText(q, v) {
+    if (q.type === 'goals') {
+      return (Array.isArray(v) ? v : []).filter(function (g) { return g.text.trim(); })
+        .map(function (g) {
+          return g.text + (g.status === 'met' ? ' [הושג]' : g.status === 'missed' ? ' [לא הושג]' : '');
+        }).join(' | ');
+    }
+    return v == null ? '' : String(v);
+  }
 
+  /** Columns follow the question list, so the sheet tracks whatever he edits. */
   function toCSV() {
-    var head = ['Date', 'Sortie #', 'Flight Category', 'Observed Deficit',
-      'Root Cause', 'Match Point', 'Top 3',
-      'Target Goals For Next Sortie', 'Goals Achieved', 'Tags', 'Logged At'];
+    var qs = settings.questions.slice().sort(function (a, b) { return a.order - b.order; });
+    var head = ['תאריך'].concat(qs.map(function (q) { return q.label; }));
     var rows = cache.slice().reverse().map(function (r) {
-      var goals = r.targetGoals.filter(function (g) { return g.text.trim(); });
-      return [
-        r.flownAt, r.sortieNo, r.category, r.observedDeficit, r.rootCause, r.matchPoint,
-        r.top3.filter(Boolean).map(function (t, i) { return (i + 1) + '. ' + t; }).join(' | '),
-        goals.map(function (g, i) { return (i + 1) + '. ' + g.text; }).join(' | '),
-        goals.filter(function (g) { return g.done; }).length + '/' + goals.length,
-        r.tags.join(', '),
-        new Date(r.createdAt).toISOString()
-      ].map(csvCell).join(',');
+      return [r.flownAt].concat(qs.map(function (q) {
+        return answerToText(q, r.answers[q.id]);
+      })).map(csvCell).join(',');
     });
-    // Excel and Sheets need the BOM or they render the Hebrew as mojibake
     return BOM + head.map(csvCell).join(',') + '\r\n' + rows.join('\r\n');
   }
 
@@ -284,39 +337,42 @@
     return JSON.stringify({
       app: 'sortie', schema: SCHEMA,
       exportedAt: new Date().toISOString(),
-      categories: settings.categories,
-      sorties: cache
+      questions: settings.questions,
+      nextGoals: settings.nextGoals,
+      debriefs: cache
     }, null, 2);
   }
 
   function importJSON(text) {
     var data = JSON.parse(text);
-    var list = Array.isArray(data) ? data : data.sorties;
-    if (!Array.isArray(list)) throw new Error('No sorties found in that file.');
+    var list = Array.isArray(data) ? data : (data.debriefs || data.sorties);
+    if (!Array.isArray(list)) throw new Error('no debriefs');
 
-    var byId = {};
-    cache.forEach(function (r) { byId[r.id] = r; });
-
-    var added = 0, updated = 0;
-    var writes = list.map(function (raw) {
-      var rec = normalize(raw);
-      if (byId[rec.id]) {
-        // keep whichever record was touched last
-        if ((raw.updatedAt || 0) <= (byId[rec.id].updatedAt || 0)) return null;
-        Object.assign(byId[rec.id], rec);
-        updated++;
-        return idbPut(byId[rec.id]);
-      }
-      cache.push(rec); byId[rec.id] = rec; added++;
-      return idbPut(rec);
-    }).filter(Boolean);
-
-    if (Array.isArray(data.categories) && data.categories.length) {
-      data.categories.forEach(function (c) {
-        if (settings.categories.indexOf(c) === -1) settings.categories.push(c);
+    if (Array.isArray(data.questions) && data.questions.length) {
+      var byId = {};
+      settings.questions.forEach(function (q) { byId[q.id] = q; });
+      data.questions.map(normalizeQuestion).forEach(function (q) {
+        if (!byId[q.id]) settings.questions.push(q);
       });
+      ensureRoles(settings.questions);
       saveSettings();
     }
+
+    var have = {};
+    cache.forEach(function (r) { have[r.id] = r; });
+
+    var added = 0, updated = 0, writes = [];
+    list.forEach(function (raw) {
+      var rec = normalize(raw);
+      if (have[rec.id]) {
+        if ((rec.updatedAt || 0) <= (have[rec.id].updatedAt || 0)) return;
+        Object.assign(have[rec.id], rec); updated++;
+        writes.push(idbPut(clone(have[rec.id])));
+      } else {
+        cache.push(rec); have[rec.id] = rec; added++;
+        writes.push(idbPut(clone(rec)));
+      }
+    });
 
     resort(); mirror();
     return Promise.all(writes).then(function () {
@@ -324,25 +380,13 @@
     });
   }
 
-  /* -------------------------------------------------------------- drafts */
-
-  function saveDraft(d) {
-    try { localStorage.setItem(LS_DRAFT, JSON.stringify(d)); } catch (e) {}
-  }
-  function readDraft() {
-    try { return JSON.parse(localStorage.getItem(LS_DRAFT) || 'null'); }
-    catch (e) { return null; }
-  }
-  function clearDraft() {
-    try { localStorage.removeItem(LS_DRAFT); } catch (e) {}
-  }
-
   /* ------------------------------------------------------------------ api */
 
   var Store = {
-    DEFAULT_CATEGORIES: DEFAULT_CATEGORIES,
+    TYPES: TYPES,
     todayISO: todayISO,
     uid: uid,
+    normalizeGoal: normalizeGoal,
 
     init: function () {
       settings = loadSettings();
@@ -350,35 +394,22 @@
         db = d;
         return withTimeout(idbAll(), 2000, null);
       }).then(function (rows) {
-        // rows === null means IDB is missing, blocked, or too slow to trust
         dbHealthy = rows !== null;
 
-        // Union both stores by id rather than picking one. Neither is trusted
-        // to be complete: IDB can hold a half-committed restore if the app was
-        // killed mid-write, and the mirror can be stale or capped by quota.
-        // Preferring one store outright silently loses debriefs, which is the
-        // one bug this app cannot have.
         var byId = {};
-        readMirror().forEach(function (raw) {
-          var r = normalize(raw); byId[r.id] = r;
-        });
+        readMirror().forEach(function (raw) { var r = normalize(raw); byId[r.id] = r; });
         (rows || []).forEach(function (raw) {
-          var r = normalize(raw);
-          var have = byId[r.id];
+          var r = normalize(raw), have = byId[r.id];
           if (!have || (r.updatedAt || 0) >= (have.updatedAt || 0)) byId[r.id] = r;
         });
         cache = Object.keys(byId).map(function (k) { return byId[k]; });
-        resort();
-        mirror();
+        resort(); mirror(); saveSettings();
 
-        // Backfill whatever IDB is missing so the two stores converge.
         if (db && dbHealthy) {
           var inDb = {};
           (rows || []).forEach(function (r) { inDb[r.id] = 1; });
           cache.forEach(function (r) { if (!inDb[r.id]) idbPut(clone(r)); });
         }
-        // Ask the browser to keep this data. Home-screen installs are the ones
-        // that actually get granted; ignore the answer either way.
         if (navigator.storage && navigator.storage.persist) {
           navigator.storage.persist().catch(function () {});
         }
@@ -386,7 +417,81 @@
       });
     },
 
-    /* records */
+    /* --- questions --- */
+    questions: function (includeArchived) {
+      return settings.questions
+        .filter(function (q) { return includeArchived || !q.archived; })
+        .sort(function (a, b) { return a.order - b.order; });
+    },
+    question: function (id) {
+      return settings.questions.filter(function (q) { return q.id === id; })[0] || null;
+    },
+    roleQuestion: roleQuestion,
+    isProtected: isProtected,
+
+    addQuestion: function (q) {
+      var out = normalizeQuestion(q, settings.questions.length);
+      out.order = settings.questions.length;
+      settings.questions.push(out);
+      saveSettings();
+      return out;
+    },
+    updateQuestion: function (id, patch) {
+      var q = Store.question(id);
+      if (!q) return null;
+      if (patch.label !== undefined) q.label = String(patch.label).trim() || q.label;
+      if (patch.hint !== undefined) q.hint = patch.hint;
+      // a goal question cannot stop being one without breaking the carry loop
+      if (patch.type !== undefined && !isProtected(q) && TYPES.indexOf(patch.type) !== -1) q.type = patch.type;
+      if (patch.options !== undefined) {
+        q.options = patch.options.filter(function (o) { return String(o).trim(); });
+      }
+      saveSettings();
+      return q;
+    },
+    /** Archive, never destroy: old debriefs keep showing the answers. */
+    removeQuestion: function (id) {
+      var q = Store.question(id);
+      if (!q || isProtected(q)) return false;
+      q.archived = true;
+      saveSettings();
+      return true;
+    },
+    moveQuestion: function (id, dir) {
+      var live = Store.questions();
+      var i = live.findIndex(function (q) { return q.id === id; });
+      var j = i + dir;
+      if (i === -1 || j < 0 || j >= live.length) return false;
+      var a = live[i], b = live[j], t = a.order;
+      a.order = b.order; b.order = t;
+      saveSettings();
+      return true;
+    },
+    resetQuestions: function () {
+      settings.questions = defaultQuestions();
+      saveSettings();
+    },
+
+    /* --- goals for the next flight (the live list) --- */
+    nextGoals: function () { return settings.nextGoals; },
+    setNextGoals: function (list) {
+      settings.nextGoals = (list || []).map(normalizeGoal)
+        .filter(function (g) { return g.text.trim(); });
+      saveSettings();
+      return settings.nextGoals;
+    },
+    addNextGoal: function (text) {
+      var g = normalizeGoal({ text: text });
+      settings.nextGoals.push(g);
+      saveSettings();
+      return g;
+    },
+    removeNextGoal: function (id) {
+      settings.nextGoals = settings.nextGoals.filter(function (g) { return g.id !== id; });
+      saveSettings();
+    },
+
+    /* --- debriefs --- */
     all: function () { return cache; },
     count: function () { return cache.length; },
     get: function (id) {
@@ -395,14 +500,13 @@
     },
     latest: function () { return cache[0] || null; },
 
-    /** Next sortie number, guessed from the most recent numeric one. */
     nextSortieNo: function () {
+      var q = roleQuestion('sortieNo');
+      if (!q) return '';
       for (var i = 0; i < cache.length; i++) {
-        var m = /(\d+)\s*$/.exec(cache[i].sortieNo || '');
-        if (m) {
-          var prefix = cache[i].sortieNo.slice(0, m.index);
-          return prefix + String(parseInt(m[1], 10) + 1);
-        }
+        var v = String(cache[i].answers[q.id] || '');
+        var m = /(\d+)\s*$/.exec(v);
+        if (m) return v.slice(0, m.index) + String(parseInt(m[1], 10) + 1);
       }
       return '';
     },
@@ -419,6 +523,30 @@
         cache.push(out);
       }
       out.updatedAt = Date.now();
+
+      // Roll the goal loop forward: whatever he set for next time, plus every
+      // goal he marked as missed, becomes the live list for the next flight.
+      var qThis = roleQuestion('goalsThis');
+      var qNext = roleQuestion('goalsNext');
+      var carry = [];
+      if (qNext) {
+        (out.answers[qNext.id] || []).forEach(function (g) {
+          if (g.text.trim()) carry.push({ text: g.text });
+        });
+      }
+      if (qThis) {
+        (out.answers[qThis.id] || []).forEach(function (g) {
+          if (g.status === 'missed' && g.text.trim()) carry.push({ text: g.text });
+        });
+      }
+      var seen = {};
+      settings.nextGoals = carry.filter(function (g) {
+        var k = g.text.trim();
+        if (seen[k]) return false;
+        seen[k] = 1; return true;
+      }).map(normalizeGoal);
+      saveSettings();
+
       resort(); mirror();
       return idbPut(clone(out)).then(function () { return out; });
     },
@@ -431,58 +559,84 @@
 
     clearAll: function () {
       cache = [];
-      mirror(); clearDraft();
+      settings.nextGoals = [];
+      saveSettings(); mirror(); Store.clearDraft();
       return idbClear();
     },
 
-    /** Full-text search across every answer. */
     search: function (q) {
       q = (q || '').trim().toLowerCase();
       if (!q) return cache;
+      var qs = Store.questions(true);
       return cache.filter(function (r) {
-        var hay = [
-          r.sortieNo, r.category, r.observedDeficit, r.rootCause, r.matchPoint,
-          r.top3.join(' '),
-          r.targetGoals.map(function (g) { return g.text; }).join(' '),
-          r.tags.join(' '), r.flownAt
-        ].join(' ').toLowerCase();
-        return hay.indexOf(q) !== -1;
+        var hay = [r.flownAt];
+        qs.forEach(function (question) {
+          hay.push(answerToText(question, r.answers[question.id]));
+        });
+        return hay.join(' ').toLowerCase().indexOf(q) !== -1;
       });
     },
 
-    /** Every tag ever used, most frequent first. */
-    allTags: function () {
-      var counts = {};
-      cache.forEach(function (r) {
-        r.tags.forEach(function (t) { counts[t] = (counts[t] || 0) + 1; });
+    /** Plain-text rendering of a whole debrief, for copy and share. */
+    asText: function (r, fmtDate) {
+      var L = ['תחקיר', (fmtDate ? fmtDate(r.flownAt) : r.flownAt), ''];
+      Store.questions(true).forEach(function (q) {
+        var v = r.answers[q.id];
+        var txt = answerToText(q, v);
+        if (!txt) return;
+        if (q.type === 'goals') {
+          L.push(q.label + ':');
+          (v || []).filter(function (g) { return g.text.trim(); }).forEach(function (g) {
+            L.push('  ' + (g.status === 'met' ? '✓' : g.status === 'missed' ? '✗' : '•') + ' ' + g.text);
+          });
+        } else {
+          L.push(q.label + ': ' + txt);
+        }
       });
-      return Object.keys(counts)
-        .sort(function (a, b) { return counts[b] - counts[a] || a.localeCompare(b); })
-        .map(function (t) { return { tag: t, n: counts[t] }; });
+      return L.join('\n');
     },
 
-    /** Where the data actually lives, so Settings can say so honestly. */
-    storageMode: function () { return dbHealthy ? 'indexeddb' : 'local'; },
-
-    /* settings */
+    /* --- settings --- */
     settings: function () { return settings; },
     set: function (k, v) { settings[k] = v; saveSettings(); },
+    storageMode: function () { return dbHealthy ? 'indexeddb' : 'local'; },
 
-    setPin: setPin,
-    checkPin: checkPin,
-    clearPin: clearPin,
+    setPin: function (pin) {
+      if (!cryptoReady()) return Promise.resolve(false);
+      var salt = crypto.getRandomValues(new Uint8Array(16));
+      return derive(pin, salt).then(function (bits) {
+        settings.pin = { salt: bufToB64(salt), hash: bufToB64(bits) };
+        saveSettings();
+        return true;
+      });
+    },
+    checkPin: function (pin) {
+      if (!settings.pin || !cryptoReady()) return Promise.resolve(true);
+      return derive(pin, b64ToBuf(settings.pin.salt))
+        .then(function (bits) { return bufToB64(bits) === settings.pin.hash; })
+        .catch(function () { return false; });
+    },
+    clearPin: function () { settings.pin = null; saveSettings(); },
     cryptoReady: cryptoReady,
 
-    /* transfer */
+    /* --- transfer --- */
     toCSV: toCSV,
     toJSON: toJSON,
     importJSON: importJSON,
+    answerToText: answerToText,
     markExported: function () { settings.lastExport = Date.now(); saveSettings(); },
 
-    /* drafts */
-    saveDraft: saveDraft,
-    readDraft: readDraft,
-    clearDraft: clearDraft
+    /* --- drafts --- */
+    saveDraft: function (d) {
+      try { localStorage.setItem(LS_DRAFT, JSON.stringify(d)); } catch (e) {}
+    },
+    readDraft: function () {
+      try { return JSON.parse(localStorage.getItem(LS_DRAFT) || 'null'); }
+      catch (e) { return null; }
+    },
+    clearDraft: function () {
+      try { localStorage.removeItem(LS_DRAFT); } catch (e) {}
+    }
   };
 
   global.Store = Store;
