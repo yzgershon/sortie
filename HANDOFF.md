@@ -2,14 +2,30 @@
 
 Last updated: 2026-08-06
 
+## Live
+
+**https://yzgershon.github.io/sortie/** — GitHub Pages, `main` at repo root.
+Repo: `yzgershon/sortie`, **public**.
+
+Push to `main` to redeploy. **Bump `VERSION` in `sw.js` in the same push** or
+phones keep the cached build. Pages sends `max-age=600`, so a bumped service
+worker reaches a phone within about ten minutes.
+
+The repo is public because GitHub Pages will not serve a private repo on a free
+plan (`HTTP 422`). Yish accepted that and wants to revisit privacy later. The
+free private options are Cloudflare Pages (dashboard only, its CLI cannot
+install on Windows ARM64) or Firebase Hosting (CLI works fine, needs one
+`firebase login`).
+
 ## State
 
-**v1 built and reviewed locally. Not deployed, not on a phone yet.**
+**v1 built, deployed, and verified live. Never run on a real iPhone.**
 
 Every screen renders and was checked at a real 390x844 viewport in both themes:
 Home, New debrief, Log, Sortie detail, Patterns, Settings. The data layer has
 node tests covering CSV/JSON round trip with Hebrew, sortie numbering, search,
-and the IndexedDB/mirror merge.
+and the IndexedDB/mirror merge. The live site was verified for asset resolution,
+HTTPS redirect, `dev/` returning 404, and the first-run empty state.
 
 ## What is NOT done
 
@@ -17,7 +33,6 @@ and the IndexedDB/mirror merge.
   Windows. Safari-specific things to check first: `<dialog>` sheets,
   `navigator.share` for export, the date input, safe-area insets on a notched
   phone, and whether `navigator.storage.persist()` is granted.
-- **Not deployed.** No host chosen yet, so nothing to install from.
 - **Not shown to the brother.** Field names and the three-phase grouping are my
   reading of the form; his squadron's debrief methodology may group them
   differently. Grouping is cosmetic — the fields and their names are verbatim
@@ -55,11 +70,21 @@ and the IndexedDB/mirror merge.
   screenshots, not `--window-size`.
 - IndexedDB callbacks never fire under `--virtual-time-budget`, so headless runs
   always land on the mirror path. That is a headless artifact, not a bug.
+- A headless screenshot of the app inside a **cross-origin** iframe comes out
+  with an empty body: the `.stagger` entrance animation uses
+  `animation-fill-mode: both`, so the content sits at opacity 0 until the
+  animation runs, and it does not run in time there. Screenshot the live URL
+  directly. Same reason the local harness must stay same-origin.
+- **The first GitHub Pages build on this repo timed out** (`Timeout reached,
+  aborting!` after 10 minutes, stuck in `deployment_in_progress`). Nothing was
+  wrong with the code. `gh api -X POST repos/yzgershon/sortie/pages/builds`
+  triggered a rebuild that succeeded in about three minutes.
 
 ## Next
 
-1. Pick a host (Cloudflare Pages from a private repo) and deploy.
-2. Install on the brother's iPhone from Safari, run one real debrief end to end.
-3. Show him the screens and confirm the field grouping and Hebrew wording.
+1. Install on the brother's iPhone: open the URL in **Safari** (not Chrome),
+   Share, Add to Home Screen. Run one real debrief end to end.
+2. Confirm the field grouping and Hebrew wording with him.
+3. UI changes are the next work item and Yish wants to drive them.
 4. Then pick from the "maybe later" list in
    `C:\Dev\SecondBrain\projects\sortie\overview.md`.
