@@ -1,0 +1,12 @@
+node_modules/
+*.log
+.DS_Store
+Thumbs.db
+
+# local review harness — never published; on a static host its seed page
+# would be a live URL that overwrites real debriefs with sample data
+dev/
+
+# only needed if we move to Firebase Hosting later
+firebase.json
+.firebaserc

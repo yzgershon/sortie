@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Daily flight debrief. Log the sortie, carry the goals forward.">
+<title>Sortie</title>
+
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Sortie">
+<meta name="theme-color" content="#070A10" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#F6F8FB" media="(prefers-color-scheme: light)">
+<meta name="format-detection" content="telephone=no">
+
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" href="icons/icon-192.png" sizes="192x192">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Heebo:wght@400;500;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+<!-- Lock screen ------------------------------------------------------------->
+<div id="lockScreen" class="lock" hidden>
+  <div class="lock__inner">
+    <div class="lock__mark" aria-hidden="true"></div>
+    <h1 class="lock__title">Sortie</h1>
+    <p class="lock__hint" id="lockHint">Enter your code</p>
+    <div class="pin" id="pinDots" role="status" aria-live="polite" aria-label="Code entry"></div>
+    <div class="keypad" id="keypad"></div>
+  </div>
+</div>
+
+<!-- App --------------------------------------------------------------------->
+<div id="app" class="app" hidden>
+  <header class="topbar" id="topbar"></header>
+  <main class="view" id="view" tabindex="-1"></main>
+  <nav class="tabbar" id="tabbar" aria-label="Main"></nav>
+</div>
+
+<div class="toaster" id="toaster" role="status" aria-live="polite"></div>
+
+<dialog class="sheet" id="sheet" aria-label="Dialog"></dialog>
+
+<script src="js/icons.js"></script>
+<script src="js/store.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
