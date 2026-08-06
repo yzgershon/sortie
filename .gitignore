@@ -3,10 +3,10 @@ node_modules/
 .DS_Store
 Thumbs.db
 
-# local review harness — never published; on a static host its seed page
-# would be a live URL that overwrites real debriefs with sample data
+# local review harness — never published; its seed page would be a live URL
+# that overwrites real debriefs with sample data
 dev/
 
-# only needed if we move to Firebase Hosting later
-firebase.json
+# Firebase project binding is machine-local; firebase.json IS tracked
 .firebaserc
+.firebase/
