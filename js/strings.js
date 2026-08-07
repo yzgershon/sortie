@@ -22,7 +22,7 @@
     briefWaiting: 'תדריך פתוח, ממתין לתחקיר',
     noBriefYet: 'אין תדריך פתוח',
     noBriefHint: 'מלא תדריך לפני הטיסה. הוא יזין את התחקיר אחריה.',
-    goalsCarried: 'יעדים שעברו',
+    goalsCarried: 'יעדים',
     goalsCarriedHint: 'יעדים שלא הושגו עוברים לטיסה הבאה עד שהם מסומנים.',
     noGoals: 'אין יעדים פתוחים',
     noGoalsHint: 'יעדים שתגדיר בסוף התחקיר יופיעו כאן.',
@@ -34,6 +34,7 @@
 
     /* readouts */
     rMinutes: 'דקות',     capMinutes: 'MINUTES',
+    rHours: 'שעות טיסה', capHours: 'HOURS',
     rFlights: 'טיסות',    capFlights: 'FLIGHTS',
     rGoals: 'יעדים',      capGoals: 'GOALS MET',
     rWeek: 'השבוע',       capWeek: 'THIS WEEK',
@@ -63,6 +64,8 @@
     noMatches: 'אין תוצאות',
     noMatchesHint: 'נסה מילה אחרת או נקה את הסינון.',
     all: 'הכל',
+    categories: 'קטגוריות',
+    carriedToNext: 'עבר ליעדים לטיסה הבאה',
     awaiting: 'ממתין לתחקיר',
 
     /* weekly summary */
@@ -110,7 +113,7 @@
     repeatedGoals: 'יעדים שחוזרים',
     readAcross: 'תשובה אחת לאורך כל הטיסות',
     nothingHere: 'עדיין לא נכתב כאן דבר.',
-    totalMinutes: 'סך דקות',
+    totalMinutes: 'סך שעות',
 
     /* settings */
     settings: 'הגדרות',

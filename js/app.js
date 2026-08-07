@@ -203,6 +203,9 @@
       var v = parseInt(r.answers[qMin.id], 10);
       if (!isNaN(v)) mins += v;
     });
+    // logged per flight in minutes, totalled here in hours the way flight time
+    // is actually recorded
+    var hours = (mins / 60).toFixed(1);
 
     var qg = Store.roleQuestion('goals'), met = 0, tot = 0;
     if (qg) done.forEach(function (r) {
@@ -226,7 +229,7 @@
     '</div>';
 
     h += '<div class="readouts">' +
-      readout('cyan', 'clock', T.rMinutes, T.capMinutes, String(mins), '') +
+      readout('cyan', 'clock', T.rHours, T.capHours, hours, mins + ' ' + T.rMinutes) +
       readout('', 'layers', T.rFlights, T.capFlights, String(done.length), '') +
       readout('green', 'target', T.rGoals, T.capGoals,
         (tot ? Math.round(met / tot * 100) : 0) + '<small>%</small>', tot ? met + '/' + tot : '') +
@@ -365,6 +368,7 @@
     } else { go('home'); return; }
 
     var qs = Store.stageQuestions(stage);
+    var qNext = Store.roleQuestion('goalsNext');   // target of the ✗ carry
 
     renderTopbar({
       title: isBrief ? T.briefTitle : T.debriefTitle,
@@ -429,10 +433,19 @@
         body = '<input class="input input--num" id="f_' + esc(q.id) + '" data-q="' + esc(q.id) +
           '" type="date" value="' + esc(v || '') + '">';
       } else {
-        var sugg = q.suggest ? Store.suggestions(q.id) : [];
+        // a question with options offers them as add-on tokens (so "AW" then a
+        // number), while previous answers replace the field outright
+        var cats = (q.options && q.options.length) ? q.options : [];
+        var prev = q.suggest ? Store.suggestions(q.id).filter(function (o) {
+          return cats.indexOf(o) === -1;
+        }) : [];
         body = '<input class="input" id="f_' + esc(q.id) + '" data-q="' + esc(q.id) + '" type="text" ' +
           'dir="auto" autocomplete="off" placeholder="' + esc(T.yourAnswer) + '" value="' + esc(v || '') + '">' +
-          (sugg.length ? '<div class="sugg">' + sugg.map(function (o) {
+          (cats.length ? '<div class="sugg sugg--cat">' + cats.map(function (o) {
+            return '<button type="button" data-append="' + esc(q.id) + '" data-val="' + esc(o) + '" dir="auto">' +
+              esc(o) + '</button>';
+          }).join('') + '</div>' : '') +
+          (prev.length ? '<div class="sugg">' + prev.map(function (o) {
             return '<button type="button" data-fill="' + esc(q.id) + '" data-val="' + esc(o) + '" dir="auto">' +
               esc(o) + '</button>';
           }).join('') + '</div>' : '');
@@ -632,6 +645,17 @@
         return;
       }
 
+      var app = e.target.closest('[data-append]');
+      if (app) {
+        var inp = $('[data-q="' + app.dataset.append + '"]');
+        if (inp) {
+          var val = app.dataset.val, cur = inp.value.trim();
+          if (cur.indexOf(val) === -1) inp.value = cur ? cur + ' ' + val : val;
+          inp.focus(); haptic(); touched();
+        }
+        return;
+      }
+
       var vx = e.target.closest('.vx button');
       if (vx) {
         var row = vx.closest('.goalrow'), want = vx.dataset.v;
@@ -642,6 +666,7 @@
         $$('.vx button', row).forEach(function (b) {
           b.setAttribute('aria-pressed', String(b.dataset.v === next));
         });
+        syncCarry(row, next);
         haptic(next === 'met' ? 12 : 6); touched(); return;
       }
 
@@ -661,6 +686,33 @@
       var xb = e.target.closest('[data-exbulk]');
       if (xb) { bulkEx(xb.dataset.exbulk); }
     });
+
+    /* Marking a goal ✗ writes it straight into יעדים לטיסה הבאה, and clearing
+       the ✗ takes it back out. Only rows this added carry data-from, so a goal
+       he typed himself is never removed underneath him. */
+    function syncCarry(row, status) {
+      if (!qNext) return;
+      var listEl = $('[data-goals="' + qNext.id + '"]');
+      if (!listEl) return;
+      var text = $('.goalrow__t span', row).textContent.trim();
+      var gid = row.dataset.goalid;
+      var mine = $$('.goalrow', listEl).filter(function (r) { return r.dataset.from === gid; })[0];
+
+      if (status === 'missed') {
+        if (mine || !text) return;
+        var dupe = $$('.goalrow', listEl).some(function (r) {
+          return $('.goalrow__t span', r).textContent.trim() === text;
+        });
+        if (dupe) return;
+        listEl.insertAdjacentHTML('beforeend', goalRow(Store.normalizeGoal({ text: text }), false));
+        var added = listEl.lastElementChild;
+        added.dataset.from = gid;
+        added.classList.add('is-carried');
+        toast(T.carriedToNext, 'flag');
+      } else if (mine) {
+        mine.remove();
+      }
+    }
 
     function renumberEx(listEl) {
       $$('.ex__n', listEl).forEach(function (n, i) { n.textContent = i + 1; });
@@ -761,7 +813,7 @@
 
   /* ================================================================== log */
 
-  var logQuery = '', logFilter = '', logSelect = false;
+  var logQuery = '', logCats = {}, logSelect = false;
 
   /* Kept in sessionStorage so a reload on the summary screen does not lose the
      selection. It is cleared when the app is closed, which is the right life. */
@@ -801,12 +853,15 @@
           ]
     });
 
-    var qSubj = Store.question('q_subject');
-    var opts = [];
-    if (qSubj) Store.all().forEach(function (r) {
-      var v = r.answers[qSubj.id];
-      if (v && String(v).trim() && opts.indexOf(v) === -1) opts.push(v);
+    // categories come from the vocabulary, not from the raw answers, so
+    // "AW 3" and "AW 7" both sit under AW
+    var vocab = Store.categoryVocab();
+    var used = {};
+    Store.all().forEach(function (r) {
+      Store.categoriesOf(r).forEach(function (c) { used[c] = (used[c] || 0) + 1; });
     });
+    var opts = vocab.filter(function (c) { return used[c]; });
+    var anyCat = Object.keys(logCats).some(function (k) { return logCats[k]; });
 
     viewEl.innerHTML = '<div class="stack-4" id="logRoot">' +
       (logSelect
@@ -818,10 +873,11 @@
           '<input class="input" id="q" type="search" dir="auto" autocomplete="off" placeholder="' +
             esc(T.search) + '" value="' + esc(logQuery) + '"></div>') +
       (!logSelect && opts.length ? '<div class="opts" id="logChips">' +
-        '<button class="opt opt--sm" data-f="" aria-pressed="' + (!logFilter) + '">' + esc(T.all) + '</button>' +
-        opts.slice(0, 12).map(function (o) {
+        '<button class="opt opt--sm" data-f="" aria-pressed="' + (!anyCat) + '">' + esc(T.all) + '</button>' +
+        opts.map(function (o) {
           return '<button class="opt opt--sm" data-f="' + esc(o) + '" dir="auto" aria-pressed="' +
-            (logFilter === o) + '">' + esc(o) + '</button>';
+            (!!logCats[o]) + '">' + esc(o) +
+            '<span class="opt__n mono">' + used[o] + '</span></button>';
         }).join('') + '</div>' : '') +
       '<div id="logResults"></div></div>' +
       (logSelect
@@ -835,8 +891,12 @@
     viewEl.classList.toggle('view--noTabs', logSelect);
 
     function paint() {
+      var picked = Object.keys(logCats).filter(function (k) { return logCats[k]; });
       var rows = Store.search(logQuery).filter(function (r) {
-        return !logFilter || (qSubj && r.answers[qSubj.id] === logFilter);
+        if (!picked.length) return true;
+        var cats = Store.categoriesOf(r);
+        // matching ANY selected category, so picking AW and ניווט shows both
+        return picked.some(function (c) { return cats.indexOf(c) !== -1; });
       });
       $('#logResults').innerHTML = rows.length
         ? '<div class="panel"><div class="list">' + rows.map(function (r) {
@@ -854,9 +914,11 @@
     $('#logRoot').addEventListener('click', function (e) {
       var c = e.target.closest('#logChips .opt');
       if (c) {
-        logFilter = c.dataset.f;
+        if (!c.dataset.f) logCats = {};
+        else logCats[c.dataset.f] = !logCats[c.dataset.f];
+        var on = Object.keys(logCats).some(function (k) { return logCats[k]; });
         $$('#logChips .opt').forEach(function (b) {
-          b.setAttribute('aria-pressed', String(b.dataset.f === logFilter));
+          b.setAttribute('aria-pressed', String(b.dataset.f ? !!logCats[b.dataset.f] : !on));
         });
         paint(); return;
       }
@@ -1050,7 +1112,7 @@
 
     var h = '<div class="stack-4 stagger">' +
       '<div class="readouts">' +
-        ro('cyan', 'clock', T.totalMinutes, 'MINUTES', String(mins)) +
+        ro('cyan', 'clock', T.totalMinutes, 'HOURS', (mins / 60).toFixed(1)) +
         ro('', 'layers', T.rFlights, 'FLIGHTS', String(done.length)) +
         ro('green', 'target', T.goalRate, 'GOALS', rate + '<small>%</small>') +
         ro('amber', 'alert', T.repeatedGoals, 'REPEAT', String(missRows.length)) +

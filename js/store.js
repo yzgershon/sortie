@@ -18,7 +18,7 @@
 
   var DB_NAME = 'sortie', DB_VER = 1, STORE = 'sorties';
   var LS_MIRROR = 'sortie:mirror', LS_SETTINGS = 'sortie:settings', LS_DRAFT = 'sortie:draft';
-  var SCHEMA = 3;
+  var SCHEMA = 4;
 
   var db = null, dbHealthy = false, cache = [], settings = null;
 
@@ -34,7 +34,8 @@
       /* ---- תדריך ---- */
       { id: 'q_period',     label: 'פיריט',        type: 'choice', options: ['1', '2', '3', '4'],
         stage: 'brief', inDebrief: 'edit' },
-      { id: 'q_subject',    label: 'נושא טיסה',    type: 'text',
+      { id: 'q_subject',    label: 'נושא טיסה',    type: 'text', suggest: true,
+        options: ['AW', 'ניווט', 'הקפות', 'מבנה', 'גנ״מ', 'מ״מ', 'משולבת', 'לילה', 'סולו', 'א״א'],
         stage: 'brief', inDebrief: 'edit' },
       { id: 'q_instructor', label: 'מדריך',        type: 'text', suggest: true,
         stage: 'brief', inDebrief: 'edit' },
@@ -53,7 +54,7 @@
       { id: 'q_points',     label: 'נקודות עיקריות', type: 'textarea', stage: 'debrief' },
       { id: 'q_safety_d',   label: 'בטיחות',       type: 'textarea', stage: 'debrief' },
       { id: 'q_solo',       label: 'אישור לסולו',  type: 'choice', options: ['כן', 'לא'], stage: 'debrief' },
-      { id: 'q_goals_next', label: 'יעדים למחר',   type: 'goals', role: 'goalsNext', stage: 'debrief' }
+      { id: 'q_goals_next', label: 'יעדים לטיסה הבאה', type: 'goals', role: 'goalsNext', stage: 'debrief' }
     ].map(function (q, i) {
       q.order = i; q.archived = false; q.hint = q.hint || '';
       return q;
@@ -243,6 +244,36 @@
     return out;
   }
 
+  /* Categories are recognised as key phrases inside נושא טיסה, so "AW 3" and
+     "ניווט 5" both match their category and the flight number is ignored.
+     Hebrew gershayim get normalised because a phone keyboard may produce
+     either ״ or a straight quote. */
+  function normCat(s) {
+    return String(s == null ? '' : s).toLowerCase()
+      .replace(/[״׳"']/g, '"').replace(/\s+/g, ' ');
+  }
+
+  function categoryVocab() {
+    var q = Store.question('q_subject');
+    if (q && q.options && q.options.length) return q.options.slice();
+    var found = [];
+    settings.questions.forEach(function (x) {
+      if (x.type === 'text' && x.options && x.options.length) found = found.concat(x.options);
+    });
+    return found;
+  }
+
+  /** Which of the known categories appear in this flight's נושא טיסה. */
+  function categoriesOf(rec) {
+    var q = Store.question('q_subject');
+    if (!q) return [];
+    var hay = normCat(rec.answers[q.id]);
+    if (!hay) return [];
+    return categoryVocab().filter(function (c) {
+      return hay.indexOf(normCat(c)) !== -1;
+    });
+  }
+
   function roleQuestion(role) {
     return settings.questions.filter(function (q) { return q.role === role && !q.archived; })[0] || null;
   }
@@ -394,6 +425,8 @@
     },
     roleQuestion: roleQuestion,
     isProtected: isProtected,
+    categoryVocab: categoryVocab,
+    categoriesOf: categoriesOf,
 
     addQuestion: function (q) {
       var out = normalizeQuestion(q, settings.questions.length);

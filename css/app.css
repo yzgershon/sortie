@@ -434,6 +434,17 @@ a { color: var(--cyan); text-decoration: none; }
   unicode-bidi: plaintext;
 }
 .sugg button:active { color: var(--cyan); border-color: var(--cyan-line); }
+/* the fixed category vocabulary reads as tokens you add, not answers to reuse */
+.sugg--cat button { color: var(--cyan); border-color: var(--cyan-line); background: var(--cyan-dim); }
+
+/* count of flights in each category, on the log filter chips */
+.opt__n {
+  font-size: var(--t-9); opacity: .65; padding-inline-start: 5px;
+  margin-inline-start: 5px; border-inline-start: 1px solid currentColor;
+}
+
+/* a goal that arrived here because it was marked ✗ above */
+.goalrow.is-carried { border-color: var(--amber-line); background: var(--amber-dim); }
 
 /* ==========================================================================
    Minutes wheel
