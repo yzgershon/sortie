@@ -1,90 +1,103 @@
-# Sortie — handoff
+# תחקיר — handoff
 
-Last updated: 2026-08-06
+Last updated: 2026-08-07
 
 ## Live
 
 **https://yzgershon.github.io/sortie/** — GitHub Pages, `main` at repo root.
-Repo: `yzgershon/sortie`, **public**.
+Repo `yzgershon/sortie`, **public**.
 
-Push to `main` to redeploy. **Bump `VERSION` in `sw.js` in the same push** or
-phones keep the cached build. Pages sends `max-age=600`, so a bumped service
-worker reaches a phone within about ten minutes.
+**Deploying: push to `main`, and in the same commit bump BOTH**
 
-The repo is public because GitHub Pages will not serve a private repo on a free
-plan (`HTTP 422`). Yish accepted that and wants to revisit privacy later. The
-free private options are Cloudflare Pages (dashboard only, its CLI cannot
-install on Windows ARM64) or Firebase Hosting (CLI works fine, needs one
-`firebase login`).
+- `VERSION` in `sw.js`
+- `BUILD` in `js/app.js`
 
-## State
+The build number renders at the bottom of הגדרות. That is how you tell what a
+phone is actually running, which matters more than it sounds — see below.
 
-**v1 built, deployed, and verified live. Never run on a real iPhone.**
+## The model
 
-Every screen renders and was checked at a real 390x844 viewport in both themes:
-Home, New debrief, Log, Sortie detail, Patterns, Settings. The data layer has
-node tests covering CSV/JSON round trip with Hebrew, sortie numbering, search,
-and the IndexedDB/mirror merge. The live site was verified for asset resolution,
-HTTPS redirect, `dev/` returning 404, and the first-run empty state.
+One record per flight, filled in two stages.
 
-## What is NOT done
+- **תדריך** before the flight: פיריט · נושא טיסה · מדריך · איזור · יעדים ·
+  סילבוס · בטיחות
+- **תחקיר** after: everything above carries in, tagged מהתדריך, plus
+  דקות טיסה · נקודות עיקריות · בטיחות · אישור לסולו · יעדים לטיסה הבאה
 
-- **Never run on an actual iPhone.** Everything so far is headless Chrome on
-  Windows. Safari-specific things to check first: `<dialog>` sheets,
-  `navigator.share` for export, the date input, safe-area insets on a notched
-  phone, and whether `navigator.storage.persist()` is granted.
-- **Not shown to the brother.** Field names and the three-phase grouping are my
-  reading of the form; his squadron's debrief methodology may group them
-  differently. Grouping is cosmetic — the fields and their names are verbatim
-  from the form.
-- The **Tags** field is an addition, not on the original form. It is optional
-  and drives the "what keeps repeating" panel in Patterns.
+**בטיחות deliberately does not carry.** One answer is what was briefed, the
+other what happened. Two separate question ids.
 
-## Decisions already made
+**דגשים are per exercise**, not one field. Each syllabus row carries its own
+דגש written at the תדריך and shown back beside its notes at the תחקיר.
 
-- **PWA, not native.** No Mac, no Apple Developer account. Installed to the home
-  screen it is full screen with its own icon. A native app would mean $99/yr and
-  a Mac.
-- **On-device only.** No server, no account, no analytics, no network call after
-  install. Simpler to build and the right default for sortie debriefs. This is
-  why backup is an explicit export rather than cloud sync.
-- **Hebrew categories verbatim.** `הקפות · AW · מבנה · ניווט · BFM · שילוב`.
-  Free-text fields use `dir="auto"` so each answer renders in its own direction,
-  and rows with Hebrew text mirror their checkbox/number to the right.
-- **Export columns match the form's question names** so the CSV drops straight
-  into the existing sheet.
+**The goal loop:** goals get ✓ or ✗. A ✗ writes the goal straight into
+יעדים לטיסה הבאה further down the same form, and clearing the ✗ removes it
+again. Only rows added that way are removed, so a hand-typed goal is never
+pulled out underneath him. On save, next-flight goals plus anything missed
+become the live list on Home.
+
+**Questions are data he owns.** הגדרות edits label, type, stage, options and
+order. Only the two goal questions are locked (`PROTECTED` in `store.js`).
+Deleting archives rather than destroys, so old answers still render.
+
+## Files
+
+```
+js/strings.js        every piece of UI text, Hebrew
+js/syllabus.js       matching logic for the training chart
+js/syllabus-data.js  the chart itself: 101 גיחות, 407 חתך rows
+js/store.js          data layer, questions, goal loop, export
+js/app.js            router and screens
+css/app.css          the avionics display system
+assets/make-bg.ps1   regenerates the blurred cockpit backdrop
+dev/                 local review harness, NOT in the repo
+```
 
 ## Traps
 
-- **Bump `VERSION` in `sw.js` on every deploy.** The service worker is
-  cache-first for CSS/JS. Without a bump, phones keep the old build. This bit me
-  during review: edits appeared to do nothing in a reused browser profile.
+- **Bump `VERSION` and `BUILD` together.** Forgetting leaves the app reporting a
+  version it is not running.
+- **The service worker is network-first for the shell, on purpose.** It was
+  cache-first, which made every deploy appear one launch late: the first launch
+  served the cached build while the new one downloaded behind it. Features
+  looked like they had never shipped. Do not "optimise" it back.
 - **Never prefer one storage over the other on load.** `Store.init` merges
-  IndexedDB and the localStorage mirror by id. An earlier version took
-  IndexedDB whenever it had any rows, and a half-committed write silently ate
-  two sorties. There is a regression test for this.
-- **`normalize()` must not re-stamp `updatedAt`.** Load paths compare it to pick
-  a winner; only `save()` bumps it.
+  IndexedDB and the localStorage mirror by id. Taking IndexedDB whenever it had
+  rows once ate two records from a half-committed write.
+- **`normalize()` must not re-stamp `updatedAt`.** Load paths compare it.
+- Syllabus matching folds a **letter/digit boundary into a space**, because the
+  chart writes `AW3` and he types `AW 3`. It also folds gershayim against a
+  straight quote. `AW 30` must never collapse into `AW 3`; there is a test.
+- **ניווט and אוויר אוויר both had an SBT 1 and SBT 2.** Those four are prefixed
+  with their section. Every other name is verbatim from the chart.
 - Headless Chrome on Windows will not size a window below ~500px and leaks the
-  system DPI into `innerWidth`. Use `dev/preview.html` for phone-accurate
-  screenshots, not `--window-size`.
-- IndexedDB callbacks never fire under `--virtual-time-budget`, so headless runs
-  always land on the mirror path. That is a headless artifact, not a bug.
-- A headless screenshot of the app inside a **cross-origin** iframe comes out
-  with an empty body: the `.stagger` entrance animation uses
-  `animation-fill-mode: both`, so the content sits at opacity 0 until the
-  animation runs, and it does not run in time there. Screenshot the live URL
-  directly. Same reason the local harness must stay same-origin.
-- **The first GitHub Pages build on this repo timed out** (`Timeout reached,
-  aborting!` after 10 minutes, stuck in `deployment_in_progress`). Nothing was
-  wrong with the code. `gh api -X POST repos/yzgershon/sortie/pages/builds`
-  triggered a rebuild that succeeded in about three minutes.
+  system DPI into `innerWidth`. Use `dev/preview.html` for phone-accurate shots.
+- IndexedDB callbacks and service workers do not fire under
+  `--virtual-time-budget`. Those paths cannot be verified headlessly.
+- A headless screenshot of the app in a **cross-origin** iframe comes out empty,
+  because `.stagger` uses `animation-fill-mode: both`. Keep the harness
+  same-origin, or screenshot the live URL.
+- GitHub Pages builds on this repo have timed out twice. `gh api -X POST
+  repos/yzgershon/sortie/pages/builds` retriggers one.
+
+## Not done
+
+- **Never run on a real iPhone.** Everything so far is headless Chrome on
+  Windows. Check first: `<dialog>` sheets, `navigator.share` for the exports,
+  the date input, safe-area insets, whether `navigator.storage.persist()` is
+  granted, and whether the summary document opens in Google Docs.
+- **Access control.** The repo is public and so is the syllabus. Yish published
+  it knowingly on 2026-08-07 and wants it gated by specific email or a passcode
+  later. That needs a host with auth; the on-device model has no server.
+- **Two chart rows are missing** because they were cut off in the screenshots:
+  the גיחה above AW 3, and one משולבת row cut to `כחול במידת הצורך)`.
+- There is **no הקפות section** in the supplied chart.
+- **Not shown to the brother yet.** Wording and grouping still need his read.
 
 ## Next
 
-1. Install on the brother's iPhone: open the URL in **Safari** (not Chrome),
-   Share, Add to Home Screen. Run one real debrief end to end.
-2. Confirm the field grouping and Hebrew wording with him.
-3. UI changes are the next work item and Yish wants to drive them.
-4. Then pick from the "maybe later" list in
-   `C:\Dev\SecondBrain\projects\sortie\overview.md`.
+1. Install on his iPhone from **Safari**, Share, Add to Home Screen. Settle the
+   URL first: a PWA's stored flights are tied to its origin, so moving hosts
+   later costs him his data.
+2. Run one real brief and debrief end to end.
+3. Confirm the Hebrew wording and the two missing chart rows.
