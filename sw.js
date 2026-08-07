@@ -5,7 +5,7 @@
  * Nothing here ever uploads anything: there is no server to upload to.
  */
 /* Bump VERSION on every deploy: old caches are dropped on activate. */
-var VERSION = 'sortie-v8';
+var VERSION = 'sortie-v9';
 var SHELL = VERSION + '-shell';
 var ASSETS = VERSION + '-assets';
 
@@ -83,17 +83,25 @@ self.addEventListener('fetch', function (e) {
     return;
   }
 
-  // Everything else: cache-first, refresh in the background.
+  // The app's own JS and CSS: network-first, cache as the fallback.
+  //
+  // Cache-first was wrong here. It meant a fresh deploy only appeared on the
+  // SECOND launch, because the first served the cached build while the new one
+  // downloaded behind it, so updates looked like they had simply not shipped.
+  // Network-first means being online always gets the current build; the cache
+  // is still a complete copy, so with no signal the app opens exactly as
+  // before. These files total ~120KB, so the round trip costs little.
   e.respondWith(
-    caches.match(req).then(function (hit) {
-      var live = fetch(req).then(function (res) {
-        if (res && res.status === 200) {
-          var copy = res.clone();
-          caches.open(SHELL).then(function (c) { c.put(req, copy); });
-        }
-        return res;
-      }).catch(function () { return hit; });
-      return hit || live;
+    fetch(req).then(function (res) {
+      if (res && res.status === 200) {
+        var copy = res.clone();
+        caches.open(SHELL).then(function (c) { c.put(req, copy); });
+      }
+      return res;
+    }).catch(function () {
+      return caches.match(req).then(function (hit) {
+        return hit || Response.error();
+      });
     })
   );
 });
