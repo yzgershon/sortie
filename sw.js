@@ -5,7 +5,7 @@
  * Nothing here ever uploads anything: there is no server to upload to.
  */
 /* Bump VERSION on every deploy: old caches are dropped on activate. */
-var VERSION = 'sortie-v6';
+var VERSION = 'sortie-v7';
 var SHELL = VERSION + '-shell';
 var ASSETS = VERSION + '-assets';
 

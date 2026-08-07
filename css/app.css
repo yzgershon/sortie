@@ -618,6 +618,25 @@ a { color: var(--cyan); text-decoration: none; }
   background: var(--cyan); border-color: var(--cyan); color: var(--on-lit);
 }
 
+/* the one-tap route into the weekly summary */
+.weekbtn {
+  display: flex; align-items: center; gap: var(--s-3); width: 100%; text-align: start;
+  padding: var(--s-3) var(--s-4); min-height: 56px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--cyan) 12%, var(--face)), var(--face));
+  border: 1px solid var(--cyan-line); border-radius: var(--r-md);
+  transition: background var(--d-fast);
+}
+.weekbtn > svg { width: 18px; height: 18px; color: var(--cyan); flex: none; }
+.weekbtn:active { background: var(--cyan-dim); }
+.weekbtn[disabled] { opacity: .45; pointer-events: none; border-color: var(--rule-2); }
+.weekbtn[disabled] > svg { color: var(--fg-dim); }
+.weekbtn__b { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.weekbtn__t { font-size: var(--t-15); font-weight: 700; color: var(--cyan); }
+.weekbtn[disabled] .weekbtn__t { color: var(--fg-mid); }
+.weekbtn__s { font-size: var(--t-12); color: var(--fg-dim); }
+.weekbtn__c { width: 16px; height: 16px; color: var(--cyan); flex: none; }
+[dir="rtl"] .weekbtn__c { transform: scaleX(-1); }
+
 /* summary lists */
 .sumlist { display: grid; gap: 1px; background: var(--rule); border: 1px solid var(--rule); }
 .sumrow {

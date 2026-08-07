@@ -837,6 +837,15 @@
     return { start: start, stop: stop };
   }
 
+  function selectThisWeek() {
+    var w = thisWeekRange();
+    Store.all().forEach(function (r) {
+      var t = parseISO(r.flownAt).getTime();
+      if (t >= w.start.getTime() && t <= w.stop.getTime()) selected[r.id] = true;
+    });
+    writeSel();
+  }
+
   function screenLog() {
     renderTopbar({
       title: logSelect ? T.nSelected(selCount()) : T.navLog,
@@ -863,7 +872,21 @@
     var opts = vocab.filter(function (c) { return used[c]; });
     var anyCat = Object.keys(logCats).some(function (k) { return logCats[k]; });
 
+    var wk = thisWeekRange();
+    var weekN = Store.all().filter(function (r) {
+      var t = parseISO(r.flownAt).getTime();
+      return t >= wk.start.getTime() && t <= wk.stop.getTime();
+    }).length;
+
     viewEl.innerHTML = '<div class="stack-4" id="logRoot">' +
+      (!logSelect && Store.count()
+        ? '<button class="weekbtn" data-weeksum' + (weekN ? '' : ' disabled') + '>' +
+            icon('calendar') +
+            '<span class="weekbtn__b"><span class="weekbtn__t">' + esc(T.weekSummary) + '</span>' +
+            '<span class="weekbtn__s">' + esc(weekN ? T.nThisWeek(weekN) : T.noneThisWeek) + '</span></span>' +
+            icon('chevRight', { cls: 'weekbtn__c' }) +
+          '</button>'
+        : '') +
       (logSelect
         ? '<div class="opts">' +
             '<button class="opt opt--sm" data-selweek>' + icon('calendar') + esc(T.selectWeek) + '</button>' +
@@ -924,12 +947,7 @@
       }
 
       if (e.target.closest('[data-selweek]')) {
-        var w = thisWeekRange();
-        Store.all().forEach(function (r) {
-          var t = parseISO(r.flownAt).getTime();
-          if (t >= w.start.getTime() && t <= w.stop.getTime()) selected[r.id] = true;
-        });
-        writeSel(); haptic(12); screenLog(); return;
+        selectThisWeek(); haptic(12); screenLog(); return;
       }
       if (e.target.closest('[data-selclear]')) { selected = {}; writeSel(); screenLog(); return; }
 
@@ -951,6 +969,12 @@
 
     on(viewEl, '[data-summary]', 'click', function () {
       if (!selCount()) { toast(T.noneSelected, 'alert'); return; }
+      go('summary');
+    });
+
+    on(viewEl, '[data-weeksum]', 'click', function () {
+      selectThisWeek();
+      if (!selCount()) { toast(T.noneThisWeek, 'alert'); return; }
       go('summary');
     });
   }
@@ -1532,7 +1556,16 @@
     renderTopbar({ title: T.summary, sub: 'SUMMARY', back: true, backTo: 'log' });
 
     if (!recs.length) {
-      viewEl.innerHTML = empty('list3', T.noneSelected, T.noneSelectedHint);
+      viewEl.innerHTML = empty('list3', T.noneSelected, T.noneSelectedHint) +
+        '<div class="stack" style="margin-top:var(--s-4)">' +
+        '<button class="btn btn--lit btn--block" data-pickweek>' + icon('calendar') +
+          esc(T.selectWeek) + '</button>' +
+        '<a class="btn btn--block" href="#/log">' + esc(T.pickManually) + '</a></div>';
+      on(viewEl, '[data-pickweek]', 'click', function () {
+        selectThisWeek();
+        if (!selCount()) { toast(T.noneThisWeek, 'alert'); return; }
+        screenSummary();
+      });
       return;
     }
 

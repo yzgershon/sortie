@@ -69,7 +69,11 @@
     awaiting: 'ממתין לתחקיר',
 
     /* weekly summary */
-    selectMode: 'בחירה',
+    selectMode: 'בחירה ידנית',
+    weekSummary: 'סיכום השבוע',
+    nThisWeek: function (n) { return n === 1 ? 'טיסה אחת השבוע' : n + ' טיסות השבוע'; },
+    noneThisWeek: 'אין טיסות השבוע',
+    pickManually: 'בחירה ידנית של טיסות',
     selectWeek: 'בחר את השבוע',
     clearSel: 'ניקוי',
     nSelected: function (n) { return n + ' נבחרו'; },
