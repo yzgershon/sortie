@@ -17,13 +17,18 @@
      { name: 'AW 1', items: ['...', '...'] } */
   var FLIGHTS = [];
 
-  /** Fold away the things a phone keyboard varies: gershayim vs a straight
-   *  quote, hyphen styles, double spaces, case. */
+  /** Fold away the things that vary between the chart and a phone keyboard:
+   *  gershayim vs a straight quote, hyphen styles, double spaces, case, and
+   *  whether a number is joined to its word. The chart writes "AW3" while he
+   *  types "AW 3", so a letter/digit boundary always becomes a space and both
+   *  forms land on the same key. */
   function norm(s) {
     return String(s == null ? '' : s)
       .toLowerCase()
       .replace(/[״׳"']/g, '"')
       .replace(/[־‐-―_-]/g, ' ')
+      .replace(/([a-z֐-׿])(\d)/g, '$1 $2')
+      .replace(/(\d)([a-z֐-׿])/g, '$1 $2')
       .replace(/\s+/g, ' ')
       .trim();
   }
@@ -70,6 +75,7 @@
       FLIGHTS = (list || []).map(function (f) {
         return {
           name: String(f.name || '').trim(),
+          section: String(f.section || '').trim(),
           items: (f.items || []).map(function (i) { return String(i).trim(); }).filter(Boolean)
         };
       }).filter(function (f) { return f.name; });

@@ -15,6 +15,7 @@ var SHELL_FILES = [
   './css/app.css',
   './js/strings.js',
   './js/syllabus.js',
+  './js/syllabus-data.js',
   './js/icons.js',
   './js/store.js',
   './js/app.js',

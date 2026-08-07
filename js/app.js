@@ -572,8 +572,9 @@
       var btn = $('[data-exload="' + qSyl.id + '"]');
       if (!btn) return;
       var entry = SyllabusRef.lookup(currentSubject());
-      btn.hidden = !entry;
-      if (!entry) return;
+      // an entry with no חתך rows has nothing to offer
+      btn.hidden = !entry || !entry.items.length;
+      if (!entry || !entry.items.length) return;
       $('[data-exloadname]', btn).textContent = entry.name;
 
       var listEl = $('[data-ex="' + qSyl.id + '"]');
@@ -1768,7 +1769,9 @@
         ? rows.map(function (e) {
             return '<section class="panel" style="margin-bottom:var(--s-3)">' +
               '<div class="panel__head">' + icon('flag') +
-                '<span class="panel__t" dir="auto">' + esc(e.name) + '</span>' +
+                '<span class="panel__t" dir="auto">' + esc(e.name) +
+                  (e.section ? ' <span class="dim" style="font-weight:500;font-size:var(--t-11)">' +
+                    esc(e.section) + '</span>' : '') + '</span>' +
                 '<span class="panel__a mono">' + e.items.length + '</span></div>' +
               '<div class="panel__body"><div class="exlist">' +
                 e.items.map(function (t, i) {

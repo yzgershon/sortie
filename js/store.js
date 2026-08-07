@@ -35,7 +35,7 @@
       { id: 'q_period',     label: 'פיריט',        type: 'choice', options: ['1', '2', '3', '4'],
         stage: 'brief', inDebrief: 'edit' },
       { id: 'q_subject',    label: 'נושא טיסה',    type: 'text', suggest: true, role: 'subject',
-        options: ['AW', 'ניווט', 'הקפות', 'מבנה', 'גנ״מ', 'מ״מ', 'משולבת', 'לילה', 'סולו', 'א״א'],
+        options: ['AW', 'ניווט', 'הקפות', 'מבנה', 'גנ״מ', 'מ״מ', 'משולבת', 'לילה', 'סולו', 'א״א', 'מאמן'],
         stage: 'brief', inDebrief: 'edit' },
       { id: 'q_instructor', label: 'מדריך',        type: 'text', suggest: true,
         stage: 'brief', inDebrief: 'edit' },
@@ -181,6 +181,17 @@
     }
     base.questions = base.questions.map(normalizeQuestion);
     ensureRoles(base.questions);
+
+    // Categories added in later versions get merged into the existing question
+    // rather than forcing a rebuild, so his own edits survive the update.
+    (function () {
+      var live = base.questions.filter(function (q) { return q.role === 'subject'; })[0];
+      var def = defaultQuestions().filter(function (q) { return q.role === 'subject'; })[0];
+      if (!live || !def) return;
+      def.options.forEach(function (o) {
+        if (live.options.indexOf(o) === -1) live.options.push(o);
+      });
+    })();
     base.nextGoals = (Array.isArray(base.nextGoals) ? base.nextGoals : []).map(normalizeGoal);
     base.schema = SCHEMA;
     return base;
