@@ -6,7 +6,7 @@
 (function (global) {
   'use strict';
 
-  var BUILD = 'v11';   // keep in step with VERSION in sw.js
+  var BUILD = 'v12';   // keep in step with VERSION in sw.js
 
   var appEl, viewEl, topbarEl, tabbarEl, toasterEl, sheetEl, lockEl;
   var route = { name: 'home', param: null };
@@ -40,6 +40,16 @@
   function fmtLong(iso) {
     return iso ? parseISO(iso).toLocaleDateString('he-IL',
       { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : '';
+  }
+  /* Plain dates for anything that gets read later or printed. "לפני 3 ימים" is
+     fine on the home screen and useless in a document three weeks on. */
+  function fmtNum(iso) {
+    if (!iso) return '';
+    var d = parseISO(iso);
+    return String(d.getDate()).padStart(2, '0') + '.' + String(d.getMonth() + 1).padStart(2, '0');
+  }
+  function fmtFull(iso) {
+    return iso ? fmtNum(iso) + '.' + parseISO(iso).getFullYear() : '';
   }
   function dayMon(iso) {
     var d = parseISO(iso);
@@ -216,9 +226,27 @@
         tot++; if (g.status === 'met') met++;
       });
     });
-    var week = all.filter(function (r) {
-      return parseISO(r.flownAt).getTime() > Date.now() - 7 * 86400000;
-    }).length;
+    /* Solo approvals this week: the share of the week's debriefed flights he
+       was cleared to fly solo on. Read by role so renaming the question in
+       הגדרות does not silently blank the readout. */
+    var wk = thisWeekRange();
+    function inThisWeek(r) {
+      var t = parseISO(r.flownAt).getTime();
+      return t >= wk.start.getTime() && t <= wk.stop.getTime();
+    }
+    var qSolo = Store.roleQuestion('solo');
+    var soloYes = 0, soloTot = 0;
+    if (qSolo) {
+      var soloYesVal = (qSolo.options && qSolo.options[0]) || 'כן';
+      done.forEach(function (r) {
+        if (!inThisWeek(r)) return;
+        var v = String(r.answers[qSolo.id] == null ? '' : r.answers[qSolo.id]).trim();
+        if (!v) return;
+        soloTot++;
+        if (v === soloYesVal) soloYes++;
+      });
+    }
+    var week = all.filter(inThisWeek).length;
 
     var h = '<div class="stack-6 stagger">';
 
@@ -235,7 +263,11 @@
       readout('', 'layers', T.rFlights, T.capFlights, String(done.length), '') +
       readout('green', 'target', T.rGoals, T.capGoals,
         (tot ? Math.round(met / tot * 100) : 0) + '<small>%</small>', tot ? met + '/' + tot : '') +
-      readout('amber', 'trending', T.rWeek, T.capWeek, String(week), '') +
+      (qSolo
+        ? readout('amber', 'checkCircle', T.rSolo, T.capSolo,
+            soloTot ? Math.round(soloYes / soloTot * 100) + '<small>%</small>' : '<small>—</small>',
+            soloTot ? soloYes + '/' + soloTot + ' THIS WEEK' : '')
+        : readout('amber', 'trending', T.rWeek, T.capWeek, String(week), '')) +
     '</div>';
 
     /* open brief, or the CTA to start one */
@@ -265,9 +297,12 @@
         '<span class="panel__t">' + esc(T.goalsCarried) + '</span>' +
         (goals.length ? '<span class="panel__a">' + goals.length + '</span>' : '') + '</div>' +
       '<div class="panel__body">' +
+        (goals.length ? '<p class="field__hint" style="margin-bottom:var(--s-2)">' +
+          esc(T.goalsCarriedHint) + '</p>' : '') +
         (goals.length
           ? '<div class="goals">' + goals.map(function (g) {
-              return '<div class="goalrow"><span class="goalrow__t" dir="auto">' + esc(g.text) + '</span>' +
+              return '<div class="goalrow">' + catChip(g) +
+                '<span class="goalrow__t" dir="auto">' + esc(g.text) + '</span>' +
                 '<button class="rowx" data-goaldel="' + esc(g.id) + '" aria-label="' + esc(T.remove) + '">' +
                 icon('x') + '</button></div>';
             }).join('') + '</div>'
@@ -284,7 +319,12 @@
         '<span class="panel__t">' + esc(T.recent) + '</span>' +
         (all.length ? '<a class="panel__a" href="#/log">' + esc(T.viewAll) + ' ' + all.length + '</a>' : '') + '</div>' +
       '<div class="panel__body' + (all.length ? ' panel__body--flush' : '') + '">' +
-        (all.length ? '<div class="list">' + all.slice(0, 4).map(flightRow).join('') + '</div>'
+        // not .map(flightRow): map passes the index as the second argument, which
+        // is flightRow's `selectable` flag, so every row after the first drew a
+        // selection checkbox instead of its chevron
+        (all.length ? '<div class="list">' + all.slice(0, 4).map(function (r) {
+                        return flightRow(r);
+                      }).join('') + '</div>'
                     : empty('layers', T.noFlights, T.noFlightsHint)) +
       '</div></section>';
 
@@ -329,6 +369,13 @@
     return parseISO(iso).toLocaleDateString('he-IL', { weekday: 'long' });
   }
 
+  /** The category a waiting goal belongs to, so it is obvious why a goal is
+   *  sitting there and which flight will bring it back. */
+  function catChip(g) {
+    if (!g.cats || !g.cats.length) return '';
+    return '<span class="goalrow__cat" dir="auto">' + esc(g.cats.join(' · ')) + '</span>';
+  }
+
   function flightRow(r, selectable) {
     var dm = dayMon(r.flownAt);
     var qs = Store.question('q_subject');
@@ -371,8 +418,12 @@
 
     var qs = Store.stageQuestions(stage);
     var qNext = Store.roleQuestion('goalsNext');   // target of the ✗ carry
+    var qGoals = Store.roleQuestion('goals');      // where carried goals land
     var qSubj = Store.roleQuestion('subject');
     var qSyl = qs.filter(function (q) { return q.type === 'syllabus'; })[0];
+    /* Goals he pulled back out after they were carried in. Without this the
+       next keystroke in נושא טיסה puts them straight back. */
+    var dismissed = {};
 
     renderTopbar({
       title: isBrief ? T.briefTitle : T.debriefTitle,
@@ -417,8 +468,11 @@
         return '<div class="field">' + label(q, true) +
           '<div class="ro" dir="auto">' + esc(String(v || '').trim() || T.notAnswered) + '</div></div>';
       }
-      if (q.type === 'goals') return goalsField(q, v || [], !isBrief);
+      // יעדים לטיסה הבאה are goals being SET, not graded, so they get no ✓/✗ —
+      // they are typed straight into the row and removed with the ✗ at the end
+      if (q.type === 'goals') return goalsField(q, v || [], !isBrief && q.role !== 'goalsNext');
       if (q.type === 'syllabus') return exField(q, v || [], !isBrief);
+      if (q.type === 'list') return listField(q, v || [], carried);
       if (q.type === 'minutes') return minutesField(q, v);
 
       var body;
@@ -459,8 +513,9 @@
     }
 
     function goalsField(q, list, withStatus) {
+      var hint = withStatus ? T.goalsCarriedHint : (q.role === 'goalsNext' ? T.goalsNextHint : '');
       return '<div class="field">' + label(q, q.stage === 'brief' && !isBrief) +
-        (withStatus ? '<span class="field__hint">' + esc(T.goalsCarriedHint) + '</span>' : '') +
+        (hint ? '<span class="field__hint">' + esc(hint) + '</span>' : '') +
         '<div class="goals" data-goals="' + esc(q.id) + '" data-status="' + (withStatus ? '1' : '') + '">' +
           list.map(function (g) { return goalRow(g, withStatus); }).join('') + '</div>' +
         '<div class="addrow">' +
@@ -470,23 +525,31 @@
         '</div></div>';
     }
 
+    /* With ✓/✗ the goal is being graded, so the text is fixed and the buttons
+       are the control. Without them he is writing the goal, so the text is an
+       input he can fix a typo in and the ✗ deletes the row. */
     function goalRow(g, withStatus) {
       var cls = 'goalrow' + (g.status === 'met' ? ' is-met' : g.status === 'missed' ? ' is-missed' : '');
-      return '<div class="' + cls + '" data-goalid="' + esc(g.id) + '" data-gs="' + esc(g.status || 'open') + '">' +
-        '<span class="goalrow__t" dir="auto"><span>' + esc(g.text) + '</span></span>' +
+      // the categories ride along so the chip survives a draft reload, which is
+      // the whole explanation of why the goal is sitting there
+      return '<div class="' + cls + '" data-goalid="' + esc(g.id) + '" data-gs="' + esc(g.status || 'open') +
+        '" data-cats="' + esc((g.cats || []).join('|')) + '">' +
+        catChip(g) +
         (withStatus
-          ? '<span class="vx">' +
+          ? '<span class="goalrow__t" data-goaltext dir="auto"><span>' + esc(g.text) + '</span></span>' +
+            '<span class="vx">' +
               '<button type="button" data-v="met" aria-label="' + esc(T.goalMet) + '" aria-pressed="' +
                 (g.status === 'met') + '">' + icon('check') + '</button>' +
               '<button type="button" data-v="missed" aria-label="' + esc(T.goalMissed) + '" aria-pressed="' +
                 (g.status === 'missed') + '">' + icon('x') + '</button></span>'
-          : '<button type="button" class="rowx" data-rowx aria-label="' + esc(T.remove) + '">' + icon('x') + '</button>') +
+          : '<input class="goalrow__in" data-goaltext type="text" dir="auto" value="' + esc(g.text) + '">' +
+            '<button type="button" class="rowx" data-rowx aria-label="' + esc(T.remove) + '">' + icon('x') + '</button>') +
       '</div>';
     }
 
     function exField(q, list, withNotes) {
       return '<div class="field">' + label(q, q.stage === 'brief' && !isBrief) +
-        (withNotes ? '<span class="field__hint">' + esc(T.exerciseNotes) + '</span>' : '') +
+        '<span class="field__hint">' + esc(withNotes ? T.exerciseNotes : T.dragHint) + '</span>' +
         '<div class="exlist" data-ex="' + esc(q.id) + '" data-notes="' + (withNotes ? '1' : '') + '">' +
           list.map(function (x, i) { return exRow(x, i, withNotes); }).join('') + '</div>' +
         '<div class="addrow">' +
@@ -512,6 +575,8 @@
         '<div class="ex__top">' +
           '<span class="ex__n">' + (i + 1) + '</span>' +
           '<input class="ex__t" type="text" dir="auto" value="' + esc(x.text) + '" data-extext>' +
+          '<span class="ex__grip" data-grip role="button" aria-label="' + esc(T.reorder) + '">' +
+            icon('grip') + '</span>' +
           '<button type="button" class="rowx" data-rowx aria-label="' + esc(T.remove) + '">' + icon('x') + '</button>' +
         '</div>' +
         (withNotes
@@ -522,6 +587,29 @@
               esc(T.exerciseNotes) + '">' + esc(x.notes || '') + '</textarea>'
           : '<input class="ex__focusin" type="text" dir="auto" data-exfocus placeholder="' +
               esc(T.exerciseFocus) + '" value="' + esc(focus) + '">') +
+      '</div>';
+    }
+
+    /* An itemized answer: one line per point instead of a single block of text,
+       so נקודות עיקריות reads as bullets an instructor can go down one by one. */
+    function listField(q, list, carried) {
+      return '<div class="field">' + label(q, carried) +
+        (q.hint ? '<span class="field__hint">' + esc(q.hint) + '</span>' : '') +
+        '<div class="bullets" data-items="' + esc(q.id) + '">' +
+          list.map(itemRow).join('') + '</div>' +
+        '<div class="addrow">' +
+          '<input class="input" data-iteminput="' + esc(q.id) + '" type="text" dir="auto" ' +
+            'enterkeyhint="done" placeholder="' + esc(T.addPoint) + '">' +
+          '<button type="button" class="btn" data-itempush="' + esc(q.id) + '" aria-label="' +
+            esc(T.add) + '">' + icon('plus') + '</button>' +
+        '</div></div>';
+    }
+
+    function itemRow(x) {
+      return '<div class="bullet" data-itemid="' + esc(x.id) + '">' +
+        '<span class="bullet__d"></span>' +
+        '<input class="bullet__t" type="text" dir="auto" data-itemtext value="' + esc(x.text) + '">' +
+        '<button type="button" class="rowx" data-rowx aria-label="' + esc(T.remove) + '">' + icon('x') + '</button>' +
       '</div>';
     }
 
@@ -587,17 +675,76 @@
       }
     }
 
-    if (qSubj && qSyl) {
+    /* ---------- goals carried in by category ----------
+       What he missed on the last AW flight comes back on the next AW flight and
+       nowhere else. The category is not known until he types נושא טיסה, so these
+       arrive as he types rather than when the form opens. */
+    function refreshGoalCarry(announce) {
+      if (!isBrief || !qGoals || !qSubj) return 0;
+      var listEl = $('[data-goals="' + qGoals.id + '"]');
+      if (!listEl) return 0;
+
+      var cats = Store.categoriesInText(currentSubject());
+      var want = Store.pendingGoalsFor(cats).filter(function (g) {
+        return g.cats.length && !dismissed[g.id];
+      });
+
+      // A goal tagged with a category the flight no longer is goes back out.
+      // Keyed on the tag rather than on "did this session add it", so retyping
+      // AW as מבנה clears the AW goals even across a draft reload. Goals he
+      // typed himself carry no tag and are never touched.
+      $$('.goalrow', listEl).forEach(function (r) {
+        var rc = (r.dataset.cats || '').split('|').filter(Boolean);
+        if (!rc.length) return;
+        var fits = rc.some(function (c) { return cats.indexOf(c) !== -1; });
+        if (!fits) r.remove();
+      });
+
+      // matched on text as well as id, so a goal he had already typed himself
+      // is left alone rather than doubled
+      var have = {};
+      $$('.goalrow', listEl).forEach(function (r) { have[goalTextOf(r).trim()] = 1; });
+
+      var added = 0;
+      want.forEach(function (g) {
+        var t = g.text.trim();
+        if (!t || have[t]) return;
+        have[t] = 1;
+        listEl.insertAdjacentHTML('beforeend', goalRow(g, false));
+        listEl.lastElementChild.classList.add('is-carried');
+        added++;
+      });
+
+      if (added) {
+        haptic(10); touched();
+        if (announce) toast(T.goalsPulled(added), 'target');
+      }
+      return added;
+    }
+
+    function onSubjectChanged(announce) {
+      refreshSyllabusMatch(announce);
+      refreshGoalCarry(announce);
+    }
+
+    if (qSubj) {
       var subjEl = $('[data-q="' + qSubj.id + '"]');
       if (subjEl) {
         subjEl.addEventListener('input', function () {
           clearTimeout(syllabusTimer);
-          syllabusTimer = setTimeout(function () { refreshSyllabusMatch(true); }, 600);
+          syllabusTimer = setTimeout(function () { onSubjectChanged(true); }, 600);
         });
-        subjEl.addEventListener('change', function () { refreshSyllabusMatch(true); });
+        subjEl.addEventListener('change', function () { onSubjectChanged(true); });
       }
-      refreshSyllabusMatch(false);
+      onSubjectChanged(false);
     }
+
+    /* ---------- drag to reorder ---------- */
+    $$('[data-ex]', root).forEach(function (listEl) {
+      makeSortable(listEl, '.ex',
+        function () { renumberEx(listEl); touched(); },
+        function () { renumberEx(listEl); });
+    });
 
     /* ---------- wheels ---------- */
     var ITEM_H = 42;
@@ -631,8 +778,13 @@
         if (q.stage === 'brief' && !isBrief && q.inDebrief === 'readonly') return;
         if (q.type === 'goals') {
           out.answers[q.id] = $$('[data-goals="' + q.id + '"] .goalrow').map(function (row) {
-            return { id: row.dataset.goalid, text: $('.goalrow__t span', row).textContent,
-                     status: row.dataset.gs || 'open' };
+            return { id: row.dataset.goalid, text: goalTextOf(row),
+                     status: row.dataset.gs || 'open',
+                     cats: (row.dataset.cats || '').split('|').filter(Boolean) };
+          });
+        } else if (q.type === 'list') {
+          out.answers[q.id] = $$('[data-items="' + q.id + '"] .bullet').map(function (row) {
+            return { id: row.dataset.itemid, text: $('[data-itemtext]', row).value };
           });
         } else if (q.type === 'syllabus') {
           out.answers[q.id] = $$('[data-ex="' + q.id + '"] .ex').map(function (row) {
@@ -668,7 +820,7 @@
         if (q.stage === 'brief' && !isBrief && q.inDebrief === 'readonly') return;
         total++;
         var v = d.answers[q.id];
-        if (q.type === 'goals' || q.type === 'syllabus') {
+        if (q.type === 'goals' || q.type === 'syllabus' || q.type === 'list') {
           if ((v || []).some(function (x) { return String(x.text || '').trim(); })) filled++;
         } else if (q.type === 'minutes') { if (+v > 0) filled++; }
         else if (String(v == null ? '' : v).trim()) filled++;
@@ -719,7 +871,7 @@
           var val = app.dataset.val, cur = inp.value.trim();
           if (cur.indexOf(val) === -1) inp.value = cur ? cur + ' ' + val : val;
           inp.focus(); haptic(); touched();
-          refreshSyllabusMatch(true);
+          onSubjectChanged(true);
         }
         return;
       }
@@ -740,8 +892,13 @@
 
       var rx = e.target.closest('[data-rowx]');
       if (rx) {
-        var host = rx.closest('.ex') || rx.closest('.goalrow');
+        var host = rx.closest('.ex, .goalrow, .bullet');
+        if (!host) return;
         var listEl = host.parentElement;
+        // taking a carried goal back out has to stick, or the next keystroke in
+        // נושא טיסה puts it straight back. The row id IS the waiting goal's id,
+        // so this survives a draft reload too.
+        if (host.dataset.goalid) dismissed[host.dataset.goalid] = 1;
         host.remove();
         if (listEl.hasAttribute('data-ex')) renumberEx(listEl);
         touched(); return;
@@ -749,6 +906,8 @@
 
       var gp = e.target.closest('[data-goalpush]');
       if (gp) { pushGoal(gp.dataset.goalpush); return; }
+      var ip = e.target.closest('[data-itempush]');
+      if (ip) { pushItem(ip.dataset.itempush); return; }
       var xp = e.target.closest('[data-expush]');
       if (xp) { pushEx(xp.dataset.expush); return; }
       var xb = e.target.closest('[data-exbulk]');
@@ -775,14 +934,14 @@
       if (!qNext) return;
       var listEl = $('[data-goals="' + qNext.id + '"]');
       if (!listEl) return;
-      var text = $('.goalrow__t span', row).textContent.trim();
+      var text = goalTextOf(row).trim();
       var gid = row.dataset.goalid;
       var mine = $$('.goalrow', listEl).filter(function (r) { return r.dataset.from === gid; })[0];
 
       if (status === 'missed') {
         if (mine || !text) return;
         var dupe = $$('.goalrow', listEl).some(function (r) {
-          return $('.goalrow__t span', r).textContent.trim() === text;
+          return goalTextOf(r).trim() === text;
         });
         if (dupe) return;
         listEl.insertAdjacentHTML('beforeend', goalRow(Store.normalizeGoal({ text: text }), false));
@@ -806,11 +965,26 @@
         goalRow(Store.normalizeGoal({ text: v }), ws));
       input.value = ''; input.focus(); haptic(); touched();
     }
+    /** One bullet per line, so a block of notes can be pasted in and split. */
+    function pushItemLines(qid, text) {
+      var lines = splitLines(text);
+      if (!lines.length) return 0;
+      var listEl = $('[data-items="' + qid + '"]');
+      lines.forEach(function (line) {
+        listEl.insertAdjacentHTML('beforeend', itemRow(Store.normalizeItem({ text: line })));
+      });
+      haptic(12); touched();
+      return lines.length;
+    }
+    function pushItem(qid) {
+      var input = $('[data-iteminput="' + qid + '"]');
+      if (!pushItemLines(qid, input.value)) return;
+      input.value = ''; input.focus();
+    }
+
     /** Append one row per line, so a whole syllabus can be pasted at once. */
     function pushExLines(qid, text) {
-      var lines = String(text || '').split('\n')
-        .map(function (l) { return l.replace(/^\s*[-•*\d.)\]]+\s*/, '').trim(); })
-        .filter(Boolean);
+      var lines = splitLines(text);
       if (!lines.length) return 0;
       var listEl = $('[data-ex="' + qid + '"]');
       var wn = listEl.dataset.notes === '1';
@@ -852,6 +1026,20 @@
         if (e.key === 'Enter') { e.preventDefault(); pushGoal(el.dataset.goalinput); }
       });
     });
+    $$('[data-iteminput]', root).forEach(function (el) {
+      el.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); pushItem(el.dataset.iteminput); }
+      });
+      // pasting a block of notes lands as one bullet per line
+      el.addEventListener('paste', function (e) {
+        var text = (e.clipboardData || global.clipboardData).getData('text');
+        if (!text || text.indexOf('\n') === -1) return;
+        e.preventDefault();
+        var n = pushItemLines(el.dataset.iteminput, text);
+        el.value = '';
+        if (n) toast(T.pointsAdded(n));
+      });
+    });
     $$('[data-exinput]', root).forEach(function (el) {
       el.addEventListener('keydown', function (e) {
         if (e.key === 'Enter') { e.preventDefault(); pushEx(el.dataset.exinput); }
@@ -871,7 +1059,7 @@
       var d = collect();
       var any = qs.some(function (q) {
         var v = d.answers[q.id];
-        if (q.type === 'goals' || q.type === 'syllabus') {
+        if (q.type === 'goals' || q.type === 'syllabus' || q.type === 'list') {
           return (v || []).some(function (x) { return String(x.text || '').trim(); });
         }
         if (q.type === 'minutes') return +v > 0;
@@ -891,6 +1079,129 @@
 
   function autosize(t) { t.style.height = 'auto'; t.style.height = Math.max(t.scrollHeight, 44) + 'px'; }
   function autosizeAll() { $$('.ta, .ex__notes', viewEl).forEach(autosize); }
+
+  /** Pasted lists already carry their own bullets or numbers; strip them so the
+   *  rows are not numbered twice. */
+  function splitLines(text) {
+    return String(text || '').split('\n')
+      .map(function (l) { return l.replace(/^\s*[-•*\d.)\]]+\s*/, '').trim(); })
+      .filter(Boolean);
+  }
+
+  /** A goal row's text, whether it is being graded (fixed) or written (input). */
+  function goalTextOf(row) {
+    var el = $('[data-goaltext]', row);
+    if (!el) return '';
+    return el.tagName === 'INPUT' ? el.value : el.textContent;
+  }
+
+  /* ============================================================ drag order */
+
+  /** Drag a row by its grip to reorder the list.
+   *
+   *  Pointer events, not HTML5 drag-and-drop: iOS Safari does not fire a single
+   *  dragstart on touch, so the built-in API is not an option on the one device
+   *  this app runs on. The grip carries `touch-action:none` so the page does not
+   *  scroll out from under the drag.
+   */
+  function makeSortable(listEl, rowSel, onDrop, onOrder) {
+    var row = null, grip = null, startY = 0, lastY = 0, dy = 0, raf = null, lastScroll = 0;
+
+    listEl.addEventListener('pointerdown', function (e) {
+      var g = e.target.closest('[data-grip]');
+      if (!g || !listEl.contains(g)) return;
+      var host = g.closest(rowSel);
+      if (!host || host.parentElement !== listEl) return;
+
+      e.preventDefault();
+      row = host; grip = g;
+      startY = lastY = e.clientY; dy = 0;
+      lastScroll = global.scrollY;
+      row.classList.add('is-drag');
+      document.body.classList.add('is-sorting');
+      try { grip.setPointerCapture(e.pointerId); } catch (err) {}
+      grip.addEventListener('pointermove', move);
+      grip.addEventListener('pointerup', drop);
+      grip.addEventListener('pointercancel', drop);
+      haptic(12);
+      raf = requestAnimationFrame(tick);
+    });
+
+    function move(e) { lastY = e.clientY; dy = lastY - startY; apply(); reorder(); }
+
+    function drop() {
+      if (!row) return;
+      grip.removeEventListener('pointermove', move);
+      grip.removeEventListener('pointerup', drop);
+      grip.removeEventListener('pointercancel', drop);
+      if (raf) { cancelAnimationFrame(raf); raf = null; }
+      row.style.transform = '';
+      row.classList.remove('is-drag');
+      document.body.classList.remove('is-sorting');
+      row = null; grip = null;
+      haptic(8);
+      if (onDrop) onDrop();
+    }
+
+    function apply() { if (row) row.style.transform = 'translateY(' + dy + 'px)'; }
+
+    /* Dragging past the top or bottom of the screen scrolls the page. The page
+       moving under a finger that has not moved changes the offset the row needs,
+       so startY absorbs the scroll delta and the row stays put under the touch.
+       Measured against the actual scroll position rather than the amount asked
+       for, so a scroll from anywhere else is corrected the same way. */
+    function tick() {
+      if (!row) return;
+      var EDGE = 90, SPEED = 13, vh = global.innerHeight, v = 0;
+      if (lastY < EDGE) v = -SPEED * (1 - lastY / EDGE);
+      else if (lastY > vh - EDGE) v = SPEED * (1 - (vh - lastY) / EDGE);
+      // clamped: a pointer reported outside the viewport would otherwise scale
+      // this without limit and fling the page
+      v = Math.max(-SPEED, Math.min(SPEED, v));
+      if (v) global.scrollBy(0, v);
+      if (global.scrollY !== lastScroll) {
+        startY -= (global.scrollY - lastScroll);
+        lastScroll = global.scrollY;
+        dy = lastY - startY; apply(); reorder();
+      }
+      raf = requestAnimationFrame(tick);
+    }
+
+    /** Move the row past every neighbour its centre has cleared. The loop runs
+     *  until nothing changes, so a fast flick lands where the finger is rather
+     *  than one place per event. */
+    function reorder() {
+      var moved = true, guard = 0;
+      while (row && moved && guard++ < 40) {
+        moved = false;
+        var box = row.getBoundingClientRect();
+        var mid = box.top + box.height / 2;
+        var kids = Array.prototype.slice.call(listEl.children);
+        for (var i = 0; i < kids.length; i++) {
+          var sib = kids[i];
+          if (sib === row) continue;
+          var b = sib.getBoundingClientRect();
+          var sibMid = b.top + b.height / 2;
+          var below = (row.compareDocumentPosition(sib) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+          if (below && mid > sibMid) { place(sib.nextSibling); moved = true; break; }
+          if (!below && mid < sibMid) { place(sib); moved = true; break; }
+        }
+      }
+    }
+
+    /* Reinserting the row shifts its layout position; the transform is adjusted
+       by the same amount so it does not visibly jump under the finger. */
+    function place(before) {
+      var t0 = row.getBoundingClientRect().top;
+      listEl.insertBefore(row, before);
+      var t1 = row.getBoundingClientRect().top;
+      startY += (t1 - t0);
+      dy = lastY - startY;
+      apply();
+      // renumber as it moves, or the list reads 1 3 4 with a 2 floating over it
+      if (onOrder) onOrder();
+    }
+  }
 
   /* ================================================================== log */
 
@@ -1117,7 +1428,7 @@
     });
 
     function hasAns(q, v) {
-      if (q.type === 'goals' || q.type === 'syllabus') {
+      if (q.type === 'goals' || q.type === 'syllabus' || q.type === 'list') {
         return (v || []).some(function (x) { return String(x.text || '').trim(); });
       }
       if (q.type === 'minutes') return +v > 0;
@@ -1132,12 +1443,15 @@
         var list = (v || []).filter(function (g) { return g.text.trim(); });
         return '<div class="answer">' + head + (list.length
           ? '<div class="goals">' + list.map(function (g) {
+              // no badge on an ungraded goal: יעדים לטיסה הבאה are set, never
+              // marked, so a grade widget there says nothing
               return '<div class="goalrow' + (g.status === 'met' ? ' is-met' : g.status === 'missed' ? ' is-missed' : '') +
                 '"><span class="goalrow__t" dir="auto"><span>' + esc(g.text) + '</span></span>' +
-                '<span class="vx"><button type="button" disabled data-v="' + esc(g.status) +
-                  '" aria-pressed="true" tabindex="-1">' +
-                  icon(g.status === 'met' ? 'check' : g.status === 'missed' ? 'x' : 'chevDown') +
-                '</button></span></div>';
+                (g.status === 'open' ? '' :
+                  '<span class="vx"><button type="button" disabled data-v="' + esc(g.status) +
+                    '" aria-pressed="true" tabindex="-1">' +
+                    icon(g.status === 'met' ? 'check' : 'x') +
+                  '</button></span>') + '</div>';
             }).join('') + '</div>'
           : '<div class="answer__a is-empty">' + esc(T.notAnswered) + '</div>') + '</div>';
       }
@@ -1153,6 +1467,16 @@
                   '<span>' + esc(x.focus) + '</span></div>' : '') +
                 (x.notes.trim() ? '<div class="ex__notes" dir="auto">' + esc(x.notes) + '</div>' : '') +
               '</div>';
+            }).join('') + '</div>'
+          : '<div class="answer__a is-empty">' + esc(T.notAnswered) + '</div>') + '</div>';
+      }
+
+      if (q.type === 'list') {
+        var lines = Store.linesOf(v);
+        return '<div class="answer">' + head + (lines.length
+          ? '<div class="bullets">' + lines.map(function (t) {
+              return '<div class="bullet bullet--ro"><span class="bullet__d"></span>' +
+                '<span class="bullet__t" dir="auto">' + esc(t) + '</span></div>';
             }).join('') + '</div>'
           : '<div class="answer__a is-empty">' + esc(T.notAnswered) + '</div>') + '</div>';
       }
@@ -1433,7 +1757,8 @@
 
   function typeLabel(t) {
     return ({ text: T.typeText, textarea: T.typeTextarea, choice: T.typeChoice, number: T.typeNumber,
-              minutes: T.typeMinutes, date: T.typeDate, goals: T.typeGoals, syllabus: T.typeSyllabus })[t] || t;
+              minutes: T.typeMinutes, date: T.typeDate, goals: T.typeGoals, syllabus: T.typeSyllabus,
+              list: T.typeList })[t] || t;
   }
 
   function questionSheet(q) {
@@ -1454,7 +1779,7 @@
         (lock ? '<p class="dim" style="font-size:var(--t-12)">' + esc(T.lockedQuestion) + '</p>'
               : '<div class="field"><span class="field__label"><b>' + esc(T.qType) + '</b></span>' +
                 '<div class="opts" id="qType">' +
-                  ['text', 'textarea', 'choice', 'number', 'minutes', 'date', 'syllabus'].map(function (t) {
+                  ['text', 'textarea', 'list', 'choice', 'number', 'minutes', 'date', 'syllabus'].map(function (t) {
                     return '<button type="button" class="opt opt--sm" data-t="' + t + '" aria-pressed="' +
                       (cur.type === t) + '">' + esc(typeLabel(t)) + '</button>';
                   }).join('') + '</div></div>') +
@@ -1518,13 +1843,23 @@
     var qNext = Store.roleQuestion('goalsNext');
     var qSyl = Store.questions().filter(function (q) { return q.type === 'syllabus'; })[0];
     var qMin = Store.questions().filter(function (q) { return q.type === 'minutes'; })[0];
-    var qSubj = Store.question('q_subject'), qInst = Store.question('q_instructor');
+    var qSubj = Store.roleQuestion('subject') || Store.question('q_subject');
+    var qInst = Store.question('q_instructor');
     var qPoints = Store.question('q_points'), qSafety = Store.question('q_safety_d');
+    var qSolo = Store.roleQuestion('solo');
+    var soloYesVal = qSolo ? ((qSolo.options && qSolo.options[0]) || 'כן') : '';
 
     var sorted = recs.slice().sort(function (a, b) { return a.flownAt < b.flownAt ? -1 : 1; });
     var minutes = 0, met = {}, missed = {}, focus = {}, ex = {}, points = [], safety = [];
+    var soloYes = 0, soloTot = 0;
+
+    function subjOf(r) { return qSubj ? String(r.answers[qSubj.id] || '').trim() : ''; }
 
     sorted.forEach(function (r) {
+      if (qSolo) {
+        var sv = String(r.answers[qSolo.id] == null ? '' : r.answers[qSolo.id]).trim();
+        if (sv) { soloTot++; if (sv === soloYesVal) soloYes++; }
+      }
       if (qMin) { var m = parseInt(r.answers[qMin.id], 10); if (!isNaN(m)) minutes += m; }
       if (qGoals) (r.answers[qGoals.id] || []).forEach(function (g) {
         var t = String(g.text || '').trim();
@@ -1539,12 +1874,12 @@
         if (f) focus[f] = (focus[f] || 0) + 1;
       });
       if (qPoints) {
-        var p = String(r.answers[qPoints.id] || '').trim();
-        if (p) points.push({ d: r.flownAt, t: p });
+        var p = Store.linesOf(r.answers[qPoints.id]);
+        if (p.length) points.push({ d: r.flownAt, subj: subjOf(r), lines: p });
       }
       if (qSafety) {
         var s = String(r.answers[qSafety.id] || '').trim();
-        if (s) safety.push({ d: r.flownAt, t: s });
+        if (s) safety.push({ d: r.flownAt, subj: subjOf(r), lines: [s] });
       }
     });
 
@@ -1558,10 +1893,17 @@
 
     var from = sorted.length ? fmtLong(sorted[0].flownAt) : '';
     var to = sorted.length ? fmtLong(sorted[sorted.length - 1].flownAt) : '';
+    // plain dates for the document, which gets read long after "לפני 3 ימים"
+    // has stopped meaning anything
+    var fromN = sorted.length ? fmtFull(sorted[0].flownAt) : '';
+    var toN = sorted.length ? fmtFull(sorted[sorted.length - 1].flownAt) : '';
 
     return {
       range: sorted.length ? (from === to ? from : T.summaryOf(from, to)) : '',
+      dateRange: sorted.length ? (fromN === toN ? fromN : T.summaryOf(fromN, toN)) : '',
       flights: sorted.length, minutes: minutes,
+      hours: (minutes / 60).toFixed(1),
+      solo: { yes: soloYes, total: soloTot },
       met: metL, missed: missedL, recurring: recurring,
       focus: repeatFocus, exercises: exL, points: points, safety: safety,
       records: sorted,
@@ -1571,71 +1913,89 @@
 
   /** The same summary as a standalone HTML document, which Google Docs opens
    *  and converts. There is no Docs API here on purpose: that would need an
-   *  account and a server, and nothing in this app leaves the phone. */
+   *  account and a server, and nothing in this app leaves the phone.
+   *
+   *  Kept deliberately short. Every date is a real date, never "לפני 3 ימים",
+   *  because this is read weeks later. The per-flight detail carries only the
+   *  exercises he wrote something about — the rest go on one line — and the
+   *  full exercise tally is gone, since it only repeated that detail. */
   function summaryDocHTML(s) {
-    function esc2(x) { return esc(x); }
     function list(items, fmt) {
       return '<ul>' + items.map(function (i) { return '<li>' + fmt(i) + '</li>'; }).join('') + '</ul>';
     }
-    var h = '';
-    h += '<h1>' + esc2(T.summaryTitle) + '</h1>';
-    h += '<p><b>' + esc2(s.range) + '</b><br>' + esc2(T.summaryStats(s.flights, s.minutes)) + '</p>';
-
-    h += '<h2>' + esc2(T.secGoals) + '</h2>';
-    if (s.met.length) {
-      h += '<h3>' + esc2(T.goalsMet) + ' (' + s.met.length + ')</h3>' +
-        list(s.met, function (i) { return esc2(i.t) + (i.n > 1 ? ' — ' + esc2(T.timesN(i.n)) : ''); });
-    }
-    if (s.missed.length) {
-      h += '<h3>' + esc2(T.goalsMissed) + ' (' + s.missed.length + ')</h3>' +
-        list(s.missed, function (i) {
-          return esc2(i.t) + (i.n > 1 ? ' — <b>' + esc2(T.timesN(i.n)) + '</b>' : '');
-        });
-    }
-    if (s.recurring.length) {
-      h += '<h2>' + esc2(T.secRepeatGoals) + '</h2>' +
-        list(s.recurring, function (i) { return '<b>' + esc2(i.t) + '</b> — ' + esc2(T.inNFlights(i.n)); });
-    }
-    if (s.focus.length) {
-      h += '<h2>' + esc2(T.secFocus) + '</h2>' +
-        list(s.focus, function (i) { return esc2(i.t) + ' — ' + esc2(T.timesN(i.n)); });
-    }
-    if (s.exercises.length) {
-      h += '<h2>' + esc2(T.secExercises) + '</h2>' +
-        list(s.exercises, function (i) { return esc2(i.t) + ' &times;' + i.n; });
-    }
-    if (s.points.length) {
-      h += '<h2>' + esc2(T.secPoints) + '</h2>' +
-        list(s.points, function (i) { return '<b>' + esc2(fmtDate(i.d)) + '</b> — ' + esc2(i.t); });
-    }
-    if (s.safety.length) {
-      h += '<h2>' + esc2(T.secSafety) + '</h2>' +
-        list(s.safety, function (i) { return '<b>' + esc2(fmtDate(i.d)) + '</b> — ' + esc2(i.t); });
-    }
-
-    h += '<h2>' + esc2(T.secFlights) + '</h2>';
-    s.records.forEach(function (r) {
-      var bits = [weekday(r.flownAt), fmtLong(r.flownAt)];
+    function head(r) {
+      var bits = [fmtFull(r.flownAt)];
       if (s.q.qSubj && r.answers[s.q.qSubj.id]) bits.push(r.answers[s.q.qSubj.id]);
       if (s.q.qInst && r.answers[s.q.qInst.id]) bits.push(r.answers[s.q.qInst.id]);
       if (s.q.qMin && r.answers[s.q.qMin.id]) bits.push(r.answers[s.q.qMin.id] + ' ' + T.minutesUnit);
-      h += '<h3>' + esc2(bits.join(' · ')) + '</h3>';
-      if (s.q.qSyl) {
-        var xs = (r.answers[s.q.qSyl.id] || []).filter(function (x) { return String(x.text || '').trim(); });
-        if (xs.length) h += list(xs, function (x) {
-          return esc2(x.text) +
-            (String(x.focus || '').trim() ? '<br><i>' + esc2(x.focus) + '</i>' : '') +
-            (String(x.notes || '').trim() ? '<br>' + esc2(x.notes) : '');
-        });
+      return bits.join(' · ');
+    }
+    function dated(entries) {
+      return entries.map(function (i) {
+        return '<p class="d">' + esc(fmtFull(i.d)) + (i.subj ? ' · ' + esc(i.subj) : '') + '</p>' +
+          list(i.lines, function (t) { return esc(t); });
+      }).join('');
+    }
+
+    var stats = [T.docStats(s.flights, s.hours)];
+    if (s.solo.total) stats.push(T.docSolo(s.solo.yes, s.solo.total));
+
+    var h = '<h1>' + esc(T.summaryTitle) + '</h1>' +
+      '<p class="sub">' + esc(s.dateRange) + ' &nbsp;·&nbsp; ' + esc(stats.join(' · ')) + '</p>';
+
+    if (s.met.length || s.missed.length) {
+      h += '<h2>' + esc(T.secGoals) + '</h2>';
+      if (s.met.length) {
+        h += '<p class="d">' + esc(T.goalsMet) + ' (' + s.met.length + ')</p>' +
+          list(s.met, function (i) { return esc(i.t) + (i.n > 1 ? ' &times;' + i.n : ''); });
+      }
+      if (s.missed.length) {
+        h += '<p class="d">' + esc(T.goalsMissed) + ' (' + s.missed.length + ')</p>' +
+          list(s.missed, function (i) { return esc(i.t) + (i.n > 1 ? ' &times;' + i.n : ''); });
+      }
+    }
+    if (s.recurring.length) {
+      h += '<h2>' + esc(T.secRepeatGoals) + '</h2>' +
+        list(s.recurring, function (i) { return '<b>' + esc(i.t) + '</b> · ' + esc(T.inNFlights(i.n)); });
+    }
+    if (s.focus.length) {
+      h += '<h2>' + esc(T.secFocus) + '</h2>' +
+        list(s.focus, function (i) { return esc(i.t) + ' · ' + esc(T.timesN(i.n)); });
+    }
+    if (s.points.length) h += '<h2>' + esc(T.secPoints) + '</h2>' + dated(s.points);
+    if (s.safety.length) h += '<h2>' + esc(T.secSafety) + '</h2>' + dated(s.safety);
+
+    h += '<h2>' + esc(T.secFlights) + '</h2>';
+    s.records.forEach(function (r) {
+      h += '<h3>' + esc(head(r)) + '</h3>';
+      if (!s.q.qSyl) return;
+      var xs = (r.answers[s.q.qSyl.id] || []).filter(function (x) { return String(x.text || '').trim(); });
+      var told = xs.filter(function (x) { return String(x.notes || '').trim(); });
+      var rest = xs.filter(function (x) { return !String(x.notes || '').trim(); });
+      if (told.length) h += list(told, function (x) {
+        return '<b>' + esc(x.text) + ':</b> ' + esc(String(x.notes).trim()) +
+          (String(x.focus || '').trim() ? ' <i>(' + esc(x.focus) + ')</i>' : '');
+      });
+      // the ones with nothing written about them still count as flown, but they
+      // do not deserve a bullet each
+      if (rest.length) {
+        h += '<p class="also">' + esc(T.alsoFlown) +
+          esc(rest.map(function (x) { return x.text.trim(); }).join(' · ')) + '</p>';
       }
     });
 
     return '<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">' +
-      '<title>' + esc2(T.summaryTitle) + '</title><style>' +
-      'body{font-family:Arial,sans-serif;direction:rtl;text-align:right;line-height:1.6;color:#111}' +
-      'h1{font-size:22pt;margin:0 0 4pt}h2{font-size:14pt;margin:18pt 0 4pt;border-bottom:1px solid #ccc}' +
-      'h3{font-size:11pt;margin:10pt 0 2pt}ul{margin:2pt 0 8pt;padding-inline-start:18pt}' +
-      'li{margin:2pt 0}i{color:#8a6d00}</style></head><body>' + h + '</body></html>';
+      '<title>' + esc(T.summaryTitle) + '</title><style>' +
+      'body{font-family:Arial,sans-serif;direction:rtl;text-align:right;line-height:1.45;color:#111;font-size:11pt}' +
+      'h1{font-size:19pt;margin:0}' +
+      'h2{font-size:12.5pt;margin:14pt 0 3pt;padding-bottom:2pt;border-bottom:1px solid #bbb}' +
+      'h3{font-size:10.5pt;margin:9pt 0 1pt;color:#1a3a5c}' +
+      'p{margin:0}p.sub{color:#555;font-size:10pt;margin:2pt 0 0}' +
+      'p.d{margin:5pt 0 1pt;font-size:10pt;font-weight:bold;color:#444}' +
+      'p.also{margin:1pt 0 0;font-size:9.5pt;color:#666}' +
+      'ul{margin:1pt 0 4pt;padding-inline-start:16pt}li{margin:1pt 0}' +
+      'i{color:#8a6d00;font-size:9.5pt}' +
+      '</style></head><body>' + h + '</body></html>';
   }
 
   function screenSummary() {
@@ -1686,9 +2046,11 @@
         '<div class="readout readout--cyan"><div class="readout__k">' + icon('layers') +
           '<span>' + esc(T.rFlights) + '</span></div><div class="readout__v">' + s.flights +
           '</div><div class="readout__s">FLIGHTS</div></div>' +
+        // hours, with the minutes underneath — the same way home reads, and the
+        // way flight time is actually talked about
         '<div class="readout readout--amber"><div class="readout__k">' + icon('clock') +
-          '<span>' + esc(T.rMinutes) + '</span></div><div class="readout__v">' + s.minutes +
-          '</div><div class="readout__s">MINUTES</div></div>' +
+          '<span>' + esc(T.rHours) + '</span></div><div class="readout__v">' + s.hours +
+          '</div><div class="readout__s">' + s.minutes + ' ' + esc(T.rMinutes) + '</div></div>' +
       '</div>';
 
     if (s.met.length) h += sec(T.goalsMet + ' (' + s.met.length + ')', 'green', rows(s.met, 'is-met'));
@@ -1696,18 +2058,18 @@
     if (s.recurring.length) h += sec(T.secRepeatGoals, 'red', rows(s.recurring, 'is-missed'));
     if (s.focus.length) h += sec(T.secFocus, 'amber', rows(s.focus));
     if (s.exercises.length) h += sec(T.secExercises, '', rows(s.exercises));
-    if (s.points.length) {
-      h += sec(T.secPoints, '', '<div class="tl">' + s.points.map(function (p) {
-        return '<div class="tlrow"><div class="tlrow__m">' + esc(fmtDate(p.d)) + '</div>' +
-          '<div class="tlrow__t" dir="auto">' + esc(p.t) + '</div></div>';
-      }).join('') + '</div>');
+    /* dates, not "לפני 3 ימים" — the summary is read next to a logbook */
+    function timeline(entries) {
+      return '<div class="tl">' + entries.map(function (p) {
+        return '<div class="tlrow"><div class="tlrow__m">' + esc(fmtNum(p.d)) +
+            (p.subj ? '<span class="tlrow__s" dir="auto">' + esc(p.subj) + '</span>' : '') + '</div>' +
+          p.lines.map(function (t) {
+            return '<div class="tlrow__t" dir="auto">' + esc(t) + '</div>';
+          }).join('') + '</div>';
+      }).join('') + '</div>';
     }
-    if (s.safety.length) {
-      h += sec(T.secSafety, 'amber', '<div class="tl">' + s.safety.map(function (p) {
-        return '<div class="tlrow"><div class="tlrow__m">' + esc(fmtDate(p.d)) + '</div>' +
-          '<div class="tlrow__t" dir="auto">' + esc(p.t) + '</div></div>';
-      }).join('') + '</div>');
-    }
+    if (s.points.length) h += sec(T.secPoints, '', timeline(s.points));
+    if (s.safety.length) h += sec(T.secSafety, 'amber', timeline(s.safety));
 
     h += '<div class="stack">' +
       '<button class="btn btn--lit btn--block btn--lg" data-copydoc>' + icon('copy') + esc(T.copyDoc) + '</button>' +

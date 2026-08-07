@@ -22,7 +22,7 @@
 
   var db = null, dbHealthy = false, cache = [], settings = null;
 
-  var TYPES = ['text', 'textarea', 'choice', 'number', 'minutes', 'date', 'goals', 'syllabus'];
+  var TYPES = ['text', 'textarea', 'choice', 'number', 'minutes', 'date', 'goals', 'syllabus', 'list'];
   var STAGES = ['brief', 'debrief'];
 
   /* Only the goal loop is structural; everything else is his to delete. */
@@ -51,9 +51,10 @@
 
       /* ---- תחקיר ---- */
       { id: 'q_minutes',    label: 'דקות טיסה',    type: 'minutes',  stage: 'debrief' },
-      { id: 'q_points',     label: 'נקודות עיקריות', type: 'textarea', stage: 'debrief' },
+      { id: 'q_points',     label: 'נקודות עיקריות', type: 'list',    stage: 'debrief' },
       { id: 'q_safety_d',   label: 'בטיחות',       type: 'textarea', stage: 'debrief' },
-      { id: 'q_solo',       label: 'אישור לסולו',  type: 'choice', options: ['כן', 'לא'], stage: 'debrief' },
+      { id: 'q_solo',       label: 'אישור לסולו',  type: 'choice', options: ['כן', 'לא'], role: 'solo',
+        stage: 'debrief' },
       { id: 'q_goals_next', label: 'יעדים לטיסה הבאה', type: 'goals', role: 'goalsNext', stage: 'debrief' }
     ].map(function (q, i) {
       q.order = i; q.archived = false; q.hint = q.hint || '';
@@ -132,11 +133,35 @@
 
   function defaultSettings() {
     return {
-      schema: SCHEMA, theme: 'dark',
+      schema: SCHEMA, mig: 0, theme: 'dark',
       questions: defaultQuestions(),
       nextGoals: [],
       pin: null, lastExport: 0, installDismissed: false
     };
+  }
+
+  /* Targeted migrations. Bumping SCHEMA rebuilds the whole question list from
+     the defaults, which throws away anything he renamed or added; these change
+     one field and leave the rest of his setup alone. */
+  var MIG = 2;
+  function migrate(base) {
+    var m = +base.mig || 0;
+    function byId(id) {
+      return base.questions.filter(function (q) { return q.id === id; })[0] || null;
+    }
+    if (m < 1) {
+      // נקודות עיקריות is an itemized list now, not one block of text
+      var qp = byId('q_points');
+      if (qp && qp.type === 'textarea') qp.type = 'list';
+      m = 1;
+    }
+    if (m < 2) {
+      // the solo call is found by role, so renaming it keeps the home readout
+      var qs = byId('q_solo');
+      if (qs && !qs.role) qs.role = 'solo';
+      m = 2;
+    }
+    base.mig = MIG;
   }
 
   function normalizeQuestion(q, i) {
@@ -192,6 +217,7 @@
         if (live.options.indexOf(o) === -1) live.options.push(o);
       });
     })();
+    migrate(base);
     base.nextGoals = (Array.isArray(base.nextGoals) ? base.nextGoals : []).map(normalizeGoal);
     base.schema = SCHEMA;
     return base;
@@ -200,13 +226,25 @@
     try { localStorage.setItem(LS_SETTINGS, JSON.stringify(settings)); } catch (e) {}
   }
 
+  /** A goal. `cats` is which flight categories it is waiting on: a goal missed
+   *  on an AW flight comes back on the next AW flight and nowhere else. Empty
+   *  means it belongs to no category in particular and rides the next flight
+   *  whatever it is — that is what a goal typed on the home screen gets. */
   function normalizeGoal(g) {
     if (typeof g === 'string') g = { text: g };
     return {
       id: g.id || uid('g'),
       text: String(g.text == null ? '' : g.text),
-      status: ['open', 'met', 'missed'].indexOf(g.status) === -1 ? 'open' : g.status
+      status: ['open', 'met', 'missed'].indexOf(g.status) === -1 ? 'open' : g.status,
+      cats: Array.isArray(g.cats)
+        ? g.cats.map(String).filter(function (c) { return c.trim(); })
+        : []
     };
+  }
+  /** One line of an itemized answer, e.g. a נקודות עיקריות bullet. */
+  function normalizeItem(x) {
+    if (typeof x === 'string') x = { text: x };
+    return { id: x.id || uid('i'), text: String(x.text == null ? '' : x.text) };
   }
   /** A syllabus row. `focus` is the דגש written at the תדריך, `notes` is what
    *  actually happened, written at the תחקיר. */
@@ -250,6 +288,13 @@
           x = x.split('\n').map(function (line) { return line.trim(); }).filter(Boolean);
         }
         out.answers[q.id] = Array.isArray(x) ? x.map(normalizeEx) : [];
+      } else if (q.type === 'list') {
+        // answers written while this was a plain text box split into bullets
+        var li = out.answers[q.id];
+        if (typeof li === 'string') {
+          li = li.split('\n').map(function (line) { return line.trim(); }).filter(Boolean);
+        }
+        out.answers[q.id] = Array.isArray(li) ? li.map(normalizeItem) : [];
       }
     });
     return out;
@@ -265,7 +310,7 @@
   }
 
   function categoryVocab() {
-    var q = Store.question('q_subject');
+    var q = subjectQuestion();
     if (q && q.options && q.options.length) return q.options.slice();
     var found = [];
     settings.questions.forEach(function (x) {
@@ -274,14 +319,46 @@
     return found;
   }
 
+  function subjectQuestion() {
+    return roleQuestion('subject') || Store.question('q_subject');
+  }
+
+  /* Spellings that mean a category without naming it. The syllabus matcher
+     folds these too — if they only lived there, writing "אווירובטיקה 7" would
+     load the right exercises and then file the flight under no category at
+     all, so it would drop out of the AW filter and the AW goal carry. */
+  var CAT_ALIASES = { 'אווירובטיקה': 'AW' };
+
+  /** Which of the known categories appear in a נושא טיסה, e.g. "AW 7 לילה"
+   *  is both AW and לילה. The flight number is ignored on purpose. */
+  function categoriesInText(text) {
+    var hay = normCat(text);
+    if (!hay) return [];
+    var vocab = categoryVocab();
+    var out = vocab.filter(function (c) { return hay.indexOf(normCat(c)) !== -1; });
+    Object.keys(CAT_ALIASES).forEach(function (alias) {
+      var c = CAT_ALIASES[alias];
+      if (hay.indexOf(normCat(alias)) === -1) return;
+      if (vocab.indexOf(c) === -1 || out.indexOf(c) !== -1) return;
+      out.push(c);
+    });
+    return out;
+  }
+
   /** Which of the known categories appear in this flight's נושא טיסה. */
   function categoriesOf(rec) {
-    var q = Store.question('q_subject');
-    if (!q) return [];
-    var hay = normCat(rec.answers[q.id]);
-    if (!hay) return [];
-    return categoryVocab().filter(function (c) {
-      return hay.indexOf(normCat(c)) !== -1;
+    var q = subjectQuestion();
+    return q ? categoriesInText(rec.answers[q.id]) : [];
+  }
+
+  /** The goals waiting on a flight of these categories: the ones missed or set
+   *  for next time on the last flight that shared a category, plus anything
+   *  untagged. This is what a תדריך pulls in once he types the נושא טיסה. */
+  function pendingGoalsFor(cats) {
+    cats = cats || [];
+    return settings.nextGoals.filter(function (g) {
+      if (!g.cats.length) return true;
+      return g.cats.some(function (c) { return cats.indexOf(c) !== -1; });
     });
   }
 
@@ -331,8 +408,22 @@
             (x.notes.trim() ? ' — ' + x.notes : '');
         }).join(' | ');
     }
+    if (q.type === 'list') {
+      return (Array.isArray(v) ? v : []).map(function (x) { return String(x.text || '').trim(); })
+        .filter(Boolean).join(' | ');
+    }
     if (q.type === 'minutes') return v ? String(v) : '';
     return v == null ? '' : String(v);
+  }
+
+  /** An itemized answer as its lines, whichever shape it is stored in. */
+  function linesOf(v) {
+    if (Array.isArray(v)) {
+      return v.map(function (x) { return String(x && x.text != null ? x.text : x).trim(); })
+        .filter(Boolean);
+    }
+    var s = String(v == null ? '' : v).trim();
+    return s ? [s] : [];
   }
 
   function toCSV() {
@@ -391,7 +482,8 @@
   var Store = {
     TYPES: TYPES, STAGES: STAGES,
     todayISO: todayISO, uid: uid,
-    normalizeGoal: normalizeGoal, normalizeEx: normalizeEx,
+    normalizeGoal: normalizeGoal, normalizeEx: normalizeEx, normalizeItem: normalizeItem,
+    linesOf: linesOf,
 
     init: function () {
       settings = loadSettings();
@@ -438,6 +530,8 @@
     isProtected: isProtected,
     categoryVocab: categoryVocab,
     categoriesOf: categoriesOf,
+    categoriesInText: categoriesInText,
+    pendingGoalsFor: pendingGoalsFor,
 
     addQuestion: function (q) {
       var out = normalizeQuestion(q, settings.questions.length);
@@ -525,12 +619,14 @@
     },
     done: function () { return cache.filter(function (r) { return r.stage === 'done'; }); },
 
-    /** A fresh brief, with the goal list already carried in. */
+    /** A fresh brief. Only the untagged goals come in here — the ones tied to a
+     *  category cannot be known until he types the נושא טיסה, so the form pulls
+     *  those in as he does. */
     newBrief: function () {
       var rec = { id: '', flownAt: todayISO(), stage: 'brief', answers: {} };
       var qg = roleQuestion('goals');
       if (qg) {
-        rec.answers[qg.id] = settings.nextGoals.map(function (g) {
+        rec.answers[qg.id] = pendingGoalsFor([]).map(function (g) {
           return { id: g.id, text: g.text, status: 'open' };
         });
       }
@@ -549,23 +645,41 @@
       }
       out.updatedAt = Date.now();
 
-      // Roll the goal loop forward only once the flight is debriefed: goals set
-      // for tomorrow, plus anything missed today, become the live list.
+      // Roll the goal loop forward once the flight is debriefed: goals set for
+      // next time, plus anything missed today, go back on the shelf TAGGED with
+      // this flight's categories. They come out again on the next flight that
+      // shares one, so an AW goal waits for the next AW and nothing else.
       if (out.stage === 'done') {
         var qThis = roleQuestion('goals'), qNext = roleQuestion('goalsNext');
+        var cats = categoriesOf(out);
         var carry = [];
         if (qNext) (out.answers[qNext.id] || []).forEach(function (g) {
-          if (g.text.trim()) carry.push({ text: g.text });
+          if (g.text.trim()) carry.push(g.text.trim());
         });
         if (qThis) (out.answers[qThis.id] || []).forEach(function (g) {
-          if (g.status === 'missed' && g.text.trim()) carry.push({ text: g.text });
+          if (g.status === 'missed' && g.text.trim()) carry.push(g.text.trim());
         });
+
+        // Everything this flight could have pulled in is settled now: the goals
+        // sharing a category with it, and the untagged ones every flight gets.
+        // Whatever it did not settle keeps waiting for its own category.
+        var keep = settings.nextGoals.filter(function (g) {
+          if (!g.cats.length) return false;
+          return !g.cats.some(function (c) { return cats.indexOf(c) !== -1; });
+        });
+
+        // keyed on the categories too, so the same wording waiting on ניווט does
+        // not swallow the copy this AW flight just missed
+        function gkey(t, cs) { return t + ' ' + cs.slice().sort().join(','); }
         var seen = {};
-        settings.nextGoals = carry.filter(function (g) {
-          var k = g.text.trim();
-          if (seen[k]) return false;
-          seen[k] = 1; return true;
-        }).map(normalizeGoal);
+        keep.forEach(function (g) { seen[gkey(g.text.trim(), g.cats)] = 1; });
+        carry.forEach(function (t) {
+          var k = gkey(t, cats);
+          if (seen[k]) return;
+          seen[k] = 1;
+          keep.push(normalizeGoal({ text: t, cats: cats }));
+        });
+        settings.nextGoals = keep;
         saveSettings();
       }
 
@@ -613,6 +727,9 @@
             if (x.focus.trim()) L.push('      דגש: ' + x.focus);
             if (x.notes.trim()) L.push('      ' + x.notes);
           });
+        } else if (q.type === 'list') {
+          L.push(q.label + ':');
+          linesOf(v).forEach(function (line) { L.push('  • ' + line); });
         } else if (q.type === 'minutes') {
           L.push(q.label + ': ' + txt + ' דק׳');
         } else {

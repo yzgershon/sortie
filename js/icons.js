@@ -39,7 +39,13 @@
     info:       '<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/>',
     clock:      '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
     copy:       '<rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/>',
-    filter:     '<path d="M3 5h18l-7 8v6l-4 2v-8z"/>'
+    filter:     '<path d="M3 5h18l-7 8v6l-4 2v-8z"/>',
+    grip:       '<circle cx="9" cy="6" r="1.4" fill="currentColor" stroke="none"/>' +
+                '<circle cx="15" cy="6" r="1.4" fill="currentColor" stroke="none"/>' +
+                '<circle cx="9" cy="12" r="1.4" fill="currentColor" stroke="none"/>' +
+                '<circle cx="15" cy="12" r="1.4" fill="currentColor" stroke="none"/>' +
+                '<circle cx="9" cy="18" r="1.4" fill="currentColor" stroke="none"/>' +
+                '<circle cx="15" cy="18" r="1.4" fill="currentColor" stroke="none"/>'
   };
 
   /**

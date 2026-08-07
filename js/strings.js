@@ -23,7 +23,11 @@
     noBriefYet: 'אין תדריך פתוח',
     noBriefHint: 'מלא תדריך לפני הטיסה. הוא יזין את התחקיר אחריה.',
     goalsCarried: 'יעדים',
-    goalsCarriedHint: 'יעדים שלא הושגו עוברים לטיסה הבאה עד שהם מסומנים.',
+    goalsCarriedHint: 'יעד שלא הושג חוזר בטיסה הבאה מאותה קטגוריה.',
+    goalsNextHint: 'היעדים האלה יחכו לטיסה הבאה מאותה קטגוריה.',
+    goalsPulled: function (n) {
+      return n === 1 ? 'יעד אחד מהטיסה הקודמת נוסף' : n + ' יעדים מהטיסה הקודמת נוספו';
+    },
     noGoals: 'אין יעדים פתוחים',
     noGoalsHint: 'יעדים שתגדיר בסוף התחקיר יופיעו כאן.',
     addGoal: 'הוספת יעד',
@@ -38,6 +42,7 @@
     rFlights: 'טיסות',    capFlights: 'FLIGHTS',
     rGoals: 'יעדים',      capGoals: 'GOALS MET',
     rWeek: 'השבוע',       capWeek: 'THIS WEEK',
+    rSolo: 'אישור לסולו', capSolo: 'SOLO THIS WEEK',
 
     /* forms */
     save: 'שמירה',
@@ -50,6 +55,10 @@
     fromBrief: 'מהתדריך',
     briefedNote: 'תודרך',
     addExercise: 'הוספת תרגיל',
+    addPoint: 'הוספת נקודה',
+    pointsAdded: function (n) { return n === 1 ? 'נקודה נוספה' : n + ' נקודות נוספו'; },
+    dragHint: 'גרור כדי לסדר מחדש',
+    reorder: 'שינוי סדר',
     pasteList: 'הדבקת רשימה',
     pasteListHint: 'הדבק או הקלד את כל הסילבוס, שורה אחת לכל תרגיל. כל שורה תהפוך לתרגיל נפרד עם מקום להערות.',
     exerciseNotes: 'מה קרה בתרגיל הזה',
@@ -87,6 +96,9 @@
     summaryCustom: 'סיכום טיסות',
     summaryOf: function (a, b) { return a + ' עד ' + b; },
     summaryStats: function (f, m) { return f + ' טיסות · ' + m + ' דקות'; },
+    docStats: function (f, h) { return f + ' טיסות · ' + h + ' שעות'; },
+    docSolo: function (a, b) { return 'אישור לסולו ' + a + '/' + b; },
+    alsoFlown: 'גם: ',
     secGoals: 'יעדים',
     goalsMet: 'הושגו',
     goalsMissed: 'לא הושגו',
@@ -193,7 +205,7 @@
 
     typeText: 'שורה', typeTextarea: 'טקסט', typeChoice: 'בחירה',
     typeNumber: 'מספר', typeMinutes: 'דקות', typeDate: 'תאריך',
-    typeGoals: 'יעדים', typeSyllabus: 'סילבוס',
+    typeGoals: 'יעדים', typeSyllabus: 'סילבוס', typeList: 'רשימה',
 
     confirmDeleteFlight: function (d) { return 'למחוק את הטיסה מ־' + d + '?'; },
     confirmDeleteBody: 'הטיסה תימחק מהמכשיר הזה. לא ניתן לשחזר.',

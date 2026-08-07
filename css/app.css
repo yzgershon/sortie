@@ -510,6 +510,26 @@ a { color: var(--cyan); text-decoration: none; }
   color: var(--red); border: 1px solid var(--red-line); border-radius: var(--r-xs);
   padding: 1px 5px; margin-inline-start: var(--s-2); direction: ltr; flex: none;
 }
+
+/* which category a waiting goal belongs to — it comes back on the next flight
+   of that category and nowhere else */
+.goalrow__cat {
+  flex: none; display: flex; align-items: center; padding-inline: var(--s-2);
+  font-size: var(--t-10); font-weight: 700; color: var(--amber);
+  background: var(--amber-dim); border-inline-end: 1px solid var(--amber-line);
+  unicode-bidi: plaintext; max-width: 40%; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* a goal being written rather than graded: the text itself is the control, so a
+   typo is fixed in place instead of deleted and retyped */
+.goalrow__in {
+  flex: 1; min-width: 0; padding: var(--s-3) var(--s-4); min-height: 46px;
+  background: transparent; border: 0; font-size: 16px; line-height: 1.5;
+  color: var(--fg); unicode-bidi: plaintext; text-align: start;
+  -webkit-appearance: none; appearance: none;
+}
+.goalrow__in:focus { outline: none; background: var(--face); }
 .vx { display: flex; flex: none; border-inline-start: 1px solid var(--rule-2); }
 .vx button {
   width: 46px; display: grid; place-items: center; color: var(--fg-dim);
@@ -560,6 +580,46 @@ a { color: var(--cyan); text-decoration: none; }
 .ex__notes:focus { outline: none; background: var(--face); color: var(--fg); }
 .ex__notes::placeholder { color: var(--fg-dim); }
 .ex--done .ex__n { color: var(--green); background: var(--green-dim); }
+
+/* drag handle. touch-action:none is what stops iOS scrolling the page instead
+   of moving the row, so do not drop it. */
+.ex__grip {
+  width: 36px; flex: none; display: grid; place-items: center;
+  color: var(--fg-dim); background: transparent;
+  border-inline-start: 1px solid var(--rule-2);
+  touch-action: none; cursor: grab; -webkit-user-select: none; user-select: none;
+}
+.ex__grip svg { width: 16px; height: 16px; pointer-events: none; }
+.ex__grip:active { color: var(--cyan); background: var(--cyan-dim); cursor: grabbing; }
+.ex.is-drag {
+  position: relative; z-index: 5; border-color: var(--cyan-line);
+  box-shadow: 0 12px 26px -10px rgba(0,0,0,.85), 0 0 0 1px var(--cyan-line);
+}
+.ex.is-drag .ex__grip { color: var(--cyan); background: var(--cyan-dim); }
+body.is-sorting { -webkit-user-select: none; user-select: none; }
+
+/* ==========================================================================
+   Itemized answers — נקודות עיקריות as bullets, not one blob
+   ========================================================================== */
+.bullets { display: grid; gap: 6px; }
+.bullet {
+  display: flex; align-items: stretch;
+  border: 1px solid var(--rule-2); border-radius: var(--r-sm);
+  background: var(--face-2); overflow: hidden;
+}
+.bullet__d { width: 26px; flex: none; display: grid; place-items: center; }
+.bullet__d::before {
+  content: ""; width: 5px; height: 5px; background: var(--cyan); box-shadow: var(--cyan-glow);
+}
+.bullet__t {
+  flex: 1; min-width: 0; padding: var(--s-3); padding-inline-start: 0; min-height: 46px;
+  background: transparent; border: 0; font-size: 16px; line-height: 1.5;
+  color: var(--fg); unicode-bidi: plaintext; text-align: start;
+  -webkit-appearance: none; appearance: none;
+}
+.bullet__t:focus { outline: none; background: var(--face); }
+.bullet--ro { background: transparent; border-color: var(--rule); }
+.bullet--ro .bullet__t { display: flex; align-items: center; font-size: var(--t-14); }
 
 /* the דגש: an input at the תדריך, read-back reference at the תחקיר */
 .ex__focusin {
@@ -708,8 +768,12 @@ a { color: var(--cyan); text-decoration: none; }
 .tlrow::after { content: ""; position: absolute; inset-inline-start: 2px; top: 16px; bottom: -20px;
   width: 1px; background: var(--rule); }
 .tlrow:last-child::after { display: none; }
-.tlrow__m { font-family: var(--font-mono); font-size: var(--t-10); color: var(--fg-dim); letter-spacing: .1em; }
+.tlrow__m { font-family: var(--font-mono); font-size: var(--t-10); color: var(--fg-dim); letter-spacing: .1em;
+  display: flex; align-items: center; gap: var(--s-2); }
+.tlrow__s { font-family: var(--font-ui); letter-spacing: 0; color: var(--fg-mid); font-weight: 600;
+  font-size: var(--t-11); unicode-bidi: plaintext; }
 .tlrow__t { font-size: var(--t-14); line-height: 1.55; unicode-bidi: plaintext; text-align: start; }
+.tlrow__t + .tlrow__t { margin-top: -1px; }
 
 /* ==========================================================================
    Settings
