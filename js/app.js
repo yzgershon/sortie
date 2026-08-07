@@ -6,6 +6,8 @@
 (function (global) {
   'use strict';
 
+  var BUILD = 'v8';   // keep in step with VERSION in sw.js
+
   var appEl, viewEl, topbarEl, tabbarEl, toasterEl, sheetEl, lockEl;
   var route = { name: 'home', param: null };
   var navCount = 0;
@@ -1263,7 +1265,7 @@
         '<span class="item__s">' + esc(T.cannotUndo) + '</span></span></button></div></section>' +
 
       '<p class="dim" style="font-size:var(--t-10);text-align:center;font-family:var(--font-mono);letter-spacing:.1em">' +
-        esc(T.app) + ' · ' + esc(T.offline) + ' · ' + Store.count() + ' ' + esc(T.onDevice) + '</p>' +
+        esc(T.app) + ' ' + BUILD + ' · ' + esc(T.offline) + ' · ' + Store.count() + ' ' + esc(T.onDevice) + '</p>' +
       '</div><input type="file" id="importFile" accept=".json,application/json" hidden>';
 
     function item(ic, t, sub, act) {
@@ -1721,8 +1723,22 @@
       global.addEventListener('hashchange', navigate);
       if (Store.settings().pin) { openLock('unlock'); navigate(); }
       else { appEl.hidden = false; navigate(); }
+      /* The service worker serves the shell cache-first, which means a fresh
+         deploy would otherwise only appear on the SECOND launch: the first one
+         renders the cached build while the new one downloads behind it. When a
+         new worker takes over, reload once so the update lands immediately.
+         `hadController` keeps the very first install from reloading. */
       if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-        navigator.serviceWorker.register('sw.js').catch(function () {});
+        var hadController = !!navigator.serviceWorker.controller;
+        var reloading = false;
+        navigator.serviceWorker.addEventListener('controllerchange', function () {
+          if (!hadController || reloading) return;
+          reloading = true;
+          location.reload();
+        });
+        navigator.serviceWorker.register('sw.js').then(function (reg) {
+          if (reg) reg.update().catch(function () {});
+        }).catch(function () {});
       }
     });
   }
