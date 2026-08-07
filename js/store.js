@@ -34,7 +34,7 @@
       /* ---- תדריך ---- */
       { id: 'q_period',     label: 'פיריט',        type: 'choice', options: ['1', '2', '3', '4'],
         stage: 'brief', inDebrief: 'edit' },
-      { id: 'q_subject',    label: 'נושא טיסה',    type: 'text', suggest: true,
+      { id: 'q_subject',    label: 'נושא טיסה',    type: 'text', suggest: true, role: 'subject',
         options: ['AW', 'ניווט', 'הקפות', 'מבנה', 'גנ״מ', 'מ״מ', 'משולבת', 'לילה', 'סולו', 'א״א'],
         stage: 'brief', inDebrief: 'edit' },
       { id: 'q_instructor', label: 'מדריך',        type: 'text', suggest: true,

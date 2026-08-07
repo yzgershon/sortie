@@ -6,7 +6,7 @@
 (function (global) {
   'use strict';
 
-  var BUILD = 'v9';   // keep in step with VERSION in sw.js
+  var BUILD = 'v10';   // keep in step with VERSION in sw.js
 
   var appEl, viewEl, topbarEl, tabbarEl, toasterEl, sheetEl, lockEl;
   var route = { name: 'home', param: null };
@@ -124,7 +124,7 @@
 
   function go(p) { location.hash = '#/' + p; }
 
-  var ROUTES = ['home', 'brief', 'debrief', 'log', 'flight', 'trends', 'settings', 'summary'];
+  var ROUTES = ['home', 'brief', 'debrief', 'log', 'flight', 'trends', 'settings', 'summary', 'syllabus'];
 
   function navigate() {
     var h = (location.hash || '#/').replace(/^#\/?/, '').split('/');
@@ -179,7 +179,7 @@
     if (!formish) renderTabs();
     ({ home: screenHome, brief: screenForm, debrief: screenForm, log: screenLog,
        flight: screenDetail, trends: screenTrends, settings: screenSettings,
-       summary: screenSummary })[route.name]();
+       summary: screenSummary, syllabus: screenSyllabus })[route.name]();
     autosizeAll();
   }
 
@@ -371,6 +371,8 @@
 
     var qs = Store.stageQuestions(stage);
     var qNext = Store.roleQuestion('goalsNext');   // target of the ✗ carry
+    var qSubj = Store.roleQuestion('subject');
+    var qSyl = qs.filter(function (q) { return q.type === 'syllabus'; })[0];
 
     renderTopbar({
       title: isBrief ? T.briefTitle : T.debriefTitle,
@@ -494,7 +496,11 @@
             esc(T.addExercise) + '">' + icon('plus') + '</button>' +
           '<button type="button" class="btn" data-exbulk="' + esc(q.id) + '" aria-label="' +
             esc(T.pasteList) + '">' + icon('list3') + '</button>' +
-        '</div></div>';
+        '</div>' +
+        '<button type="button" class="btn btn--block" data-exload="' + esc(q.id) + '" hidden>' +
+          icon('download') + esc(T.loadSyllabus) +
+          '<span class="btn__hint" data-exloadname></span></button>' +
+        '</div>';
     }
 
     /* At the תדריך each exercise carries its own דגש. At the תחקיר that דגש is
@@ -532,6 +538,64 @@
           '<span class="wheel__unit">' + esc(T.minutesUnit) + '</span>' +
           '<div class="wheel__list">' + items + '</div>' +
         '</div></div>';
+    }
+
+    /* ---------- syllabus lookup ----------
+       Typing a גיחה that exists in the chart fills its חתך rows in, but only
+       while the list is still empty, so nothing already written is replaced
+       without asking. The load button stays available to pull them in later. */
+    var syllabusTimer = null;
+
+    function currentSubject() {
+      if (!qSubj) return '';
+      var el = $('[data-q="' + qSubj.id + '"]');
+      return el ? el.value : '';
+    }
+
+    function fillSyllabus(entry, replace) {
+      var listEl = $('[data-ex="' + qSyl.id + '"]');
+      if (!listEl) return 0;
+      var wn = listEl.dataset.notes === '1';
+      if (replace) listEl.innerHTML = '';
+      entry.items.forEach(function (t) {
+        listEl.insertAdjacentHTML('beforeend',
+          exRow(Store.normalizeEx({ text: t }), listEl.children.length, wn));
+        var ta = listEl.lastElementChild.querySelector('.ex__notes');
+        if (ta) autosize(ta);
+      });
+      haptic(12); touched();
+      return entry.items.length;
+    }
+
+    function refreshSyllabusMatch(autofill) {
+      if (!qSyl || !qSubj || !global.SyllabusRef) return;
+      var btn = $('[data-exload="' + qSyl.id + '"]');
+      if (!btn) return;
+      var entry = SyllabusRef.lookup(currentSubject());
+      btn.hidden = !entry;
+      if (!entry) return;
+      $('[data-exloadname]', btn).textContent = entry.name;
+
+      var listEl = $('[data-ex="' + qSyl.id + '"]');
+      var isEmpty = !$$('.ex', listEl).some(function (r) {
+        return $('[data-extext]', r).value.trim();
+      });
+      if (autofill && isEmpty) {
+        var n = fillSyllabus(entry, true);
+        if (n) toast(T.syllabusFilled(n), 'list3');
+      }
+    }
+
+    if (qSubj && qSyl) {
+      var subjEl = $('[data-q="' + qSubj.id + '"]');
+      if (subjEl) {
+        subjEl.addEventListener('input', function () {
+          clearTimeout(syllabusTimer);
+          syllabusTimer = setTimeout(function () { refreshSyllabusMatch(true); }, 600);
+        });
+        subjEl.addEventListener('change', function () { refreshSyllabusMatch(true); });
+      }
+      refreshSyllabusMatch(false);
     }
 
     /* ---------- wheels ---------- */
@@ -654,6 +718,7 @@
           var val = app.dataset.val, cur = inp.value.trim();
           if (cur.indexOf(val) === -1) inp.value = cur ? cur + ' ' + val : val;
           inp.focus(); haptic(); touched();
+          refreshSyllabusMatch(true);
         }
         return;
       }
@@ -686,7 +751,20 @@
       var xp = e.target.closest('[data-expush]');
       if (xp) { pushEx(xp.dataset.expush); return; }
       var xb = e.target.closest('[data-exbulk]');
-      if (xb) { bulkEx(xb.dataset.exbulk); }
+      if (xb) { bulkEx(xb.dataset.exbulk); return; }
+
+      var xl = e.target.closest('[data-exload]');
+      if (xl) {
+        var entry = SyllabusRef.lookup(currentSubject());
+        if (!entry) return;
+        var lst = $('[data-ex="' + xl.dataset.exload + '"]');
+        var has = $$('.ex', lst).some(function (r) { return $('[data-extext]', r).value.trim(); });
+        if (!has) { toast(T.syllabusFilled(fillSyllabus(entry, true)), 'list3'); return; }
+        confirmSheet({
+          title: T.replaceSyllabus, text: T.replaceSyllabusBody, confirmLabel: T.confirm,
+          onConfirm: function () { toast(T.syllabusFilled(fillSyllabus(entry, true)), 'list3'); }
+        });
+      }
     });
 
     /* Marking a goal ✗ writes it straight into יעדים לטיסה הבאה, and clearing
@@ -1248,6 +1326,11 @@
           esc(T.restoreDefaults) + '</button>' +
       '</section>' +
 
+      '<section class="stack"><div class="group">' +
+        item('list3', T.syllabusRef,
+             T.syllabusRefSub(global.SyllabusRef ? SyllabusRef.count() : 0), 'syllabus') +
+      '</div></section>' +
+
       '<section class="stack"><h2 class="h-sect">' + esc(T.yourData) + '</h2><div class="group">' +
         item('download', T.exportCsv, T.exportCsvSub, 'export-csv') +
         item('download', T.exportJson, T.exportJsonSub, 'export-json') +
@@ -1313,6 +1396,7 @@
         saveFile('tahkir-backup-' + stamp() + '.json', Store.toJSON(), 'application/json');
         setTimeout(screenSettings, 400);
       }
+      if (a === 'syllabus') { go('syllabus'); return; }
       if (a === 'import-json') $('#importFile').click();
       if (a === 'pin-set') openLock('set', T.chooseCode);
       if (a === 'pin-off') {
@@ -1571,6 +1655,11 @@
       return;
     }
 
+    var wk = thisWeekRange();
+    var isWeek = recs.every(function (r) {
+      var t = parseISO(r.flownAt).getTime();
+      return t >= wk.start.getTime() && t <= wk.stop.getTime();
+    });
     var s = buildSummary(recs);
 
     function sec(title, tone, body) {
@@ -1589,7 +1678,7 @@
     var h = '<div class="stack-4 stagger">' +
       '<div class="hero">' +
         '<div class="hero__meta"><i></i>SUMMARY</div>' +
-        '<h1 class="hero__h">' + esc(T.summaryTitle) + '</h1>' +
+        '<h1 class="hero__h">' + esc(isWeek ? T.summaryTitle : T.summaryCustom) + '</h1>' +
         '<div class="hero__date">' + esc(s.range) + '</div>' +
       '</div>' +
       '<div class="readouts">' +
@@ -1647,6 +1736,53 @@
     on(viewEl, '[data-exportdoc]', 'click', function () {
       saveFile('tahkir-summary-' + stamp() + '.doc', summaryDocHTML(s), 'application/msword');
     });
+  }
+
+  /* ============================================================= syllabus */
+
+  /** The training chart, read-only. Typing a גיחה into נושא טיסה pulls its
+   *  חתך rows into the תדריך; this is where he can see the whole thing. */
+  function screenSyllabus() {
+    renderTopbar({ title: T.syllabusRef, sub: 'SYLLABUS', back: true, backTo: 'settings' });
+    var all = global.SyllabusRef ? SyllabusRef.all() : [];
+
+    if (!all.length) {
+      viewEl.innerHTML = empty('list3', T.syllabusRefEmpty, T.syllabusRefEmptyHint);
+      return;
+    }
+
+    viewEl.innerHTML = '<div class="stack-4 stagger">' +
+      '<div class="search">' + icon('search') +
+        '<input class="input" id="sq" type="search" dir="auto" autocomplete="off" placeholder="' +
+        esc(T.search) + '"></div>' +
+      '<div id="sylResults"></div></div>';
+
+    function paint(filter) {
+      var f = SyllabusRef.norm(filter || '');
+      var rows = all.filter(function (e) {
+        if (!f) return true;
+        if (SyllabusRef.norm(e.name).indexOf(f) !== -1) return true;
+        return e.items.some(function (i) { return SyllabusRef.norm(i).indexOf(f) !== -1; });
+      });
+      $('#sylResults').innerHTML = rows.length
+        ? rows.map(function (e) {
+            return '<section class="panel" style="margin-bottom:var(--s-3)">' +
+              '<div class="panel__head">' + icon('flag') +
+                '<span class="panel__t" dir="auto">' + esc(e.name) + '</span>' +
+                '<span class="panel__a mono">' + e.items.length + '</span></div>' +
+              '<div class="panel__body"><div class="exlist">' +
+                e.items.map(function (t, i) {
+                  return '<div class="ex"><div class="ex__top">' +
+                    '<span class="ex__n">' + (i + 1) + '</span>' +
+                    '<span class="ex__t" dir="auto" style="display:flex;align-items:center">' +
+                      esc(t) + '</span></div></div>';
+                }).join('') +
+              '</div></div></section>';
+          }).join('')
+        : empty('search', T.noMatches, T.noMatchesHint);
+    }
+    paint('');
+    $('#sq').addEventListener('input', function (e) { paint(e.target.value); });
   }
 
   /* ================================================================= lock */
