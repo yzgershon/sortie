@@ -13,7 +13,7 @@
     /* From Google Cloud Console → APIs & Services → Credentials →
        OAuth client ID → Web application. Paste the whole thing, it ends in
        .apps.googleusercontent.com. Empty string = no gate. */
-    clientId: '',
+    clientId: '790989398891-df36sea2it2rbupm466ae8tknsg28h31.apps.googleusercontent.com',
 
     /* Who is allowed in. Either a plain address or its SHA-256 hash, lowercase
        hex. Hashed here on purpose: this repo is public, and the addresses have
@@ -30,9 +30,16 @@
        signal, which matters more here than a short window. */
     sessionDays: 30,
 
-    /* Where Google sends him back. Left empty it uses the page's own address,
-       which is right in every normal case. Set it only if that address and the
-       one registered in Google Cloud Console have to differ. */
-    redirectUri: ''
+    /* Where Google sends him back. PINNED, and it has to stay pinned.
+       Left empty this follows the page's own address, and there are two of
+       those: the installed app starts at /sortie/index.html (the manifest's
+       start_url) while Safari at the plain URL is /sortie/. Google treats those
+       as different redirect URIs and only the first is registered, so following
+       the page would give redirect_uri_mismatch to anyone who opened the plain
+       URL. Pinning it means both routes come back to the same place, which is
+       the same app and the same origin either way.
+       Change this only alongside the Authorized redirect URIs in Google Cloud
+       Console → Credentials, and re-run: node dev/check-oauth.js */
+    redirectUri: 'https://yzgershon.github.io/sortie/index.html'
   };
 })(window);
