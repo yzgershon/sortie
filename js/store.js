@@ -327,7 +327,7 @@
      folds these too — if they only lived there, writing "אווירובטיקה 7" would
      load the right exercises and then file the flight under no category at
      all, so it would drop out of the AW filter and the AW goal carry. */
-  var CAT_ALIASES = { 'אווירובטיקה': 'AW' };
+  var CAT_ALIASES = { 'אווירובטיקה': 'AW', 'מבנה מתקדם': 'מ״מ' };
 
   /** Which of the known categories appear in a נושא טיסה, e.g. "AW 7 לילה"
    *  is both AW and לילה. The flight number is ignored on purpose. */

@@ -9,8 +9,11 @@
 (function (g) {
   'use strict';
 
+  /* What he types on the left, what the chart calls it on the right. Both sides
+     of a comparison get folded, so either spelling finds the same גיחה. */
   var ALIASES = {
-    'אווירובטיקה': 'AW'
+    'אווירובטיקה': 'AW',
+    'מ״מ': 'מבנה מתקדם'
   };
 
   /* Populated from the squadron syllabus chart.

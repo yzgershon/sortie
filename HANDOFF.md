@@ -73,7 +73,7 @@ back to the old flight count.
 ```
 js/strings.js        every piece of UI text, Hebrew
 js/syllabus.js       matching logic for the training chart
-js/syllabus-data.js  the chart itself: 101 גיחות, 407 חתך rows
+js/syllabus-data.js  the chart itself: 125 גיחות, 445 חתך rows, 12 sections
 js/store.js          data layer, questions, goal loop, export
 js/app.js            router and screens
 css/app.css          the avionics display system
@@ -86,8 +86,14 @@ dev/                 local harness, NOT in the repo
 Both suites are in `dev/`, which is gitignored, and both drive the real code.
 
 ```
-node dev/test-store.js       40 checks: the goal loop, categories, migrations
+node dev/test-store.js       44 checks: the goal loop, categories, migrations
 node dev/test-syllabus.js    31 checks: matching a typed גיחה to the chart
+node dev/verify-syllabus.js  35 checks: the chart itself — every גיחה resolves,
+                                        every category reaches it. --full lists
+                                        every exercise, for eyeballing against
+                                        the original chart
+node dev/test-fill.js        28 checks: types a subject into the REAL תדריך and
+                                        checks the right exercises land
 node dev/test-upgrade.js     20 checks: boots v11, uses it, swaps in HEAD on the
                                         same origin, checks nothing went missing
 node dev/test-categories.js   8 checks: every path that could drop a category
@@ -147,8 +153,24 @@ once per document, so it needs a real navigation and not a hash bounce.
 - Drag-to-reorder is **pointer events, not HTML5 drag-and-drop** — iOS Safari
   fires no dragstart on touch. The grip's `touch-action: none` is what stops the
   page scrolling instead of the row moving; do not drop it.
-- **ניווט and אוויר אוויר both had an SBT 1 and SBT 2.** Those four are prefixed
-  with their section. Every other name is verbatim from the chart.
+- **ניווט, אוויר אוויר and מבנה גובה נמוך each had an SBT 1 and SBT 2.** Those six
+  are prefixed with their section (`ניווט SBT 1`, `א״א SBT 1`, `גנ״מ SBT 1`).
+  Every other name is verbatim from the chart.
+- **Two sections were missing from the transcription until v14** and nobody
+  noticed for a week: **מבנה גובה נמוך** (where every גנ״מ גיחה lives) and
+  **מאמן חירומים** (16 simulator sorties). A category he can pick that reaches
+  no גיחה is the signature of this; `dev/verify-syllabus.js` now asserts every
+  one of the 11 categories reaches the chart, so it cannot happen silently again.
+- **A category can be spelled two ways and both must file the same.** There are
+  now two alias tables and they are NOT the same thing:
+  `syllabus.js ALIASES` folds a typed name onto a chart name so the right
+  exercises load (`אווירובטיקה`→`AW`, `מ״מ`→`מבנה מתקדם`), while
+  `store.js CAT_ALIASES` folds a written subject onto a category so filtering
+  and the goal carry see it (`אווירובטיקה`→`AW`, `מבנה מתקדם`→`מ״מ`). Note they
+  point opposite ways: he types the short form, the chart writes the long one.
+  Adding a spelling usually needs an entry in both.
+- **סולו and הקפות are modifiers, not גיחה prefixes.** `סולו 3` matches nothing
+  on purpose; the גיחות are `סולו אווירובטיקה 3`, `סולו מכונס`, `סולו א״א`.
 - Headless Chrome on Windows will not size a window below ~500px and leaks the
   system DPI into `innerWidth`. Use `dev/preview.html` for phone-accurate shots.
 - IndexedDB callbacks and service workers do not fire under
@@ -171,9 +193,14 @@ once per document, so it needs a real navigation and not a hash bounce.
 - **Access control.** The repo is public and so is the syllabus. Yish published
   it knowingly on 2026-08-07 and wants it gated by specific email or a passcode
   later. That needs a host with auth; the on-device model has no server.
-- **Two chart rows are missing** because they were cut off in the screenshots:
-  the גיחה above AW 3, and one משולבת row cut to `כחול במידת הצורך)`.
-- There is **no הקפות section** in the supplied chart.
+- **Two names are reconstructed, not read.** The row above AW 3 had an empty
+  גיחה cell, which in these tables means it continues the row before, so it is
+  filed as **AW 2** and its list may be the tail of a longer one. The row after
+  סולו משולבת 1 was cut mid-word to `כחול במידת הצורך)` and is filed as
+  **סולו משולבת 2 (יבוצע כחול במידת הצורך)**. Both need a look at the original.
+- There is still **no הקפות section** in the supplied chart — the only גיחה
+  carrying the word is `סולו הקפות 1`, under לילה. So `הקפות 12` fills nothing.
+  Either a page is missing or הקפות genuinely has no syllabus of its own.
 - **Not shown to the brother yet.** Wording and grouping still need his read.
 
 ## Next
