@@ -68,9 +68,51 @@ debriefed flights cleared for solo, Sunday to Saturday. Found by `role: 'solo'`
 so renaming the question does not blank it; if he deletes it, the readout falls
 back to the old flight count.
 
+## The Google sign-in gate
+
+**Off until `js/auth-config.js` carries a `clientId`.** With none, `Auth.resolve()`
+answers `off` and the app boots exactly as it always did — so a half-finished
+setup can never lock anyone out of their own flights. Turning it on is that one
+file plus a redeploy.
+
+**It is a curtain, not a lock, and the difference matters.** The app is static
+files on GitHub Pages: anyone can fetch the JavaScript directly, and anyone with
+devtools can write a session into localStorage. Yish was told this plainly and
+chose it anyway on 2026-08-08. Do not describe it to him as securing the
+syllabus, because it does not. What it does is stop someone who lands on the URL
+and tie getting in to named Google accounts.
+
+**No SDK and no popup, both deliberate.** Firebase Auth's `signInWithRedirect`
+wants its handler on the app's own domain, which GitHub Pages cannot serve, and
+Safari's tracking prevention breaks the cross-domain fallback. A popup is worse:
+an installed iOS PWA sends `window.open` to Safari and loses the opener, so the
+token never comes back. A plain top-level redirect through Google's OpenID
+endpoint avoids both and needs no library.
+
+- **Claims are checked, the signature is NOT.** Audience, issuer, expiry, nonce
+  and verified-email are all verified; the RSA signature is not, because that
+  needs Google's JWKS and untested crypto that could lock his brother out is
+  worse than none when localStorage is editable anyway. Do not read the checks
+  in `auth.js` as more than that.
+- **The allowlist fails closed.** An empty `allow` blocks everyone. Entries can
+  be plain addresses or SHA-256 hashes — hashes keep the addresses off the
+  public web. `node dev/hash-email.js someone@gmail.com` prints them.
+- **It is re-checked on every launch**, against the stored session too, so
+  taking someone off the list actually takes them off it.
+- **Google answers in the URL fragment, which is where the router lives.**
+  `Auth.resolve()` has to run before `navigate()`; it lifts the token out and
+  puts the route he was on back. Wire it in that order or sign-in lands on a
+  garbage screen name.
+- **Sessions are long (30 days) and read from the device**, so the app still
+  opens with no signal. That is the whole reason not to use a short window.
+- **Locked out?** `localStorage.removeItem('sortie:auth')` in devtools, or empty
+  `clientId` in `auth-config.js` and redeploy.
+
 ## Files
 
 ```
+js/auth-config.js    the only file to edit to turn the gate on or change who
+js/auth.js           the gate itself
 js/strings.js        every piece of UI text, Hebrew
 js/syllabus.js       matching logic for the training chart
 js/syllabus-data.js  the chart itself: 125 גיחות, 445 חתך rows, 12 sections
@@ -94,6 +136,11 @@ node dev/verify-syllabus.js  35 checks: the chart itself — every גיחה reso
                                         the original chart
 node dev/test-fill.js        28 checks: types a subject into the REAL תדריך and
                                         checks the right exercises land
+node dev/test-auth.js        45 checks: tokens, the allowlist, sessions, the
+                                        fragment handoff. No browser needed
+node dev/test-gate.js        37 checks: the gate in a real browser, including
+                                        that it stays invisible when unconfigured
+node dev/hash-email.js       prints the allowlist hash for an address
 node dev/test-upgrade.js     20 checks: boots v11, uses it, swaps in HEAD on the
                                         same origin, checks nothing went missing
 node dev/test-categories.js   8 checks: every path that could drop a category
@@ -190,9 +237,23 @@ once per document, so it needs a real navigation and not a hash bounce.
   **Drag-to-reorder especially** — it has only ever been driven by synthetic
   pointer events, never by a thumb, and the auto-scroll at the screen edges is
   the part most likely to feel wrong.
-- **Access control.** The repo is public and so is the syllabus. Yish published
-  it knowingly on 2026-08-07 and wants it gated by specific email or a passcode
-  later. That needs a host with auth; the on-device model has no server.
+- **The gate is built but not switched on.** It needs two things from Yish: an
+  OAuth client ID from Google Cloud Console (Web application, with
+  `https://yzgershon.github.io/sortie/` as an authorized redirect URI and
+  `https://yzgershon.github.io` as an authorized JavaScript origin) and the
+  addresses to allow. Both go in `js/auth-config.js`.
+- **The gate does not make the syllabus private.** The repo is public, so
+  `js/syllabus-data.js` is readable on github.com whatever guards the website.
+  Really removing that exposure means either a private repo on a host that
+  serves it behind auth (Cloudflare Pages + Access), or not shipping the chart
+  at all and having his brother import it once from a file. Yish knows; he chose
+  the sign-in gate on 2026-08-08 for what it does cover.
+- **Sign-in has never run against real Google, or on an iPhone.** Every check
+  uses a synthetic token. The two things most likely to bite: whether an
+  installed iOS PWA follows the redirect to accounts.google.com and comes back
+  inside the app rather than bouncing to Safari, and whether the redirect URI
+  registered in Google matches exactly (`/sortie/` and `/sortie/index.html` are
+  different URIs — register both).
 - **Two names are reconstructed, not read.** The row above AW 3 had an empty
   גיחה cell, which in these tables means it continues the row before, so it is
   filed as **AW 2** and its list may be the tail of a longer one. The row after

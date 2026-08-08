@@ -6,7 +6,7 @@
 (function (global) {
   'use strict';
 
-  var BUILD = 'v14';   // keep in step with VERSION in sw.js
+  var BUILD = 'v15';   // keep in step with VERSION in sw.js
 
   var appEl, viewEl, topbarEl, tabbarEl, toasterEl, sheetEl, lockEl;
   var route = { name: 'home', param: null };
@@ -1675,6 +1675,18 @@
         item('download', T.exportJson, T.exportJsonSub, 'export-json') +
         item('upload', T.importJson, T.importJsonSub, 'import-json') + '</div></section>' +
 
+      // only when the gate is actually configured; otherwise there is no account
+      (global.Auth && Auth.enabled() && Auth.session()
+        ? '<section class="stack"><h2 class="h-sect">' + esc(T.account) + '</h2><div class="group">' +
+            '<div class="item"><span class="item__ic">' + icon('lock') + '</span>' +
+            '<span class="item__b"><span class="item__t" dir="auto">' +
+              esc(Auth.session().email) + '</span>' +
+            '<span class="item__s">' + esc(T.signedInAs('')).trim() + '</span></span></div>' +
+            '<button class="item" data-signout><span class="item__ic">' + icon('x') + '</span>' +
+            '<span class="item__b"><span class="item__t">' + esc(T.signOut) + '</span></span></button>' +
+          '</div></section>'
+        : '') +
+
       '<section class="stack"><h2 class="h-sect">' + esc(T.privacy) + '</h2><div class="group">' +
         item('lock', s.pin ? T.changeCode : T.setCode,
              Store.cryptoReady() ? (s.pin ? T.codeOn : T.codeOff) : T.needsHttps, 'pin-set') +
@@ -1758,6 +1770,14 @@
         } catch (err) { toast('לא ניתן לקרוא את הקובץ', 'alert'); }
       };
       fr.readAsText(f); e.target.value = '';
+    });
+
+    on(viewEl, '[data-signout]', 'click', function () {
+      confirmSheet({
+        title: T.confirmSignOut, text: T.confirmSignOutBody, confirmLabel: T.signOut,
+        icon: 'lock',
+        onConfirm: function () { Auth.signOut(); location.reload(); }
+      });
     });
 
     on(viewEl, '[data-clear]', 'click', function () {
@@ -2220,6 +2240,45 @@
 
   /* ================================================================= boot */
 
+  /* ================================================================= gate */
+
+  /** The Google sign-in screen. Only ever shown when auth-config.js carries a
+   *  client id — with none, `Auth.resolve()` answers 'off' and this never runs,
+   *  so a half-finished setup cannot lock anyone out of their own flights. */
+  function showGate(a) {
+    var gate = document.getElementById('authGate');
+    appEl.hidden = true; lockEl.hidden = true; gate.hidden = false;
+
+    var body, note, acts;
+    if (a.state === 'denied') {
+      body = T.gateDenied(a.email);
+      note = T.gateDeniedNote;
+      acts = [{ label: T.gateOther, cls: 'btn--lit', run: Auth.signIn }];
+    } else if (a.state === 'error') {
+      body = T.gateFailed + (navigator.onLine === false ? ' ' + T.gateNoNet : '');
+      note = a.why ? String(a.why) : '';
+      acts = [{ label: T.gateRetry, cls: 'btn--lit', run: Auth.signIn }];
+    } else {
+      body = T.gateBody;
+      note = T.gateOffline;
+      acts = [{ label: T.gateSignIn, cls: 'btn--lit', run: Auth.signIn }];
+    }
+
+    document.getElementById('gateBody').textContent = body;
+    document.getElementById('gateNote').textContent = note;
+    document.getElementById('gateActs').innerHTML = acts.map(function (x, i) {
+      return '<button class="btn btn--block btn--lg ' + (x.cls || '') + '" data-gate="' + i + '">' +
+        esc(x.label) + '</button>';
+    }).join('');
+    on(gate, '[data-gate]', 'click', function (e) {
+      var x = acts[+e.currentTarget.dataset.gate];
+      if (!x) return;
+      e.currentTarget.disabled = true;
+      e.currentTarget.textContent = T.gateChecking;
+      x.run();
+    });
+  }
+
   function boot() {
     appEl = document.getElementById('app');
     viewEl = document.getElementById('view');
@@ -2235,6 +2294,12 @@
       global.matchMedia('(prefers-color-scheme: light)').addEventListener('change', function () {
         if (Store.settings().theme === 'auto') applyTheme();
       });
+      /* Auth.resolve() must run before navigate(): Google answers in the URL
+         fragment, which is where the router looks, and resolve() is what takes
+         the token out of it and puts the real route back. */
+      return Auth.resolve();
+    }).then(function (a) {
+      if (a.state !== 'off' && a.state !== 'ok') { showGate(a); return; }
       global.addEventListener('hashchange', navigate);
       if (Store.settings().pin) { openLock('unlock'); navigate(); }
       else { appEl.hidden = false; navigate(); }

@@ -5,7 +5,7 @@
  * Nothing here ever uploads anything: there is no server to upload to.
  */
 /* Bump VERSION on every deploy: old caches are dropped on activate. */
-var VERSION = 'sortie-v14';
+var VERSION = 'sortie-v15';
 var SHELL = VERSION + '-shell';
 var ASSETS = VERSION + '-assets';
 
@@ -14,6 +14,8 @@ var SHELL_FILES = [
   './index.html',
   './css/app.css',
   './js/strings.js',
+  './js/auth-config.js',
+  './js/auth.js',
   './js/syllabus.js',
   './js/syllabus-data.js',
   './js/icons.js',

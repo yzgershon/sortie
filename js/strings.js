@@ -185,6 +185,23 @@
     installBody: 'לחץ על כפתור השיתוף ואז "הוסף למסך הבית". האפליקציה תיפתח במסך מלא ותעבוד גם בלי קליטה.',
     gotIt: 'הבנתי',
 
+    /* google sign-in gate */
+    gateBody: 'האפליקציה פתוחה רק לחשבונות מאושרים.',
+    gateSignIn: 'כניסה עם Google',
+    gateChecking: 'בודק…',
+    gateDenied: function (e) { return 'החשבון ' + e + ' לא מאושר לאפליקציה הזו.'; },
+    gateDeniedNote: 'אפשר לנסות עם חשבון אחר.',
+    gateOther: 'חשבון אחר',
+    gateFailed: 'ההתחברות לא הושלמה.',
+    gateRetry: 'נסה שוב',
+    gateOffline: 'צריך חיבור לרשת רק בהתחברות הראשונה. אחר כך האפליקציה נפתחת גם בלי קליטה.',
+    gateNoNet: 'אין חיבור לרשת כרגע.',
+    account: 'חשבון',
+    signedInAs: function (e) { return 'מחובר כ־' + e; },
+    signOut: 'התנתקות',
+    confirmSignOut: 'להתנתק?',
+    confirmSignOutBody: 'הטיסות נשארות במכשיר. תצטרך להיכנס שוב עם Google כדי לפתוח את האפליקציה.',
+
     enterCode: 'הזן את הקוד',
     wrongCode: 'קוד שגוי',
     chooseCode: 'בחר קוד בן 4 ספרות',

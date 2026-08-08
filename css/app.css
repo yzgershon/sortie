@@ -886,6 +886,13 @@ body[data-route="brief"] .toaster, body[data-route="debrief-edit"] .toaster { bo
 .lock__hint.is-err { color: var(--red); animation: shake 380ms var(--e-out); }
 @keyframes shake { 0%,100%{transform:none} 20%{transform:translateX(-6px)} 40%{transform:translateX(5px)} 60%{transform:translateX(-3px)} 80%{transform:translateX(2px)} }
 
+/* the Google sign-in gate, same glass as the lock screen */
+.gate .lock__inner { max-width: 320px; gap: var(--s-3); }
+.gate__body { font-size: var(--t-15); line-height: 1.6; text-align: center; color: var(--fg);
+  margin-top: var(--s-2); }
+.gate__acts { width: 100%; display: grid; gap: var(--s-2); margin-top: var(--s-3); }
+.gate__note { font-size: var(--t-12); line-height: 1.6; color: var(--fg-dim); text-align: center; }
+
 .pin { display: flex; gap: var(--s-3); margin: var(--s-3) 0 var(--s-5); }
 .pin i { width: 10px; height: 10px; border: 1px solid var(--rule-2); transition: all var(--d-fast) var(--e-out); }
 .pin i.is-on { background: var(--cyan); border-color: var(--cyan); box-shadow: var(--cyan-glow); }
