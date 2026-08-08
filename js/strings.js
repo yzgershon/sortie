@@ -64,6 +64,7 @@
     exerciseNotes: 'מה קרה בתרגיל הזה',
     exerciseFocus: 'דגשים לתרגיל',
     loadSyllabus: 'טעינה מהסילבוס',
+    noSyllabusFor: function (s) { return '"' + s + '" לא נמצאה בסילבוס. אפשר להוסיף תרגילים ידנית.'; },
     syllabusFilled: function (n) { return n + ' תרגילים נטענו מהסילבוס'; },
     replaceSyllabus: 'להחליף את הסילבוס הקיים?',
     replaceSyllabusBody: 'התרגילים שכתבת יוחלפו בתרגילים מהסילבוס של הגיחה הזו.',

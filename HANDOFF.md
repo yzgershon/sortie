@@ -86,10 +86,23 @@ dev/                 local harness, NOT in the repo
 Both suites are in `dev/`, which is gitignored, and both drive the real code.
 
 ```
-node dev/test-store.js      40 checks: the goal loop, categories, migrations
-node dev/serve-test.js      43 checks: click-driven, real Chrome, real IndexedDB
-node dev/shots.js           screenshots + the exported doc, into dev/shots/
+node dev/test-store.js       40 checks: the goal loop, categories, migrations
+node dev/test-syllabus.js    31 checks: matching a typed גיחה to the chart
+node dev/test-upgrade.js     20 checks: boots v11, uses it, swaps in HEAD on the
+                                        same origin, checks nothing went missing
+node dev/test-categories.js   8 checks: every path that could drop a category
+node dev/serve-test.js       47 checks: click-driven, real Chrome, real IndexedDB
+node dev/shots.js            screenshots + the exported doc, into dev/shots/
+node dev/inspect.js [url]    dumps what a build actually has; takes the live URL
 ```
+
+`test-upgrade.js` is the one that was missing when v12 shipped. Any change to
+`store.js` defaults, migrations or question shape should be run through it,
+because a fresh install proves nothing about the phone in his brother's pocket.
+
+**Never point `serve-test.js` or `shots.js` at the live URL** — they call
+`Store.clearAll()`, and that origin holds real flights. `inspect.js` is
+read-only and safe against live.
 
 `serve-test.js` and `shots.js` start Chrome themselves and drive it over CDP.
 **Do not add `--virtual-time-budget`** — under it IndexedDB callbacks and
@@ -114,6 +127,15 @@ once per document, so it needs a real navigation and not a hash bounce.
 - Syllabus matching folds a **letter/digit boundary into a space**, because the
   chart writes `AW3` and he types `AW 3`. It also folds gershayim against a
   straight quote. `AW 30` must never collapse into `AW 3`; there is a test.
+- **A typed גיחה can be SHORTER than the chart name.** Ten entries carry a
+  description after the number — `ניווט 5 - עובדה חזור`, `לילה 5 צ׳ק סולו לילה`,
+  `מאמן 6 - מבחן במאמן` — and nobody types those. `lookup` matches three ways:
+  exact, he-typed-more (`AW 3 לילה`), and he-typed-less, the last only when it
+  lands on exactly one entry so `מבנה` alone still fills nothing. Shipped v13;
+  before that those ten silently matched nothing and the סילבוס stayed empty
+  with no hint why. `dev/test-syllabus.js` asserts all 101 stay reachable.
+- **A no-match now says so** under the syllabus, once the subject contains a
+  digit. Silence is what hid the bug above for a week.
 - **`אווירובטיקה` is aliased to AW in TWO places** and needs to be. `syllabus.js`
   folds it so the right exercises load; `store.js` folds it so the flight is
   filed under the AW *category*. With only the first, writing אווירובטיקה 7

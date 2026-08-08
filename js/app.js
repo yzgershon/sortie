@@ -6,7 +6,7 @@
 (function (global) {
   'use strict';
 
-  var BUILD = 'v12';   // keep in step with VERSION in sw.js
+  var BUILD = 'v13';   // keep in step with VERSION in sw.js
 
   var appEl, viewEl, topbarEl, tabbarEl, toasterEl, sheetEl, lockEl;
   var route = { name: 'home', param: null };
@@ -563,6 +563,9 @@
         '<button type="button" class="btn btn--block" data-exload="' + esc(q.id) + '" hidden>' +
           icon('download') + esc(T.loadSyllabus) +
           '<span class="btn__hint" data-exloadname></span></button>' +
+        // says so when a גיחה is not in the chart. Without this the syllabus
+        // just stays empty and there is no way to tell a typo from a gap.
+        '<span class="field__hint" data-exnomatch hidden></span>' +
         '</div>';
     }
 
@@ -659,9 +662,20 @@
       if (!qSyl || !qSubj || !global.SyllabusRef) return;
       var btn = $('[data-exload="' + qSyl.id + '"]');
       if (!btn) return;
-      var entry = SyllabusRef.lookup(currentSubject());
+      var subject = currentSubject();
+      var entry = SyllabusRef.lookup(subject);
       // an entry with no חתך rows has nothing to offer
       btn.hidden = !entry || !entry.items.length;
+
+      /* Only complain once it looks like he has finished naming a גיחה — every
+         one of them carries a number — so this stays quiet while he types. */
+      var note = $('[data-exnomatch]', btn.parentElement);
+      if (note) {
+        var named = /\d/.test(subject) && subject.trim().length > 2;
+        note.hidden = !!entry || !named;
+        if (!entry && named) note.textContent = T.noSyllabusFor(subject.trim());
+      }
+
       if (!entry || !entry.items.length) return;
       $('[data-exloadname]', btn).textContent = entry.name;
 

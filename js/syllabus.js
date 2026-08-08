@@ -44,24 +44,40 @@
 
   /**
    * Find the syllabus entry for what he typed into נושא טיסה.
-   * "AW 3" matches AW 3. "AW 3 לילה" also matches AW 3, because a flight can
-   * carry extra categories beyond the one that names the גיחה.
+   *
+   * Three ways to match, in order:
+   *   1. exactly            "AW 3"      -> AW 3
+   *   2. he typed MORE      "AW 3 לילה" -> AW 3      (extra categories on the flight)
+   *   3. he typed LESS      "ניווט 5"   -> ניווט 5 - עובדה חזור
+   *
+   * Case 3 is not a nicety. Ten גיחות in the chart carry a description after the
+   * number — "ניווט 5 - עובדה חזור", "לילה 5 צ׳ק סולו לילה", "מאמן 6 - מבחן במאמן" —
+   * and nobody types those. Without it they simply never matched and the סילבוס
+   * stayed empty with no hint why.
+   *
+   * It only counts when it lands on ONE entry. "מבנה" alone fits nine of them,
+   * and guessing which is worse than filling nothing.
+   *
+   * Every comparison is on whole tokens, so "AW 3" can never reach "AW 30".
    */
   function lookup(subject) {
     var want = applyAliases(norm(subject));
     if (!want) return null;
 
-    var exact = null, prefix = null;
+    var exact = null, shorter = null, longer = [];
     FLIGHTS.forEach(function (f) {
       var key = applyAliases(norm(f.name));
       if (!key) return;
       if (key === want) { exact = f; return; }
-      // whole-token prefix, so "AW 3" never matches "AW 30"
       if (want.indexOf(key + ' ') === 0) {
-        if (!prefix || key.length > applyAliases(norm(prefix.name)).length) prefix = f;
+        // he typed more than the name; the longest name that still fits wins
+        if (!shorter || key.length > applyAliases(norm(shorter.name)).length) shorter = f;
+        return;
       }
+      if (key.indexOf(want + ' ') === 0) longer.push(f);
     });
-    return exact || prefix;
+
+    return exact || shorter || (longer.length === 1 ? longer[0] : null);
   }
 
   g.SyllabusRef = {

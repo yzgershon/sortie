@@ -670,7 +670,7 @@
 
         // keyed on the categories too, so the same wording waiting on ניווט does
         // not swallow the copy this AW flight just missed
-        function gkey(t, cs) { return t + ' ' + cs.slice().sort().join(','); }
+        function gkey(t, cs) { return t + ' :: ' + cs.slice().sort().join(','); }
         var seen = {};
         keep.forEach(function (g) { seen[gkey(g.text.trim(), g.cats)] = 1; });
         carry.forEach(function (t) {
