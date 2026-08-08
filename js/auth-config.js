@@ -16,11 +16,14 @@
     clientId: '',
 
     /* Who is allowed in. Either a plain address or its SHA-256 hash, lowercase
-       hex — hashes keep the addresses off the public web, and both forms work,
-       so it can be set up with plain text and tightened later.
+       hex. Hashed here on purpose: this repo is public, and the addresses have
+       no business being readable in it. Both forms work.
          node dev/hash-email.js someone@gmail.com
        An empty list blocks everyone, which is the safe way to fail. */
-    allow: [],
+    allow: [
+      '9d8a03a9a2c63f05d79602af80d164f1a58644686ec77f2890e04acc909ca520',   // Evyatar
+      'afeb12968cba56fdae5ede45aab051d73fc03edec3f1846269beefbb343b6e6c'    // Yish
+    ],
 
     /* How long a sign-in lasts before Google is asked again. Long on purpose:
        the session is read from the device, so the app still opens with no
