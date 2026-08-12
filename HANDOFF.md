@@ -249,12 +249,20 @@ once per document, so it needs a real navigation and not a hash bounce.
   undocumented leniency, and costs one click, but nothing is broken without it.
   No refresh tokens are used, so the 7-day Testing-mode token expiry does not
   apply either.
-  Also still unchecked on iOS: `<dialog>` sheets, `navigator.share` for the
-  exports, the date input, safe-area insets, whether
-  `navigator.storage.persist()` is granted, and whether the summary document
-  opens in Google Docs. **Drag-to-reorder especially** — only ever driven by
-  synthetic pointer events, never by a thumb, and the auto-scroll at the screen
-  edges is the part most likely to feel wrong.
+- **Backup and restore are verified on iOS, 2026-08-08.** His brother exported
+  from the old install, deleted it, reinstalled, signed in and restored — and
+  got his flights back. So `saveFile`'s share-sheet path and `importJSON` both
+  work inside an installed iOS PWA, which had never been run.
+  **Deleting a home-screen app on iOS deletes its storage**, so that export was
+  not optional. Anyone reinstalling must export first.
+  **But reinstalling is rarely necessary.** The shell is network-first: opening
+  the app with signal pulls the new build on its own. Reinstalling is the risky
+  move, not the required one — say so before anyone deletes anything.
+  Still unchecked on iOS: `<dialog>` sheets, the date input, safe-area insets,
+  whether `navigator.storage.persist()` is granted, and whether the summary
+  document opens in Google Docs. **Drag-to-reorder especially** — only ever
+  driven by synthetic pointer events, never by a thumb, and the auto-scroll at
+  the screen edges is the part most likely to feel wrong.
 - **The gate is built but not switched on.** It needs two things from Yish: an
   OAuth client ID from Google Cloud Console (Web application, with
   `https://yzgershon.github.io/sortie/` as an authorized redirect URI and
