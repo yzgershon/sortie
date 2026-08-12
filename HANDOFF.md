@@ -15,6 +15,18 @@ Repo `yzgershon/sortie`, **public**.
 The build number renders at the bottom of הגדרות. That is how you tell what a
 phone is actually running, which matters more than it sounds — see below.
 
+**EXCEPTION: adding or removing people in `js/auth-config.js` gets NO bump.**
+Yish asked for this on 2026-08-08 and he is right — the bump does nothing for
+that change, and a version that moves without the app changing is a lie about
+what he is running.
+
+The reason it does nothing: `auth-config.js` has a fixed URL and is served with
+`Cache-Control: max-age=600`, so a phone picks up a new allowlist within about
+ten minutes whether or not `VERSION` moved. Bumping only renames the service
+worker's caches and the string in הגדרות; it cannot bust an HTTP cache for a URL
+that did not change. Verify the change landed with `node dev/check-access.js`,
+which reads the LIVE config, not the version number.
+
 ## The model
 
 One record per flight, filled in two stages.
