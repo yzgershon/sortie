@@ -230,15 +230,25 @@ once per document, so it needs a real navigation and not a hash bounce.
 
 ## Not done
 
-- **Run on Android, never on iOS.** Yish is on a Galaxy S24 in Chrome — do NOT
-  say "iPhone" about his device, that was wrong through most of this project.
-  On 2026-08-08 he ran the whole sign-in path there and it worked: gate, Google
-  redirect, token, allowlist, session, sign-out and back in.
-  **That does not cover his brother, who is on iPhone.** Android Chrome keeps
-  an OAuth redirect inside the installed app; iOS Safari in standalone is the
-  case that can dump the user into Safari and never hand control back. Until
-  Evyatar signs in on iOS, that step is unverified — everything else in the
-  flow is shared code and is now proven.
+- **The sign-in path is verified on BOTH platforms, 2026-08-08.** Android
+  (Yish's Galaxy S24, Chrome) and iOS (a family iPhone, Safari, installed to the
+  home screen and signed in from there — not just in a Safari tab, which proves
+  nothing about standalone). Gate, Google redirect, token, allowlist, session,
+  sign-out and back in, all working on both.
+  Do NOT say "iPhone" about Yish's device; he is on Android. That was wrong
+  through most of this project.
+- **Google's Testing mode does not block non-owner accounts here.** The consent
+  screen still reads Testing / External / 0 test users, and a plain family
+  Google account — not an owner of the Cloud project — signed in fine. The app
+  asks only for `openid` and `email`, both non-sensitive, so Google appears not
+  to gate basic sign-in on the test-user list and does not count these against
+  the 100-user cap (the counter sat at 0 after real sign-ins).
+  So **publishing the consent screen is optional, not required.** It was pushed
+  hard earlier on the assumption that Testing would lock the other 22 out; the
+  evidence says otherwise. Publishing would still remove the dependency on
+  undocumented leniency, and costs one click, but nothing is broken without it.
+  No refresh tokens are used, so the 7-day Testing-mode token expiry does not
+  apply either.
   Also still unchecked on iOS: `<dialog>` sheets, `navigator.share` for the
   exports, the date input, safe-area insets, whether
   `navigator.storage.persist()` is granted, and whether the summary document
