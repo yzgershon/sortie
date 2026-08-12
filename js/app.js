@@ -6,7 +6,7 @@
 (function (global) {
   'use strict';
 
-  var BUILD = 'v17';   // keep in step with VERSION in sw.js
+  var BUILD = 'v18';   // keep in step with VERSION in sw.js
 
   var appEl, viewEl, topbarEl, tabbarEl, toasterEl, sheetEl, lockEl;
   var route = { name: 'home', param: null };
