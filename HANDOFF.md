@@ -230,13 +230,21 @@ once per document, so it needs a real navigation and not a hash bounce.
 
 ## Not done
 
-- **Never run on a real iPhone.** Everything so far is headless Chrome on
-  Windows. Check first: `<dialog>` sheets, `navigator.share` for the exports,
-  the date input, safe-area insets, whether `navigator.storage.persist()` is
-  granted, and whether the summary document opens in Google Docs.
-  **Drag-to-reorder especially** — it has only ever been driven by synthetic
-  pointer events, never by a thumb, and the auto-scroll at the screen edges is
-  the part most likely to feel wrong.
+- **Run on Android, never on iOS.** Yish is on a Galaxy S24 in Chrome — do NOT
+  say "iPhone" about his device, that was wrong through most of this project.
+  On 2026-08-08 he ran the whole sign-in path there and it worked: gate, Google
+  redirect, token, allowlist, session, sign-out and back in.
+  **That does not cover his brother, who is on iPhone.** Android Chrome keeps
+  an OAuth redirect inside the installed app; iOS Safari in standalone is the
+  case that can dump the user into Safari and never hand control back. Until
+  Evyatar signs in on iOS, that step is unverified — everything else in the
+  flow is shared code and is now proven.
+  Also still unchecked on iOS: `<dialog>` sheets, `navigator.share` for the
+  exports, the date input, safe-area insets, whether
+  `navigator.storage.persist()` is granted, and whether the summary document
+  opens in Google Docs. **Drag-to-reorder especially** — only ever driven by
+  synthetic pointer events, never by a thumb, and the auto-scroll at the screen
+  edges is the part most likely to feel wrong.
 - **The gate is built but not switched on.** It needs two things from Yish: an
   OAuth client ID from Google Cloud Console (Web application, with
   `https://yzgershon.github.io/sortie/` as an authorized redirect URI and
