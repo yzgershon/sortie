@@ -53,7 +53,11 @@
       'f060175be0128f107ae34be95613ec7bd20b3e6415effbfe16b149b4b666ab61',   // 21 Ben Sh
       '5dab1702c10f9777737bc8a4a9cbdcdcf2cc853cdb02f56b140d499f77d2dd70',   // 22 Yair Za
       '7644a2de8e12a1a2bb92c9f994f27e2683f686320fa877a6d3f87d2fee826baa',   // 23 Yishai Am
-      'afeb12968cba56fdae5ede45aab051d73fc03edec3f1846269beefbb343b6e6c'    // 24 Yish
+      'afeb12968cba56fdae5ede45aab051d73fc03edec3f1846269beefbb343b6e6c',   // 24 Yish
+      // Added 2026-08-08 to test the iOS side: an iPhone, and an account that
+      // does NOT own the Google Cloud project, which is the pair we could not
+      // test otherwise. Safe to delete this line once that is answered.
+      '09c50b3124255f866d39fe8837c792f193bd3836c5bda2a05d5ee4c7e32f9ab8'    // 25 iOS test
     ],
 
     /* How long a sign-in lasts before Google is asked again. Long on purpose:
