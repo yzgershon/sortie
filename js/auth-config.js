@@ -57,7 +57,13 @@
       // Added 2026-08-08 to test the iOS side: an iPhone, and an account that
       // does NOT own the Google Cloud project, which is the pair we could not
       // test otherwise. Safe to delete this line once that is answered.
-      '09c50b3124255f866d39fe8837c792f193bd3836c5bda2a05d5ee4c7e32f9ab8'    // 25 iOS test
+      '09c50b3124255f866d39fe8837c792f193bd3836c5bda2a05d5ee4c7e32f9ab8',   // 25 iOS test
+      '997528f18e20f3a0e01cf6cc31b43907bb79ef278dbb135d6d55389364527ed2',   // 26 Spot
+      // 27 is NOT a gmail — a custom domain. It only works if that address is
+      // a Google account (Workspace, or a consumer account registered to it).
+      // If it is Workspace, the org's admin can block third-party OAuth apps
+      // outright, and no change here would fix that.
+      '80bc6edc2a83bd09b5b0b9e638716e9dec0981ebc7b35e3e2d8a6b3f9e38a6d4'    // 27 Eitan
     ],
 
     /* How long a sign-in lasts before Google is asked again. Long on purpose:
