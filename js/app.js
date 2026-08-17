@@ -535,6 +535,10 @@
     /* The candidates currently on offer when a typed גיחה matches more than
        one entry, in the order they are drawn. */
     var pending = [];
+    /* A fingerprint of the syllabus rows as autofill left them. If the list
+       still matches, an automatic pick may be swapped for another silently;
+       once he has typed in it, it is his and swapping asks first. */
+    var autoSig = null;
 
     renderTopbar({
       title: isBrief ? T.briefTitle : T.debriefTitle,
@@ -866,14 +870,48 @@
       return entry.items.length;
     }
 
-    /** The entry the subject names, or null. Where the name is genuinely
-     *  ambiguous — "SBT" is five sessions in מתקדם, and "הכנות 1" is both a
-     *  simulator session and an air sortie — nothing is chosen and the caller
-     *  offers the candidates instead of guessing. */
+    /** The entry the subject names, plus every other one it could have meant.
+     *
+     *  "SBT" is five sessions in מתקדם and "הכנות 1" is both a simulator session
+     *  and an air sortie. Rather than stop and ask, the likeliest one is filled
+     *  in and the alternatives stay on screen as one-tap corrections — an extra
+     *  tap on every ambiguous גיחה costs more than being occasionally wrong in
+     *  a way that is visible and instantly fixable. */
     function matchEntry() {
       if (!global.SyllabusRef) return { entry: null, options: [] };
-      var c = SyllabusRef.candidates(currentSubject());
-      return { entry: c.length === 1 ? c[0] : null, options: c };
+      var subject = currentSubject();
+      /* A bare category is not a גיחה, it is somebody halfway through typing
+         one — or a tap on the chip above. "מבנה" matches all nine מבנה sorties
+         and filling the first would drop eight exercises into the form before
+         he has said which flight this is. */
+      if (isBareCategory(subject)) return { entry: null, options: [] };
+      var c = SyllabusRef.candidates(subject);
+      return { entry: c.length ? bestOf(c) : null, options: c };
+    }
+
+    function isBareCategory(subject) {
+      var s = SyllabusRef.norm(subject);
+      if (!s) return true;
+      return Store.categoryVocab().some(function (cat) { return SyllabusRef.norm(cat) === s; });
+    }
+
+    /** An air sortie beats a simulator session of the same name: you fly more
+     *  than you sim, and the simulator one is the one wearing a badge. */
+    function bestOf(list) {
+      var air = list.filter(function (f) { return !f.sim; });
+      return (air.length ? air : list)[0];
+    }
+
+    /** What the syllabus list holds right now, so a later tap can tell whether
+     *  it is still exactly what was filled in automatically or whether he has
+     *  since written in it. Only the former may be replaced silently. */
+    function exSignature() {
+      var listEl = qSyl && $('[data-ex="' + qSyl.id + '"]');
+      if (!listEl) return '';
+      return $$('.ex', listEl).map(function (r) {
+        var f = $('[data-exfocus]', r), n = $('[data-exnotes]', r);
+        return $('[data-extext]', r).value + '' + (f ? f.value : '') + '' + (n ? n.value : '');
+      }).join('');
     }
 
     /** Returns how many exercises it filled in, so the caller can say it once
@@ -893,19 +931,22 @@
       var note = $('[data-exnomatch]', btn.parentElement);
       if (note) {
         var named = /\d/.test(subject) && subject.trim().length > 2;
-        var ambiguous = !entry && m.options.length > 1;
+        var ambiguous = m.options.length > 1;
         note.hidden = (!!entry || !named) && !ambiguous;
-        if (ambiguous) note.textContent = T.pickGichaBody;
+        if (ambiguous) note.textContent = T.pickedGicha;
         else if (!entry && named) note.textContent = T.noSyllabusFor(subject.trim());
       }
 
-      // more than one candidate: offer them rather than filling the wrong one
+      /* More than one candidate: the likeliest is filled in below, and the rest
+         stay here so getting it wrong costs one tap rather than making every
+         ambiguous גיחה cost one. */
       var pickEl = $('[data-expick="' + qSyl.id + '"]');
       if (pickEl) {
-        if (!entry && m.options.length > 1) {
+        if (m.options.length > 1) {
           pickEl.hidden = false;
           pickEl.innerHTML = m.options.map(function (f, i) {
-            return '<button type="button" class="opt opt--sm" data-pick="' + i + '" dir="auto">' +
+            return '<button type="button" class="opt opt--sm" data-pick="' + i + '" dir="auto"' +
+              ' aria-pressed="' + (f === entry) + '">' +
               esc(f.name) + (f.sim ? '<span class="simtag">' + esc(T.simBadge) + '</span>' : '') +
               '</button>';
           }).join('');
@@ -923,7 +964,11 @@
       var isEmpty = !$$('.ex', listEl).some(function (r) {
         return $('[data-extext]', r).value.trim();
       });
-      if (autofill && isEmpty) return fillSyllabus(entry, true);
+      if (autofill && isEmpty) {
+        var filled = fillSyllabus(entry, true);
+        autoSig = exSignature();
+        return filled;
+      }
       return 0;
     }
 
@@ -1233,26 +1278,42 @@
       var xb = e.target.closest('[data-exbulk]');
       if (xb) { bulkEx(xb.dataset.exbulk); return; }
 
-      /* Picking between two גיחות with the same name. The chosen name is
-         written back into נושא טיסה so the record says which one it was, and
-         so re-opening the draft resolves to the same entry. */
+      /* Correcting an automatic pick between גיחות with the same name. The
+         chosen name is written back into נושא טיסה so the record says which one
+         it was and re-opening the draft resolves to the same entry.
+         What was filled in automatically may be swapped out silently; anything
+         he has typed since is his, and asks first. */
       var pk = e.target.closest('[data-pick]');
       if (pk) {
         var chosen = pending[+pk.dataset.pick];
         if (!chosen) return;
-        var subjEl2 = qSubj && $('[data-q="' + qSubj.id + '"]');
-        if (subjEl2) subjEl2.value = chosen.name;
+        var untouched = autoSig !== null && exSignature() === autoSig;
         var lst2 = $('[data-ex="' + qSyl.id + '"]');
-        var has2 = lst2 && $$('.ex', lst2).some(function (r) { return $('[data-extext]', r).value.trim(); });
-        var n2 = has2 ? 0 : fillSyllabus(chosen, true);
-        var g2 = has2 ? 0 : fillSyllabusGoals(chosen);
-        refreshSyllabusMatch(false);
-        refreshGoalCarry(false);
-        var bits2 = [];
-        if (n2) bits2.push(T.syllabusFilled(n2));
-        if (g2) bits2.push(T.goalsSuggested(g2));
-        if (bits2.length) toast(bits2.join(' · '), 'list3');
-        touched();
+        var empty2 = !lst2 || !$$('.ex', lst2).some(function (r) { return $('[data-extext]', r).value.trim(); });
+
+        function swap() {
+          var subjEl2 = qSubj && $('[data-q="' + qSubj.id + '"]');
+          if (subjEl2) subjEl2.value = chosen.name;
+          // the goals the last pick suggested go with it; his own stay
+          var gl = qGoals && $('[data-goals="' + qGoals.id + '"]');
+          if (gl) $$('.goalrow.is-suggested', gl).forEach(function (r) { r.remove(); });
+          var n2 = fillSyllabus(chosen, true);
+          var g2 = fillSyllabusGoals(chosen);
+          autoSig = exSignature();
+          refreshSyllabusMatch(false);
+          refreshGoalCarry(false);
+          var bits2 = [];
+          if (n2) bits2.push(T.syllabusFilled(n2));
+          if (g2) bits2.push(T.goalsSuggested(g2));
+          if (bits2.length) toast(bits2.join(' · '), 'list3');
+          touched();
+        }
+
+        if (untouched || empty2) swap();
+        else confirmSheet({
+          title: T.replaceSyllabus, text: T.replaceSyllabusBody,
+          confirmLabel: T.confirm, onConfirm: swap
+        });
         return;
       }
 
@@ -2944,7 +3005,10 @@
     global.addEventListener('beforeinstallprompt', function (e) {
       e.preventDefault();
       installPrompt = e;
-      if (route.name === 'home') screenHome();
+      /* Only redraw a screen that is actually on screen. This fires on the
+         gated page too, and without the guard it rendered the whole home
+         screen — flights and all — into the DOM behind the sign-in gate. */
+      if (appEl && !appEl.hidden && route.name === 'home') screenHome();
     });
     global.addEventListener('appinstalled', function () { installPrompt = null; });
 
@@ -2967,7 +3031,17 @@
       return (global.Auth && Auth.enabled() ? Auth.courseFor(who) : Promise.resolve(null))
         .catch(function () { return null; })
         .then(function (suggested) {
-          showCoursePicker(suggested, function () { Store.applyCourse(); start(); });
+          /* If the roster already knows which stage this address is on, just
+             set it. Asking someone to confirm a fact the app is certain about
+             is a tap that buys nothing, and it is the first thing they see.
+             The picker is still there for anyone NOT on the roster, and the
+             choice is still theirs to change in הגדרות. */
+          if (suggested) {
+            Store.setCourse(suggested);
+            Store.applyCourse();
+            return start();
+          }
+          showCoursePicker(null, function () { Store.applyCourse(); start(); });
         });
     }).then(null, function () {
       // never leave a blank screen because something upstream threw

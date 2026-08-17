@@ -22,16 +22,29 @@ export — is shared.
 `js/courses.js` is the only list. Adding a third course means an entry there
 plus a data file; nothing else in the app knows the set.
 
-**The picker is asked once, on the first launch after signing in**, in its own
-`#coursePicker` element (NOT `#authGate` — they are different screens and
-sharing a node made "is the gate up?" unanswerable). The roster in
-`auth-config.js#courses` preselects the right answer so it is a confirmation
-rather than a guess, and it can be changed any time in הגדרות. Everyone already
-using the app meets it once on upgrade; `dev/test-upgrade.js` covers that.
+**Nobody is asked which course they are on.** `auth-config.js#courses` lists
+EVERY allowed address and the app just sets it. That is deliberate: a question
+whose answer the app already knows is a tap that buys nothing, and it is the
+first thing somebody sees.
 
-**Every flight is stamped with the course it was flown under** and that stamp is
-never rewritten. Somebody finishing ראשוני and moving up keeps a logbook that
-still says what each flight actually was.
+An address with no tag falls through to a picker (its own `#coursePicker`
+element — NOT `#authGate`, they are different screens and sharing a node made
+"is the gate up?" unanswerable). **So forgetting to tag a new person costs them
+one question, not the wrong syllabus.** Keep it that way: when adding somebody,
+add them to `allow` AND to `courses`.
+
+Either way it is changeable any time in הגדרות.
+
+**A flight is stamped with its course when it is first SAVED, and never
+rewritten.** Flights that existed before courses did carry no stamp at all —
+`null`, meaning "before this was recorded", which is true. They are deliberately
+not backfilled: a guess would be wrong for anyone who has since moved up a
+stage, or who restores an old backup while set to the other course.
+
+**`dev/test-course-upgrade.js` is the proof that nobody loses anything.** It
+boots the build they are actually running, fills it with flights, graded goals,
+a waiting shelf, an unsaved draft and a renamed question, then swaps the files
+to HEAD on the same origin and checks every one of them survived.
 
 ### What is different about מתקדם, beyond the chart being bigger
 
@@ -41,6 +54,11 @@ still says what each flight actually was.
   be his, not the chart's. ראשוני has no such column and nothing draws there.
 - **It carries הערות לגיחה, הערות למאמן, and a planned duration.** Shown in a
   panel under the syllabus while briefing, and in the reference screen.
+- **An ambiguous גיחה fills in the likeliest one rather than stopping to ask**,
+  and leaves the alternatives on screen as one-tap corrections that swap it out
+  silently — but only while what is in the list is still exactly what was filled
+  in automatically. Once he has typed in it, swapping asks first. A BARE
+  category ("מבנה") never autofills: that is somebody mid-word, not a גיחה.
 - **Names collide in ways ראשוני's never did.** A simulator "הכנות 1" and an air
   "הכנות 1" both exist; "SBT" is five different sessions; "סולו 1" is four. Every
   entry therefore has a unique `name`, and the wording printed in the chart is

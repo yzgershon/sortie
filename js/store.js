@@ -338,11 +338,14 @@
       id: r.id || uid('f'),
       flownAt: r.flownAt || todayISO(),
       stage: r.stage === 'done' ? 'done' : 'brief',   // brief = flown not yet debriefed
-      /* The course this was flown under, stamped once and never rewritten.
-         Somebody who finishes ראשוני and moves up to מתקדם keeps a logbook that
-         still says what each flight actually was, and their old summaries do
-         not start reading against the wrong syllabus. */
-      course: r.course || courseId(),
+      /* The course this was flown under. Stamped when the record is FIRST
+         saved and never rewritten — not filled in here, on purpose. Every
+         flight that already existed before courses were a thing predates the
+         answer, and guessing one for it would be a label that is wrong for
+         anybody who has since moved up a stage, or who restores an old backup
+         while set to the other course. null means "before this was recorded",
+         which is true and harmless. */
+      course: r.course || null,
       answers: {},
       createdAt: r.createdAt || Date.now(),
       updatedAt: r.updatedAt || r.createdAt || Date.now()
@@ -799,6 +802,8 @@
         Object.assign(existing, out); out = existing;
       } else {
         out = normalize(rec);
+        // a brand-new flight is the only thing that knows its own course
+        if (!out.course) out.course = courseId();
         cache.push(out);
       }
       out.updatedAt = Date.now();
