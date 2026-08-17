@@ -22,6 +22,10 @@
     briefWaiting: 'תדריך פתוח, ממתין לתחקיר',
     noBriefYet: 'אין תדריך פתוח',
     noBriefHint: 'מלא תדריך לפני הטיסה. הוא יזין את התחקיר אחריה.',
+    briefsWaiting: function (n) {
+      return n === 1 ? 'תדריך פתוח, ממתין לתחקיר' : n + ' תדריכים ממתינים לתחקיר';
+    },
+    alsoWaiting: 'ממתינים גם',
     goalsCarried: 'יעדים',
     goalsCarriedHint: 'יעד שלא הושג חוזר בטיסה הבאה מאותה קטגוריה.',
     goalsNextHint: 'היעדים האלה יחכו לטיסה הבאה מאותה קטגוריה.',
@@ -73,8 +77,28 @@
     minutesUnit: 'דק׳',
     editBrief: 'עריכת התדריך',
 
+    /* the two-stage loop, explained once, on an empty home screen */
+    startTitle: 'איך זה עובד',
+    startB1: 'לפני הטיסה ממלאים תדריך: נושא, יעדים, וסילבוס.',
+    startB2: 'מקלידים את הגיחה ("AW 3") והתרגילים מהסילבוס נטענים לבד.',
+    startB3: 'אחרי הנחיתה משלימים תחקיר. יעד שלא הושג חוזר לטיסה הבאה מאותה קטגוריה.',
+    startGo: 'נתחיל',
+
+    /* backup */
+    backupNow: 'ייצוא גיבוי',
+    backupHomeTitle: 'הטיסות שלך קיימות רק בטלפון הזה.',
+    backupHomeBody: 'ייצא קובץ גיבוי ושמור אותו איפשהו. לוקח שתי שניות.',
+
+    /* drafts */
+    draftRestored: 'שוחזרה טיוטה שלא נשמרה',
+    draftBadge: 'טיוטה',
+    draftDiscard: 'התחלה מחדש',
+    draftDiscardBody: 'הטיוטה תימחק והטופס יחזור למה שנשמר.',
+
     /* log */
     search: 'חיפוש בכל התשובות',
+    searchSyllabus: 'חיפוש גיחה או תרגיל',
+    selectAllShown: 'בחר את המוצגים',
     noMatches: 'אין תוצאות',
     noMatchesHint: 'נסה מילה אחרת או נקה את הסינון.',
     all: 'הכל',
@@ -133,9 +157,25 @@
     lastWeeks: '8 השבועות האחרונים',
     goalRate: 'עמידה ביעדים',
     repeatedGoals: 'יעדים שחוזרים',
+    missedGoals: 'יעדים שלא הושגו',
     readAcross: 'תשובה אחת לאורך כל הטיסות',
     nothingHere: 'עדיין לא נכתב כאן דבר.',
     totalMinutes: 'סך שעות',
+
+    /* syllabus progress */
+    sylProgress: 'התקדמות בסילבוס',
+    sylDone: function (a, b) { return a + ' מתוך ' + b + ' גיחות'; },
+    sylNext: 'הבא בתור',
+    sylNextNone: 'סיימת את כל הגיחות שבסילבוס.',
+    sylFlown: 'בוצעה',
+    sylOpenChart: 'הסילבוס המלא',
+    sylNoneYet: 'עוד לא נרשמה גיחה שמופיעה בסילבוס.',
+
+    /* instructors */
+    byInstructor: 'לפי מדריך',
+    instFlights: function (n) { return n === 1 ? 'טיסה אחת' : n + ' טיסות'; },
+    instSeeAll: 'הצג את הטיסות',
+    instNone: 'לא נרשם מדריך באף טיסה.',
 
     /* settings */
     settings: 'הגדרות',
@@ -182,8 +222,17 @@
     backupBody: 'הכל קיים רק בטלפון הזה. ייצא קובץ ושמור אותו במקום בטוח.',
 
     installTitle: 'הוספה למסך הבית',
-    installBody: 'לחץ על כפתור השיתוף ואז "הוסף למסך הבית". האפליקציה תיפתח במסך מלא ותעבוד גם בלי קליטה.',
+    installBodyIOS: 'לחץ על כפתור השיתוף ואז "הוסף למסך הבית". האפליקציה תיפתח במסך מלא ותעבוד גם בלי קליטה.',
+    installBodyAndroid: 'פתח את תפריט שלוש הנקודות ובחר "התקנת אפליקציה". היא תיפתח במסך מלא ותעבוד גם בלי קליטה.',
+    installBodyGeneric: 'הוסף את האפליקציה למסך הבית. היא תיפתח במסך מלא ותעבוד גם בלי קליטה.',
+    installNow: 'התקנה',
+    installedToast: 'נוספה למסך הבית',
     gotIt: 'הבנתי',
+
+    /* undo */
+    undo: 'החזרה',
+    restoredToast: 'הטיסה הוחזרה',
+    sessionStale: 'לא היה אפשר לאמת מול Google בלי רשת. תתבקש להיכנס שוב כשתהיה קליטה.',
 
     /* google sign-in gate */
     gateBody: 'האפליקציה פתוחה רק לחשבונות מאושרים.',

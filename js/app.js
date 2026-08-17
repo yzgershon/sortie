@@ -6,13 +6,21 @@
 (function (global) {
   'use strict';
 
-  var BUILD = 'v20';   // keep in step with VERSION in sw.js
+  var BUILD = 'v21';   // keep in step with VERSION in sw.js
 
   var appEl, viewEl, topbarEl, tabbarEl, toasterEl, sheetEl, lockEl;
   var route = { name: 'home', param: null };
   var navCount = 0;
   var pinBuffer = '', pinMode = 'unlock', pinFirst = '';
   var draftTimer = null;
+  /* Chrome hands this over when the app is installable. Holding it turns the
+     "add to home screen" note from instructions into a button. Safari never
+     fires it, which is why the note still explains the Share sheet. */
+  var installPrompt = null;
+  /* The open form's "write your draft now", or null when no form is on screen.
+     One indirection so the pagehide / visibilitychange listeners are registered
+     once at boot instead of once per render. */
+  var formFlush = null;
 
   /* ============================================================== helpers */
 
@@ -61,15 +69,40 @@
   }
   function haptic(ms) { if (navigator.vibrate) { try { navigator.vibrate(ms || 8); } catch (e) {} } }
 
-  function toast(msg, ic) {
+  /** Installing is a different gesture on each platform, and the old text only
+   *  described Safari's Share sheet — which is the wrong instruction for most
+   *  of the people using this. */
+  function installBody() {
+    var ua = String(navigator.userAgent || '');
+    if (/iPhone|iPad|iPod/i.test(ua)) return T.installBodyIOS;
+    if (/Android/i.test(ua)) return T.installBodyAndroid;
+    return T.installBodyGeneric;
+  }
+
+  /** A toast, optionally with one action on it. `act` is {label, run} and buys
+   *  the extra time it needs to be read and tapped — an undo nobody can reach
+   *  in 2.5s is decoration. Only two are ever on screen: they used to stack up
+   *  and cover the field being typed into. */
+  function toast(msg, ic, act) {
+    while (toasterEl.children.length >= 2) toasterEl.firstElementChild.remove();
     var t = document.createElement('div');
-    t.className = 'toast';
-    t.innerHTML = icon(ic || 'checkCircle') + '<span>' + esc(msg) + '</span>';
+    t.className = 'toast' + (act ? ' toast--act' : '');
+    t.innerHTML = icon(ic || 'checkCircle') + '<span>' + esc(msg) + '</span>' +
+      (act ? '<button class="toast__b" type="button">' + esc(act.label) + '</button>' : '');
     toasterEl.appendChild(t);
-    setTimeout(function () {
+    var done = false;
+    function close() {
+      if (done) return;
+      done = true;
       t.classList.add('is-out');
       setTimeout(function () { t.remove(); }, 200);
-    }, 2500);
+    }
+    if (act) {
+      t.querySelector('.toast__b').addEventListener('click', function () {
+        close(); haptic(12); act.run();
+      });
+    }
+    setTimeout(close, act ? 7000 : 2500);
   }
 
   function openSheet(o) {
@@ -137,6 +170,8 @@
   var ROUTES = ['home', 'brief', 'debrief', 'log', 'flight', 'trends', 'settings', 'summary', 'syllabus'];
 
   function navigate() {
+    // leaving a form saves what is in it, including via the back button
+    if (formFlush) { try { formFlush(); } catch (e) {} }
     var h = (location.hash || '#/').replace(/^#\/?/, '').split('/');
     var n = h[0] || 'home';
     if (ROUTES.indexOf(n) === -1) n = 'home';
@@ -182,6 +217,8 @@
   }
 
   function render() {
+    // the outgoing screen's draft hook dies with its DOM
+    formFlush = null;
     document.body.dataset.route = route.name;
     var formish = route.name === 'brief' || route.name === 'debrief';
     tabbarEl.hidden = formish;
@@ -201,7 +238,8 @@
   /* ================================================================= home */
 
   function screenHome() {
-    var all = Store.all(), done = Store.done(), open = Store.openBrief();
+    var all = Store.all(), done = Store.done(), waiting = Store.openBriefs();
+    var open = waiting[0] || null;
     var s = Store.settings(), goals = Store.nextGoals();
 
     renderTopbar({
@@ -270,13 +308,15 @@
         : readout('amber', 'trending', T.rWeek, T.capWeek, String(week), '')) +
     '</div>';
 
-    /* open brief, or the CTA to start one */
+    /* Everything still waiting on a תחקיר, not just the newest. Flying several
+       times a week means forgetting one is routine, and showing only the most
+       recent left the older one visible nowhere but the log. */
     if (open) {
-      var subQ = Store.question('q_subject');
+      var subQ = Store.roleQuestion('subject') || Store.question('q_subject');
       var subj = subQ ? (open.answers[subQ.id] || '') : '';
       h += '<section class="panel panel--amber brackets">' +
         '<div class="panel__head">' + icon('flag') +
-          '<span class="panel__t">' + esc(T.briefWaiting) + '</span>' +
+          '<span class="panel__t">' + esc(T.briefsWaiting(waiting.length)) + '</span>' +
           '<span class="panel__a">' + esc(T.capBrief) + '</span></div>' +
         '<div class="panel__body stack">' +
           (subj ? '<div style="font-size:var(--t-17);font-weight:700" dir="auto">' + esc(subj) + '</div>' : '') +
@@ -285,10 +325,32 @@
             icon('check') + esc(T.openBrief) + '</button>' +
           '<button class="btn btn--quiet btn--block" data-gobrief="' + esc(open.id) + '">' +
             icon('pencil') + esc(T.editBrief) + '</button>' +
+          (waiting.length > 1
+            ? '<div class="waitmore"><span class="waitmore__k">' + esc(T.alsoWaiting) + '</span>' +
+              waiting.slice(1).map(function (r) {
+                var t = subQ ? (r.answers[subQ.id] || '') : '';
+                return '<button class="waitmore__r" data-godebrief="' + esc(r.id) + '">' +
+                  '<span dir="auto">' + esc(t || fmtDate(r.flownAt)) + '</span>' +
+                  '<span class="mono">' + esc(fmtNum(r.flownAt)) + '</span></button>';
+              }).join('') + '</div>'
+            : '') +
         '</div></section>';
     } else {
       h += '<button class="btn btn--lit btn--block btn--lg" data-new>' +
         icon('plus') + esc(T.newBrief) + '</button>';
+    }
+
+    /* First run. 27 people got a link and no manual, and the three things that
+       make this app worth opening are all invisible from an empty screen. */
+    if (!all.length && !s.startDismissed) {
+      h += '<section class="panel panel--cyan"><div class="panel__head">' + icon('info') +
+        '<span class="panel__t">' + esc(T.startTitle) + '</span></div>' +
+        '<div class="panel__body"><ol class="howto">' +
+          '<li>' + esc(T.startB1) + '</li>' +
+          '<li>' + esc(T.startB2) + '</li>' +
+          '<li>' + esc(T.startB3) + '</li>' +
+        '</ol><button class="btn btn--quiet btn--block" data-startdone style="margin-top:var(--s-3)">' +
+          esc(T.startGo) + '</button></div></section>';
     }
 
     /* carried goals */
@@ -328,17 +390,48 @@
                     : empty('layers', T.noFlights, T.noFlightsHint)) +
       '</div></section>';
 
+    /* Backup, where it can actually be seen. It used to be a note inside
+       הגדרות, which is the one screen a pilot never opens; everything here
+       exists on exactly one phone. */
+    var sinceExport = daysSince(s.lastExport);
+    if (all.length >= 3 && (sinceExport === null || sinceExport >= 10)) {
+      h += '<div class="note note--warn">' + icon('alert') +
+        '<div><b>' + esc(T.backupHomeTitle) + '</b><br>' + esc(T.backupHomeBody) +
+        '<br><button class="btn btn--amber" data-backupnow style="min-height:36px;margin-top:8px;font-size:var(--t-12)">' +
+        icon('download') + esc(T.backupNow) + '</button></div></div>';
+    }
+
     if (!isStandalone() && !s.installDismissed) {
       h += '<div class="note note--info">' + icon('info') +
-        '<div><b>' + esc(T.installTitle) + '</b><br>' + esc(T.installBody) +
-        '<br><button class="btn btn--quiet" data-dismiss style="min-height:34px;padding:0;margin-top:6px;font-size:var(--t-12)">' +
-        esc(T.gotIt) + '</button></div></div>';
+        '<div><b>' + esc(T.installTitle) + '</b><br>' + esc(installBody()) +
+        '<br><div class="note__acts">' +
+          (installPrompt
+            ? '<button class="btn btn--lit" data-installnow style="min-height:36px;font-size:var(--t-12)">' +
+              icon('download') + esc(T.installNow) + '</button>'
+            : '') +
+          '<button class="btn btn--quiet" data-dismiss style="min-height:36px;font-size:var(--t-12)">' +
+          esc(T.gotIt) + '</button></div></div></div>';
     }
 
     h += '</div>';
     viewEl.innerHTML = h;
 
     on(viewEl, '[data-new]', 'click', function () { go('brief'); });
+    on(viewEl, '[data-startdone]', 'click', function () { Store.set('startDismissed', true); screenHome(); });
+    on(viewEl, '[data-backupnow]', 'click', function () {
+      if (!Store.count()) return toast(T.noFlights, 'alert');
+      saveFile('tahkir-backup-' + stamp() + '.json', Store.toJSON(), 'application/json');
+      setTimeout(screenHome, 500);
+    });
+    on(viewEl, '[data-installnow]', 'click', function () {
+      if (!installPrompt) return;
+      var p = installPrompt; installPrompt = null;
+      p.prompt();
+      p.userChoice.then(function (r) {
+        if (r && r.outcome === 'accepted') toast(T.installedToast, 'download');
+        screenHome();
+      }).catch(function () {});
+    });
     on(viewEl, '[data-godebrief]', 'click', function (e) { go('debrief/' + e.currentTarget.dataset.godebrief); });
     on(viewEl, '[data-gobrief]', 'click', function (e) { go('brief/' + e.currentTarget.dataset.gobrief); });
     on(viewEl, '.frow', 'click', function (e) { go('flight/' + e.currentTarget.dataset.id); });
@@ -367,6 +460,12 @@
 
   function weekday(iso) {
     return parseISO(iso).toLocaleDateString('he-IL', { weekday: 'long' });
+  }
+  function monthKey(iso) { return String(iso || '').slice(0, 7); }
+  function monthLabel(iso) {
+    var d = parseISO(iso), now = new Date();
+    return d.toLocaleDateString('he-IL', d.getFullYear() === now.getFullYear()
+      ? { month: 'long' } : { month: 'long', year: 'numeric' });
   }
 
   /** The category a waiting goal belongs to, so it is obvious why a goal is
@@ -404,17 +503,26 @@
   function screenForm() {
     var isBrief = route.name === 'brief';
     var stage = isBrief ? 'brief' : 'debrief';
-    var rec, isNew = false;
+    var rec, isNew = false, restored = false;
 
+    /* Every form autosaves now, keyed by stage and record id. Before this only
+       a brand-new תדריך did, so the תחקיר — the long one, written standing on
+       the apron with a dozen exercise notes in it — lived in the DOM and
+       nowhere else until the save button was pressed. A phone call, a flat
+       battery, or iOS discarding a backgrounded PWA took the lot. */
     if (route.param) {
       rec = Store.get(route.param);
       if (!rec) { go('log'); return; }
       rec = JSON.parse(JSON.stringify(rec));
+      var draft = Store.readDraft(rec.id, stage);
+      if (draft && draft.answers) { rec = draft; restored = true; }
     } else if (isBrief) {
-      rec = Store.readDraft() || Store.newBrief();
+      var fresh = Store.readDraft();
+      rec = fresh || Store.newBrief();
       if (!rec.answers) rec.answers = {};
-      isNew = true;
+      isNew = true; restored = !!fresh;
     } else { go('home'); return; }
+    var draftId = isNew ? '' : rec.id;
 
     var qs = Store.stageQuestions(stage);
     var qNext = Store.roleQuestion('goalsNext');   // target of the ✗ carry
@@ -431,23 +539,85 @@
       back: true, backTo: ''
     });
 
+    var datePanel = '<div class="panel"><div class="panel__body">' +
+      '<div class="field"><label class="field__label" for="f_date"><b>' + esc(T.hDate) + '</b>' +
+        '<span class="cap">DATE</span></label>' +
+        '<input class="input input--num" id="f_date" type="date" value="' + esc(rec.flownAt) + '"></div>' +
+    '</div></div>';
+
+    /* At the תחקיר the brief's plain answers are already filled in and rarely
+       change, but they used to occupy the first four panels — so the pilot who
+       has just landed scrolls past תאריך, פיריט, נושא טיסה and מדריך, plus the
+       whole category chip cloud, before reaching a single field he came to
+       write. They fold into one strip now, with the real inputs still in the
+       DOM behind it so collect() is unchanged. יעדים and סילבוס never fold:
+       grading goals and writing notes per exercise IS the debrief. */
+    var FOLDABLE = ['text', 'textarea', 'choice', 'number', 'date'];
+    function foldable(q) {
+      return !isBrief && q.stage === 'brief' && FOLDABLE.indexOf(q.type) !== -1;
+    }
+    function foldValue(q) {
+      var v = rec.answers[q.id];
+      if (q.type === 'choice' || q.type === 'text' || q.type === 'number') {
+        return String(v == null ? '' : v).trim();
+      }
+      if (q.type === 'date') return v ? fmtFull(v) : '';
+      return String(v == null ? '' : v).trim().split('\n')[0];
+    }
+
     var h = '<div class="formprog"><span class="formprog__fill" id="progFill"></span></div>' +
       '<div class="stack-4">' +
-      '<div class="panel"><div class="panel__body">' +
-        '<div class="field"><label class="field__label" for="f_date"><b>' + esc(T.hDate) + '</b>' +
-          '<span class="cap">DATE</span></label>' +
-          '<input class="input input--num" id="f_date" type="date" value="' + esc(rec.flownAt) + '"></div>' +
-      '</div></div>';
+      /* Autosave means a half-filled form comes back, which is the point — but
+         it also means there has to be a way to say "not that one, start over".
+         Without it a draft you no longer want is impossible to get rid of. */
+      (restored
+        ? '<div class="note note--info">' + icon('pencil') +
+          '<div><b>' + esc(T.draftRestored) + '</b>' +
+          '<div class="note__acts"><button type="button" class="btn btn--quiet" data-draftdrop ' +
+          'style="min-height:34px;font-size:var(--t-12)">' + esc(T.draftDiscard) + '</button></div></div></div>'
+        : '');
 
-    qs.forEach(function (q) {
-      var carried = q.stage === 'brief' && stage === 'debrief';
-      h += '<div class="panel' + (carried ? ' panel--amber' : '') + '"><div class="panel__body">' +
-        fieldFor(q, rec.answers[q.id], carried) + '</div></div>';
-    });
+    var folded = qs.filter(foldable);
+    if (!folded.length) {
+      h += datePanel;
+      qs.forEach(function (q) {
+        h += '<div class="panel"><div class="panel__body">' +
+          fieldFor(q, rec.answers[q.id], false) + '</div></div>';
+      });
+    } else {
+      h += '<section class="panel fold" id="briefFold">' +
+        '<button type="button" class="fold__head" data-foldtoggle aria-expanded="false">' +
+          icon('flag') + '<span class="fold__t">' + esc(T.fromBrief) + '</span>' +
+          '<span class="fold__a">' + esc(T.edit) + '</span>' +
+          icon('chevDown', { cls: 'fold__c' }) + '</button>' +
+        '<div class="fold__sum">' +
+          '<div class="fold__r"><span class="fold__k">' + esc(T.hDate) + '</span>' +
+            '<span class="fold__v mono">' + esc(fmtFull(rec.flownAt)) + '</span></div>' +
+          folded.map(function (q) {
+            var v = foldValue(q);
+            return '<div class="fold__r"><span class="fold__k" dir="auto">' + esc(q.label) + '</span>' +
+              '<span class="fold__v' + (v ? '' : ' is-empty') + '" dir="auto">' +
+              esc(v || T.notAnswered) + '</span></div>';
+          }).join('') +
+        '</div>' +
+        '<div class="fold__body" hidden>' + datePanel +
+          folded.map(function (q) {
+            return '<div class="panel panel--amber"><div class="panel__body">' +
+              fieldFor(q, rec.answers[q.id], true) + '</div></div>';
+          }).join('') +
+        '</div></section>';
+
+      qs.forEach(function (q) {
+        if (foldable(q)) return;
+        var carried = q.stage === 'brief';
+        h += '<div class="panel' + (carried ? ' panel--amber' : '') + '"><div class="panel__body">' +
+          fieldFor(q, rec.answers[q.id], carried) + '</div></div>';
+      });
+    }
 
     h += '</div>' +
       '<div class="savebar"><div class="savebar__inner">' +
-        '<span class="savestate" id="saveState">' + (isNew ? esc(T.draftSaving) : '') + '</span>' +
+        '<span class="savestate" id="saveState">' + esc(T.draftSaving) + '</span>' +
         '<span class="spacer"></span>' +
         '<button class="btn btn--lit" data-save>' + icon('check') +
           esc(isBrief ? T.saveBrief : T.saveDebrief) + '</button>' +
@@ -455,6 +625,30 @@
 
     viewEl.innerHTML = '<div id="formRoot">' + h + '</div>';
     var root = $('#formRoot');
+
+    on(root, '[data-foldtoggle]', 'click', function (e) {
+      var sec = $('#briefFold'), body = $('.fold__body', sec), sum = $('.fold__sum', sec);
+      var open = body.hidden;
+      body.hidden = !open; sum.hidden = open;
+      sec.classList.toggle('is-open', open);
+      e.currentTarget.setAttribute('aria-expanded', String(open));
+      // a textarea measured while hidden reports no height at all
+      if (open) $$('.ta', body).forEach(autosize);
+      haptic();
+    });
+
+    on(root, '[data-draftdrop]', 'click', function () {
+      confirmSheet({
+        title: T.draftDiscard, text: T.draftDiscardBody, confirmLabel: T.delete, danger: true,
+        onConfirm: function () {
+          clearTimeout(draftTimer);
+          formFlush = null;                        // or leaving re-writes it
+          Store.clearDraft(draftId, stage);
+          if (isNew) { render(); }                 // straight back to a blank תדריך
+          else { route.param = rec.id; render(); } // back to what is actually saved
+        }
+      });
+    });
 
     /* ---------- field renderers ---------- */
     function label(q, carried) {
@@ -658,10 +852,12 @@
       return entry.items.length;
     }
 
+    /** Returns how many exercises it filled in, so the caller can say it once
+     *  together with the goals rather than firing a second toast on top. */
     function refreshSyllabusMatch(autofill) {
-      if (!qSyl || !qSubj || !global.SyllabusRef) return;
+      if (!qSyl || !qSubj || !global.SyllabusRef) return 0;
       var btn = $('[data-exload="' + qSyl.id + '"]');
-      if (!btn) return;
+      if (!btn) return 0;
       var subject = currentSubject();
       var entry = SyllabusRef.lookup(subject);
       // an entry with no חתך rows has nothing to offer
@@ -676,17 +872,15 @@
         if (!entry && named) note.textContent = T.noSyllabusFor(subject.trim());
       }
 
-      if (!entry || !entry.items.length) return;
+      if (!entry || !entry.items.length) return 0;
       $('[data-exloadname]', btn).textContent = entry.name;
 
       var listEl = $('[data-ex="' + qSyl.id + '"]');
       var isEmpty = !$$('.ex', listEl).some(function (r) {
         return $('[data-extext]', r).value.trim();
       });
-      if (autofill && isEmpty) {
-        var n = fillSyllabus(entry, true);
-        if (n) toast(T.syllabusFilled(n), 'list3');
-      }
+      if (autofill && isEmpty) return fillSyllabus(entry, true);
+      return 0;
     }
 
     /* ---------- goals carried in by category ----------
@@ -729,16 +923,21 @@
         added++;
       });
 
-      if (added) {
-        haptic(10); touched();
-        if (announce) toast(T.goalsPulled(added), 'target');
-      }
+      if (added) { haptic(10); touched(); }
       return added;
     }
 
+    /* One line, not two toasts. Typing a גיחה used to fire "4 exercises
+       loaded" and "2 goals added" at the same moment, and the pair covered the
+       field being typed into. */
     function onSubjectChanged(announce) {
-      refreshSyllabusMatch(announce);
-      refreshGoalCarry(announce);
+      var ex = refreshSyllabusMatch(announce) || 0;
+      var goals = refreshGoalCarry(announce) || 0;
+      if (!announce || (!ex && !goals)) return;
+      var bits = [];
+      if (ex) bits.push(T.syllabusFilled(ex));
+      if (goals) bits.push(T.goalsPulled(goals));
+      toast(bits.join(' · '), ex ? 'list3' : 'target');
     }
 
     if (qSubj) {
@@ -844,17 +1043,25 @@
 
     function touched() {
       progress();
-      if (!isNew) return;
       clearTimeout(draftTimer);
-      draftTimer = setTimeout(function () {
-        Store.saveDraft(collect());
-        var el = $('#saveState');
-        if (el) {
-          el.textContent = T.draftSaved;
-          setTimeout(function () { if (el.isConnected) el.textContent = T.draftSaving; }, 1200);
-        }
-      }, 500);
+      draftTimer = setTimeout(writeDraft, 500);
     }
+
+    function writeDraft() {
+      clearTimeout(draftTimer);
+      if (!viewEl.contains(root)) return;      // the screen is already gone
+      Store.saveDraft(collect(), stage);
+      var el = $('#saveState');
+      if (el) {
+        el.textContent = T.draftSaved;
+        setTimeout(function () { if (el.isConnected) el.textContent = T.draftSaving; }, 1200);
+      }
+    }
+
+    /* Flush on the way out rather than trusting the 500ms timer to have fired.
+       Handed to the one set of listeners registered in boot(); registering them
+       here would add another three on every render of a form. */
+    formFlush = writeDraft;
 
     root.addEventListener('input', function (e) {
       if (e.target.matches('.ta, .ex__notes')) autosize(e.target);
@@ -1081,7 +1288,11 @@
       });
       if (!any) { toast(T.needSomething, 'alert'); return; }
       Store.save(d).then(function (saved) {
-        if (isNew) Store.clearDraft();
+        // the draft has served its purpose; leaving it would reopen the form
+        // with a copy of what is now saved
+        clearTimeout(draftTimer);
+        formFlush = null;
+        Store.clearDraft(draftId, stage);
         haptic(16);
         toast(isBrief ? T.briefSavedToast : T.debriefSavedToast);
         go(isBrief ? '' : 'flight/' + saved.id);
@@ -1296,12 +1507,15 @@
       (logSelect
         ? '<div class="opts">' +
             '<button class="opt opt--sm" data-selweek>' + icon('calendar') + esc(T.selectWeek) + '</button>' +
+            '<button class="opt opt--sm" data-selshown>' + icon('check') + esc(T.selectAllShown) + '</button>' +
             '<button class="opt opt--sm" data-selclear>' + esc(T.clearSel) + '</button>' +
           '</div>'
         : '<div class="search">' + icon('search') +
           '<input class="input" id="q" type="search" dir="auto" autocomplete="off" placeholder="' +
             esc(T.search) + '" value="' + esc(logQuery) + '"></div>') +
-      (!logSelect && opts.length ? '<div class="opts" id="logChips">' +
+      /* The chips stay up while selecting. They used to disappear, which made
+         "summarise all my ניווט flights" a hand-pick through the whole log. */
+      (opts.length ? '<div class="opts" id="logChips">' +
         '<button class="opt opt--sm" data-f="" aria-pressed="' + (!anyCat) + '">' + esc(T.all) + '</button>' +
         opts.map(function (o) {
           return '<button class="opt opt--sm" data-f="' + esc(o) + '" dir="auto" aria-pressed="' +
@@ -1319,20 +1533,38 @@
 
     viewEl.classList.toggle('view--noTabs', logSelect);
 
-    function paint() {
+    function shownRows() {
       var picked = Object.keys(logCats).filter(function (k) { return logCats[k]; });
-      var rows = Store.search(logQuery).filter(function (r) {
+      return Store.search(logQuery).filter(function (r) {
         if (!picked.length) return true;
         var cats = Store.categoriesOf(r);
         // matching ANY selected category, so picking AW and ניווט shows both
         return picked.some(function (c) { return cats.indexOf(c) !== -1; });
       });
-      $('#logResults').innerHTML = rows.length
-        ? '<div class="panel"><div class="list">' + rows.map(function (r) {
-            return flightRow(r, logSelect);
-          }).join('') + '</div></div>'
-        : empty('search', Store.count() ? T.noMatches : T.noFlights,
-                Store.count() ? T.noMatchesHint : T.noFlightsHint);
+    }
+
+    function paint() {
+      var rows = shownRows();
+      if (!rows.length) {
+        $('#logResults').innerHTML = empty('search', Store.count() ? T.noMatches : T.noFlights,
+          Store.count() ? T.noMatchesHint : T.noFlightsHint);
+        return;
+      }
+      /* Grouped by month. One flat list is fine at three flights and unreadable
+         at a hundred and twenty, which is where a full course ends up. */
+      var out = '', month = null;
+      rows.forEach(function (r) {
+        var m = monthKey(r.flownAt);
+        if (m !== month) {
+          if (month !== null) out += '</div></div>';
+          month = m;
+          out += '<div class="panel"><div class="listhead">' + esc(monthLabel(r.flownAt)) + '</div>' +
+            '<div class="list">';
+        }
+        out += flightRow(r, logSelect);
+      });
+      out += '</div></div>';
+      $('#logResults').innerHTML = out;
     }
     paint();
 
@@ -1354,6 +1586,10 @@
 
       if (e.target.closest('[data-selweek]')) {
         selectThisWeek(); haptic(12); screenLog(); return;
+      }
+      if (e.target.closest('[data-selshown]')) {
+        shownRows().forEach(function (r) { selected[r.id] = true; });
+        writeSel(); haptic(12); screenLog(); return;
       }
       if (e.target.closest('[data-selclear]')) { selected = {}; writeSel(); screenLog(); return; }
 
@@ -1393,7 +1629,9 @@
     var pending = r.stage !== 'done';
 
     renderTopbar({
-      title: fmtDate(r.flownAt), sub: pending ? T.capBrief : T.capDebrief,
+      // a real date, not "לפני 4 ימים" — this is a permanent record and it gets
+      // read next to a logbook weeks later
+      title: fmtNum(r.flownAt), sub: pending ? T.capBrief : T.capDebrief,
       back: true, backTo: 'log',
       actions: [
         { id: 'share', ic: 'share', label: T.share, run: function () {
@@ -1437,7 +1675,22 @@
       confirmSheet({
         title: T.confirmDeleteFlight(fmtLong(r.flownAt)), text: T.confirmDeleteBody,
         confirmLabel: T.delete, danger: true, icon: 'trash',
-        onConfirm: function () { Store.remove(r.id).then(function () { toast(T.deletedToast, 'trash'); go('log'); }); }
+        onConfirm: function () {
+          Store.remove(r.id).then(function (gone) {
+            // a debrief is the only copy of that conversation there is, so the
+            // confirm is backed by an actual way out
+            toast(T.deletedToast, 'trash', {
+              label: T.undo,
+              run: function () {
+                Store.restore(gone).then(function () {
+                  toast(T.restoredToast, 'checkCircle');
+                  go('flight/' + gone.id);
+                });
+              }
+            });
+            go('log');
+          });
+        }
       });
     });
 
@@ -1544,21 +1797,27 @@
     }
     var wMax = Math.max(1, Math.max.apply(null, weeks.map(function (x) { return x.n; })));
 
+    /* `list` belongs here too. When נקודות עיקריות became an itemized list it
+       silently dropped out of this picker, so the one field worth reading
+       across a whole term was the one you could not pick. */
     var textQs = Store.questions().filter(function (q) {
-      return q.type === 'textarea' || q.type === 'text';
+      return q.type === 'textarea' || q.type === 'text' || q.type === 'list';
     });
     if (!tlField || !textQs.some(function (q) { return q.id === tlField; })) {
       tlField = textQs.length ? textQs[0].id : null;
     }
     var missRows = Object.keys(miss).sort(function (a, b) { return miss[b] - miss[a]; }).slice(0, 6);
     var missMax = missRows.length ? miss[missRows[0]] : 1;
+    // "recurring" means it came back, so count the ones seen more than once —
+    // the readout used to show every goal missed even once under that label
+    var recurringN = Object.keys(miss).filter(function (k) { return miss[k] > 1; }).length;
 
     var h = '<div class="stack-4 stagger">' +
       '<div class="readouts">' +
         ro('cyan', 'clock', T.totalMinutes, 'HOURS', (mins / 60).toFixed(1)) +
         ro('', 'layers', T.rFlights, 'FLIGHTS', String(done.length)) +
         ro('green', 'target', T.goalRate, 'GOALS', rate + '<small>%</small>') +
-        ro('amber', 'alert', T.repeatedGoals, 'REPEAT', String(missRows.length)) +
+        ro('amber', 'alert', T.repeatedGoals, 'REPEAT', String(recurringN)) +
       '</div>' +
 
       '<section class="panel"><div class="panel__head">' + icon('trending') +
@@ -1584,11 +1843,16 @@
         keys.map(function (k, i) { return bar(k, c[k], max, total, i); }).join('') + '</div></div></section>';
     });
 
+    // the panel lists every goal that was missed, so it is titled that way; the
+    // ones that actually came back are marked, which is the useful distinction
     if (missRows.length) {
       h += '<section class="panel panel--red"><div class="panel__head">' + icon('alert') +
-        '<span class="panel__t">' + esc(T.repeatedGoals) + '</span></div>' +
-        '<div class="panel__body"><div class="bars">' +
-        missRows.map(function (k, i) { return bar(k, miss[k], missMax, done.length, i, true); }).join('') +
+        '<span class="panel__t">' + esc(T.missedGoals) + '</span>' +
+        (recurringN ? '<span class="panel__a">' + esc(T.recurringTag) + ' ' + recurringN + '</span>' : '') +
+        '</div><div class="panel__body"><div class="bars">' +
+        missRows.map(function (k, i) {
+          return bar(k, miss[k], missMax, done.length, i, true, miss[k] > 1);
+        }).join('') +
         '</div></div></section>';
     }
 
@@ -1599,31 +1863,149 @@
             esc(q.label) + '</button>';
         }).join('') + '</div>' +
         '<div class="panel"><div class="panel__body"><div class="tl">' + (function () {
-          var rows = done.filter(function (r) { return String(r.answers[tlField] || '').trim(); }).slice(0, 20);
+          // linesOf handles both shapes, so a list question reads as its bullets
+          // instead of stringifying to [object Object]
+          var rows = done.map(function (r) {
+            return { r: r, lines: Store.linesOf(r.answers[tlField]) };
+          }).filter(function (x) { return x.lines.length; }).slice(0, 20);
           if (!rows.length) return '<p class="dim" style="font-size:var(--t-13)">' + esc(T.nothingHere) + '</p>';
-          return rows.map(function (r) {
-            return '<div class="tlrow"><div class="tlrow__m">' + esc(fmtDate(r.flownAt)) + '</div>' +
-              '<div class="tlrow__t" dir="auto">' + esc(r.answers[tlField]) + '</div></div>';
+          return rows.map(function (x) {
+            return '<div class="tlrow"><div class="tlrow__m">' + esc(fmtNum(x.r.flownAt)) + '</div>' +
+              x.lines.map(function (t) {
+                return '<div class="tlrow__t" dir="auto">' + esc(t) + '</div>';
+              }).join('') + '</div>';
           }).join('');
         })() + '</div></div></div></section>';
     }
 
+    h += syllabusProgressPanel();
+    h += instructorPanel(done);
+
     viewEl.innerHTML = h + '</div>';
     on(viewEl, '[data-tlf]', 'click', function (e) { tlField = e.currentTarget.dataset.tlf; screenTrends(); });
+    on(viewEl, '[data-gosyl]', 'click', function () { go('syllabus'); });
+    // an instructor's name is already searchable across every answer, so this
+    // needs no new filter — it just aims the log's search at them
+    on(viewEl, '[data-instq]', 'click', function (e) {
+      logQuery = e.currentTarget.dataset.instq; logCats = {}; go('log');
+    });
 
     function ro(tone, ic, k, cap, v) {
       return '<div class="readout' + (tone ? ' readout--' + tone : '') + '">' +
         '<div class="readout__k">' + icon(ic) + '<span>' + esc(k) + '</span></div>' +
         '<div class="readout__v">' + v + '</div><div class="readout__s">' + esc(cap) + '</div></div>';
     }
-    function bar(label, n, max, total, i, red) {
+    function bar(label, n, max, total, i, red, flag) {
       return '<div class="bar"><div class="bar__top">' +
-        '<span class="bar__label" dir="auto">' + esc(label) + '</span>' +
+        '<span class="bar__label" dir="auto">' + esc(label) +
+          (flag ? '<span class="tagline tagline--amber">' + esc(T.recurringTag) + '</span>' : '') + '</span>' +
         '<span class="bar__val">' + n + (total ? ' · ' + Math.round(n / total * 100) + '%' : '') + '</span></div>' +
         '<div class="bar__track"><div class="bar__fill" style="width:' + Math.round(n / max * 100) +
         '%;animation-delay:' + (i * 34) + 'ms' + (red ? ';background:var(--red);box-shadow:none' : '') +
         '"></div></div></div>';
     }
+  }
+
+  /* ================================================== syllabus + instructors */
+
+  /** Which גיחות in the chart this pilot has already flown, worked out from the
+   *  נושא טיסה he typed rather than from anything he has to maintain. */
+  function syllabusProgress() {
+    if (!global.SyllabusRef || !SyllabusRef.count()) return null;
+    var flownNames = {};
+    Store.done().forEach(function (r) {
+      var q = Store.roleQuestion('subject') || Store.question('q_subject');
+      if (!q) return;
+      var e = SyllabusRef.lookup(r.answers[q.id]);
+      if (e) flownNames[e.name] = (flownNames[e.name] || 0) + 1;
+    });
+
+    var sections = [], byName = {}, next = null, doneN = 0;
+    SyllabusRef.all().forEach(function (e) {
+      var sec = e.section || '—';
+      if (!byName[sec]) { byName[sec] = { name: sec, total: 0, done: 0 }; sections.push(byName[sec]); }
+      byName[sec].total++;
+      if (flownNames[e.name]) { byName[sec].done++; doneN++; }
+      else if (!next) next = e;
+    });
+    return { sections: sections, done: doneN, total: SyllabusRef.count(), next: next, flown: flownNames };
+  }
+
+  function syllabusProgressPanel() {
+    var p = syllabusProgress();
+    if (!p) return '';
+    var pct = p.total ? Math.round(p.done / p.total * 100) : 0;
+    return '<section class="panel"><div class="panel__head">' + icon('list3') +
+      '<span class="panel__t">' + esc(T.sylProgress) + '</span>' +
+      '<span class="panel__a mono">' + pct + '%</span></div>' +
+      '<div class="panel__body">' +
+        '<p class="field__hint" style="margin-bottom:var(--s-3)">' + esc(T.sylDone(p.done, p.total)) + '</p>' +
+        (p.done
+          ? '<div class="bars">' + p.sections.map(function (s, i) {
+              return '<div class="bar"><div class="bar__top">' +
+                '<span class="bar__label" dir="auto">' + esc(s.name) + '</span>' +
+                '<span class="bar__val mono">' + s.done + '/' + s.total + '</span></div>' +
+                '<div class="bar__track"><div class="bar__fill" style="width:' +
+                  Math.round(s.done / Math.max(1, s.total) * 100) +
+                  '%;animation-delay:' + (i * 30) + 'ms"></div></div></div>';
+            }).join('') + '</div>'
+          : '<p class="dim" style="font-size:var(--t-13)">' + esc(T.sylNoneYet) + '</p>') +
+        (p.next
+          ? '<div class="nextup"><span class="nextup__k">' + esc(T.sylNext) + '</span>' +
+            '<span class="nextup__v" dir="auto">' + esc(p.next.name) + '</span>' +
+            '<span class="nextup__s" dir="auto">' + esc(p.next.section || '') + '</span></div>'
+          : '<div class="nextup"><span class="nextup__v">' + esc(T.sylNextNone) + '</span></div>') +
+        '<button class="btn btn--block" data-gosyl style="margin-top:var(--s-3)">' +
+          icon('list3') + esc(T.sylOpenChart) + '</button>' +
+      '</div></section>';
+  }
+
+  /** Debriefs are instructor-driven, so "what does this one keep marking me on"
+   *  is the question the goal loop is already half answering. */
+  function instructorPanel(done) {
+    var qi = Store.roleQuestion('instructor') || Store.question('q_instructor');
+    var qg = Store.roleQuestion('goals');
+    if (!qi) return '';                       // he deleted the question; nothing to group by
+
+    var by = {}, order = [];
+    done.forEach(function (r) {
+      var name = String(r.answers[qi.id] || '').trim();
+      if (!name) return;
+      if (!by[name]) { by[name] = { name: name, n: 0, met: 0, tot: 0, miss: {} }; order.push(by[name]); }
+      var e = by[name];
+      e.n++;
+      if (qg) (r.answers[qg.id] || []).forEach(function (g) {
+        var t = String(g.text || '').trim();
+        if (!t || g.status === 'open') return;
+        e.tot++;
+        if (g.status === 'met') e.met++;
+        else e.miss[t] = (e.miss[t] || 0) + 1;
+      });
+    });
+    if (!order.length) return '';
+    order.sort(function (a, b) { return b.n - a.n || a.name.localeCompare(b.name); });
+
+    return '<section class="panel"><div class="panel__head">' + icon('target') +
+      '<span class="panel__t">' + esc(T.byInstructor) + '</span>' +
+      '<span class="panel__a mono">' + order.length + '</span></div>' +
+      '<div class="panel__body"><div class="instlist">' +
+        order.map(function (e) {
+          var top = Object.keys(e.miss).sort(function (a, b) { return e.miss[b] - e.miss[a]; }).slice(0, 3);
+          return '<button class="inst" data-instq="' + esc(e.name) + '">' +
+            '<span class="inst__top">' +
+              '<span class="inst__n" dir="auto">' + esc(e.name) + '</span>' +
+              '<span class="inst__m mono">' + (e.tot ? Math.round(e.met / e.tot * 100) + '%' : '—') + '</span>' +
+            '</span>' +
+            '<span class="inst__s">' + esc(T.instFlights(e.n)) + '</span>' +
+            (top.length
+              ? '<span class="inst__tags">' + top.map(function (t) {
+                  return '<span class="inst__tag" dir="auto">' + esc(t) +
+                    (e.miss[t] > 1 ? ' ×' + e.miss[t] : '') + '</span>';
+                }).join('') + '</span>'
+              : '') +
+          '</button>';
+        }).join('') +
+      '</div></div></section>';
   }
 
   /* ============================================================= settings */
@@ -2139,6 +2521,8 @@
 
   /** The training chart, read-only. Typing a גיחה into נושא טיסה pulls its
    *  חתך rows into the תדריך; this is where he can see the whole thing. */
+  var sylOpen = {};   // which גיחות are expanded, kept across repaints
+
   function screenSyllabus() {
     renderTopbar({ title: T.syllabusRef, sub: 'SYLLABUS', back: true, backTo: 'settings' });
     var all = global.SyllabusRef ? SyllabusRef.all() : [];
@@ -2147,13 +2531,20 @@
       viewEl.innerHTML = empty('list3', T.syllabusRefEmpty, T.syllabusRefEmptyHint);
       return;
     }
+    var prog = syllabusProgress() || { flown: {}, done: 0, total: all.length };
 
     viewEl.innerHTML = '<div class="stack-4 stagger">' +
       '<div class="search">' + icon('search') +
         '<input class="input" id="sq" type="search" dir="auto" autocomplete="off" placeholder="' +
-        esc(T.search) + '"></div>' +
+        esc(T.searchSyllabus) + '"></div>' +
+      '<div class="sylbar"><div class="sylbar__t">' + esc(T.sylDone(prog.done, prog.total)) + '</div>' +
+        '<div class="sylbar__track"><div class="sylbar__fill" style="width:' +
+          Math.round(prog.done / Math.max(1, prog.total) * 100) + '%"></div></div></div>' +
       '<div id="sylResults"></div></div>';
 
+    /* Collapsed by default. Every גיחה expanded meant 125 panels and 445 rows
+       in the DOM at once, which is a very long thumb-scroll to find one. A
+       search opens what it matched, so nothing is hidden behind a tap. */
     function paint(filter) {
       var f = SyllabusRef.norm(filter || '');
       var rows = all.filter(function (e) {
@@ -2161,27 +2552,54 @@
         if (SyllabusRef.norm(e.name).indexOf(f) !== -1) return true;
         return e.items.some(function (i) { return SyllabusRef.norm(i).indexOf(f) !== -1; });
       });
-      $('#sylResults').innerHTML = rows.length
-        ? rows.map(function (e) {
-            return '<section class="panel" style="margin-bottom:var(--s-3)">' +
-              '<div class="panel__head">' + icon('flag') +
-                '<span class="panel__t" dir="auto">' + esc(e.name) +
-                  (e.section ? ' <span class="dim" style="font-weight:500;font-size:var(--t-11)">' +
-                    esc(e.section) + '</span>' : '') + '</span>' +
-                '<span class="panel__a mono">' + e.items.length + '</span></div>' +
-              '<div class="panel__body"><div class="exlist">' +
-                e.items.map(function (t, i) {
-                  return '<div class="ex"><div class="ex__top">' +
-                    '<span class="ex__n">' + (i + 1) + '</span>' +
-                    '<span class="ex__t" dir="auto" style="display:flex;align-items:center">' +
-                      esc(t) + '</span></div></div>';
-                }).join('') +
-              '</div></div></section>';
-          }).join('')
-        : empty('search', T.noMatches, T.noMatchesHint);
+      if (!rows.length) {
+        $('#sylResults').innerHTML = empty('search', T.noMatches, T.noMatchesHint);
+        return;
+      }
+
+      var out = '', section = null;
+      rows.forEach(function (e) {
+        var sec = e.section || '—';
+        if (sec !== section) {
+          if (section !== null) out += '</div>';
+          section = sec;
+          out += '<h2 class="h-sect" dir="auto">' + esc(sec) + '</h2><div class="sylgroup">';
+        }
+        var open = !!f || !!sylOpen[e.name];
+        var flown = !!prog.flown[e.name];
+        out += '<section class="sylrow' + (open ? ' is-open' : '') + (flown ? ' is-flown' : '') + '">' +
+          '<button type="button" class="sylrow__head" data-syl="' + esc(e.name) + '" aria-expanded="' + open + '">' +
+            (flown ? '<span class="sylrow__tick">' + icon('check') + '</span>'
+                   : '<span class="sylrow__tick sylrow__tick--off"></span>') +
+            '<span class="sylrow__n" dir="auto">' + esc(e.name) + '</span>' +
+            (flown ? '<span class="tagline">' + esc(T.sylFlown) + '</span>' : '') +
+            '<span class="sylrow__c mono">' + e.items.length + '</span>' +
+            icon('chevDown', { cls: 'sylrow__chev' }) +
+          '</button>' +
+          (open
+            ? '<div class="exlist">' + e.items.map(function (t, i) {
+                return '<div class="ex"><div class="ex__top">' +
+                  '<span class="ex__n">' + (i + 1) + '</span>' +
+                  '<span class="ex__t" dir="auto" style="display:flex;align-items:center">' +
+                    esc(t) + '</span></div></div>';
+              }).join('') + '</div>'
+            : '') +
+        '</section>';
+      });
+      out += '</div>';
+      $('#sylResults').innerHTML = out;
     }
     paint('');
+
     $('#sq').addEventListener('input', function (e) { paint(e.target.value); });
+    $('#sylResults').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-syl]');
+      if (!b) return;
+      var n = b.dataset.syl;
+      sylOpen[n] = !sylOpen[n];
+      haptic();
+      paint($('#sq').value);
+    });
   }
 
   /* ================================================================= lock */
@@ -2288,6 +2706,21 @@
     sheetEl = document.getElementById('sheet');
     lockEl = document.getElementById('lockScreen');
     sheetEl.addEventListener('click', function (e) { if (e.target === sheetEl) sheetEl.close(); });
+
+    /* Registered once, not per render. pagehide is the event iOS actually
+       delivers when a PWA is swiped away, and hidden covers backgrounding —
+       between them an unsaved form survives the phone being put down. */
+    function flushForm() { if (formFlush) { try { formFlush(); } catch (e) {} } }
+    global.addEventListener('pagehide', flushForm);
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'hidden') flushForm();
+    });
+    global.addEventListener('beforeinstallprompt', function (e) {
+      e.preventDefault();
+      installPrompt = e;
+      if (route.name === 'home') screenHome();
+    });
+    global.addEventListener('appinstalled', function () { installPrompt = null; });
 
     Store.init().then(function () {
       applyTheme();

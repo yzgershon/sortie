@@ -88,16 +88,40 @@
 
   /* -------------------------------------------------------------- session */
 
-  function readSession() {
+  /** The stored session, whatever state it is in. `expired` is reported rather
+   *  than swallowed, because being out of date and being absent need different
+   *  answers when there is no signal to sign in with. */
+  function rawSession() {
     try {
       var s = JSON.parse(localStorage.getItem(LS_SESSION) || 'null');
-      if (!s || !s.email || !(+s.exp > Date.now())) return null;
+      if (!s || !s.email) return null;
+      s.expired = !(+s.exp > Date.now());
       return s;
     } catch (e) { return null; }
+  }
+  function readSession() {
+    var s = rawSession();
+    return s && !s.expired ? s : null;
   }
   function writeSession(email) {
     var s = { email: email, exp: Date.now() + sessionDays() * DAY, at: Date.now() };
     try { localStorage.setItem(LS_SESSION, JSON.stringify(s)); } catch (e) {}
+    return s;
+  }
+  /** Push the expiry out again. Called on every launch that passes the
+   *  allowlist, so the window is thirty days of NOT USING the app rather than
+   *  thirty days from signing in. Without this the whole course, who all
+   *  signed in the same week, would have been bounced to Google in the same
+   *  week — and anyone without signal at that moment could not get back to
+   *  their own flights at all. */
+  function touchSession(s) {
+    if (!s) return s;
+    var next = Date.now() + sessionDays() * DAY;
+    // only write when it actually moves the needle, to avoid a write per launch
+    if (+s.exp > next - DAY) return s;
+    s.exp = next;
+    try { localStorage.setItem(LS_SESSION, JSON.stringify({ email: s.email, exp: s.exp, at: s.at || Date.now() })); }
+    catch (e) {}
     return s;
   }
   function signOut() {
@@ -183,6 +207,8 @@
   g.Auth = {
     enabled: enabled,
     session: readSession,
+    rawSession: rawSession,
+    touchSession: touchSession,
     authUrl: authUrl,
     signIn: signIn,
     signOut: signOut,
@@ -200,7 +226,14 @@
      *   error   the sign-in came back broken; say so and offer another go
      *
      * The allowlist is re-checked against the stored session on every launch,
-     * so taking somebody off the list actually takes them off it.
+     * so taking somebody off the list actually takes them off it. A launch that
+     * passes also pushes the expiry out — see touchSession.
+     *
+     * An EXPIRED session with no network is let through anyway, as long as the
+     * address is still on the list. Signing in needs Google, Google needs
+     * signal, and refusing here would mean a pilot with a full logbook on the
+     * device and no reception cannot open his own flights. The allowlist check
+     * is local and still runs, so this widens nothing except the clock.
      */
     resolve: function () {
       if (!enabled()) return Promise.resolve({ state: 'off' });
@@ -215,12 +248,15 @@
         });
       }
 
-      var s = readSession();
+      var s = rawSession();
       if (!s) return Promise.resolve({ state: 'needed' });
       return isAllowed(s.email).then(function (yes) {
-        if (yes) return { state: 'ok', email: s.email };
-        signOut();
-        return { state: 'denied', email: s.email };
+        if (!yes) { signOut(); return { state: 'denied', email: s.email }; }
+        if (!s.expired) { touchSession(s); return { state: 'ok', email: s.email }; }
+        if (g.navigator && g.navigator.onLine === false) {
+          return { state: 'ok', email: s.email, stale: true };
+        }
+        return { state: 'needed', email: s.email };
       });
     }
   };

@@ -17,7 +17,12 @@
   'use strict';
 
   var DB_NAME = 'sortie', DB_VER = 1, STORE = 'sorties';
-  var LS_MIRROR = 'sortie:mirror', LS_SETTINGS = 'sortie:settings', LS_DRAFT = 'sortie:draft';
+  var LS_MIRROR = 'sortie:mirror', LS_SETTINGS = 'sortie:settings';
+  /* Drafts are per form, not one global slot. The old single key only ever held
+     a new תדריך, so a תחקיר — the long one, filled standing on the apron — was
+     kept in the DOM and nowhere else until the save button. */
+  var LS_DRAFT_OLD = 'sortie:draft', DRAFT_PREFIX = 'sortie:draft:';
+  var DRAFT_TTL = 30 * 86400000;
   var SCHEMA = 4;
 
   var db = null, dbHealthy = false, cache = [], settings = null;
@@ -37,7 +42,7 @@
       { id: 'q_subject',    label: 'נושא טיסה',    type: 'text', suggest: true, role: 'subject',
         options: ['AW', 'ניווט', 'הקפות', 'מבנה', 'גנ״מ', 'מ״מ', 'משולבת', 'לילה', 'סולו', 'א״א', 'מאמן'],
         stage: 'brief', inDebrief: 'edit' },
-      { id: 'q_instructor', label: 'מדריך',        type: 'text', suggest: true,
+      { id: 'q_instructor', label: 'מדריך',        type: 'text', suggest: true, role: 'instructor',
         stage: 'brief', inDebrief: 'edit' },
       { id: 'q_area',       label: 'איזור',        type: 'text', suggest: true,
         stage: 'brief', inDebrief: 'edit' },
@@ -51,7 +56,7 @@
 
       /* ---- תחקיר ---- */
       { id: 'q_minutes',    label: 'דקות טיסה',    type: 'minutes',  stage: 'debrief' },
-      { id: 'q_points',     label: 'נקודות עיקריות', type: 'list',    stage: 'debrief' },
+      { id: 'q_points',     label: 'נקודות עיקריות', type: 'list', role: 'points', stage: 'debrief' },
       { id: 'q_safety_d',   label: 'בטיחות',       type: 'textarea', stage: 'debrief' },
       { id: 'q_solo',       label: 'אישור לסולו',  type: 'choice', options: ['כן', 'לא'], role: 'solo',
         stage: 'debrief' },
@@ -129,6 +134,41 @@
     try { return JSON.parse(localStorage.getItem(LS_MIRROR) || '[]'); } catch (e) { return []; }
   }
 
+  /* --------------------------------------------------------------- drafts */
+
+  /** Where a form's autosave lives. A brand-new תדריך has no record yet, so it
+   *  gets the one fixed 'new' slot; everything else is keyed by stage AND id,
+   *  because the same flight has a תדריך form and a תחקיר form and they hold
+   *  different answers. */
+  function draftKey(id, stage) {
+    if (!id) return DRAFT_PREFIX + 'new';
+    return DRAFT_PREFIX + (stage === 'brief' ? 'b' : 'd') + ':' + id;
+  }
+
+  /** Drop drafts for flights that no longer exist and drafts nobody came back
+   *  to. Without this every abandoned form stays in localStorage for good. */
+  function pruneDrafts() {
+    var live = {};
+    cache.forEach(function (r) { live[r.id] = 1; });
+    var kill = [];
+    try {
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (!k || k.indexOf(DRAFT_PREFIX) !== 0) continue;
+        var rest = k.slice(DRAFT_PREFIX.length);
+        if (rest !== 'new') {
+          var id = rest.slice(2);                 // strip the "b:" / "d:"
+          if (!live[id]) { kill.push(k); continue; }
+        }
+        var raw = null;
+        try { raw = JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) {}
+        if (!raw || (raw.at && Date.now() - raw.at > DRAFT_TTL)) kill.push(k);
+      }
+      kill.forEach(function (k) { localStorage.removeItem(k); });
+    } catch (e) {}
+    return kill.length;
+  }
+
   /* ------------------------------------------------------------- settings */
 
   function defaultSettings() {
@@ -143,7 +183,7 @@
   /* Targeted migrations. Bumping SCHEMA rebuilds the whole question list from
      the defaults, which throws away anything he renamed or added; these change
      one field and leave the rest of his setup alone. */
-  var MIG = 2;
+  var MIG = 3;
   function migrate(base) {
     var m = +base.mig || 0;
     function byId(id) {
@@ -160,6 +200,15 @@
       var qs = byId('q_solo');
       if (qs && !qs.role) qs.role = 'solo';
       m = 2;
+    }
+    if (m < 3) {
+      // מדריך and נקודות עיקריות are read by role now, so the instructor
+      // breakdown and the read-across list survive a rename
+      var qi = byId('q_instructor');
+      if (qi && !qi.role) qi.role = 'instructor';
+      var qpt = byId('q_points');
+      if (qpt && !qpt.role) qpt.role = 'points';
+      m = 3;
     }
     base.mig = MIG;
   }
@@ -229,7 +278,11 @@
   /** A goal. `cats` is which flight categories it is waiting on: a goal missed
    *  on an AW flight comes back on the next AW flight and nowhere else. Empty
    *  means it belongs to no category in particular and rides the next flight
-   *  whatever it is — that is what a goal typed on the home screen gets. */
+   *  whatever it is — that is what a goal typed on the home screen gets.
+   *
+   *  `from` is the flight that put it on the shelf. It exists so re-saving a
+   *  flight replaces only that flight's own contribution instead of rebuilding
+   *  the whole shelf from one record — see the carry in save(). */
   function normalizeGoal(g) {
     if (typeof g === 'string') g = { text: g };
     return {
@@ -238,7 +291,8 @@
       status: ['open', 'met', 'missed'].indexOf(g.status) === -1 ? 'open' : g.status,
       cats: Array.isArray(g.cats)
         ? g.cats.map(String).filter(function (c) { return c.trim(); })
-        : []
+        : [],
+      from: g.from ? String(g.from) : null
     };
   }
   /** One line of an itemized answer, e.g. a נקודות עיקריות bullet. */
@@ -364,6 +418,43 @@
 
   function roleQuestion(role) {
     return settings.questions.filter(function (q) { return q.role === role && !q.archived; })[0] || null;
+  }
+
+  /** What a debriefed flight leaves outstanding: the goals it set for next time
+   *  plus the ones it marked ✗. Trimmed text, de-duplicated, order kept. */
+  function carriedBy(rec) {
+    var qThis = roleQuestion('goals'), qNext = roleQuestion('goalsNext');
+    var out = [], seen = {};
+    function push(t) {
+      t = String(t == null ? '' : t).trim();
+      if (!t || seen[t]) return;
+      seen[t] = 1; out.push(t);
+    }
+    if (qNext) (rec.answers[qNext.id] || []).forEach(function (g) { push(g.text); });
+    if (qThis) (rec.answers[qThis.id] || []).forEach(function (g) {
+      if (g.status === 'missed') push(g.text);
+    });
+    return out;
+  }
+  /** A goal is identified by its wording AND what it is waiting on, so the same
+   *  sentence pending on ניווט does not swallow the copy an AW flight missed. */
+  function gkey(t, cs) { return t + ' :: ' + (cs || []).slice().sort().join(','); }
+
+  /** Did a flight AFTER this one already grade this goal? Editing an old sortie
+   *  must not contradict a newer one: putting a ✗ back on a July flight cannot
+   *  undo the ✓ an August flight recorded for the same goal. */
+  function settledAfter(rec, text) {
+    var qThis = roleQuestion('goals');
+    if (!qThis) return false;
+    var t = String(text).trim();
+    return cache.some(function (r) {
+      if (r.id === rec.id || r.stage !== 'done') return false;
+      if (r.flownAt < rec.flownAt) return false;
+      if (r.flownAt === rec.flownAt && (r.createdAt || 0) <= (rec.createdAt || 0)) return false;
+      return (r.answers[qThis.id] || []).some(function (g) {
+        return String(g.text || '').trim() === t && g.status !== 'open';
+      });
+    });
   }
 
   function sortRecords(a, b) {
@@ -506,6 +597,7 @@
           cache.forEach(function (r) { if (!inDb[r.id]) idbPut(clone(r)); });
         }
         if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function () {});
+        pruneDrafts();
         return Store;
       });
     },
@@ -617,6 +709,12 @@
       for (var i = 0; i < cache.length; i++) if (cache[i].stage === 'brief') return cache[i];
       return null;
     },
+    /** ALL of them, newest first. Flying four times a week means forgetting a
+     *  תחקיר is routine, and showing only the newest hid the older one
+     *  everywhere except the log. */
+    openBriefs: function () {
+      return cache.filter(function (r) { return r.stage === 'brief'; });
+    },
     done: function () { return cache.filter(function (r) { return r.stage === 'done'; }); },
 
     /** A fresh brief. Only the untagged goals come in here — the ones tied to a
@@ -633,8 +731,17 @@
       return rec;
     },
 
+    /** The goal texts a debriefed flight leaves outstanding: what it set for
+     *  next time, plus what it marked ✗. */
+    carriedBy: carriedBy,
+
     save: function (rec) {
       var existing = rec.id ? Store.get(rec.id) : null;
+      // snapshot BEFORE the merge — the goal delta below compares against it,
+      // and Object.assign(existing, …) would otherwise overwrite it in place
+      var wasDone = !!(existing && existing.stage === 'done');
+      var before = wasDone ? carriedBy(existing) : [];
+
       var out;
       if (existing) {
         out = normalize(Object.assign({}, existing, rec));
@@ -650,36 +757,58 @@
       // this flight's categories. They come out again on the next flight that
       // shares one, so an AW goal waits for the next AW and nothing else.
       if (out.stage === 'done') {
-        var qThis = roleQuestion('goals'), qNext = roleQuestion('goalsNext');
         var cats = categoriesOf(out);
-        var carry = [];
-        if (qNext) (out.answers[qNext.id] || []).forEach(function (g) {
-          if (g.text.trim()) carry.push(g.text.trim());
-        });
-        if (qThis) (out.answers[qThis.id] || []).forEach(function (g) {
-          if (g.status === 'missed' && g.text.trim()) carry.push(g.text.trim());
-        });
+        var now = carriedBy(out);
 
-        // Everything this flight could have pulled in is settled now: the goals
-        // sharing a category with it, and the untagged ones every flight gets.
-        // Whatever it did not settle keeps waiting for its own category.
-        var keep = settings.nextGoals.filter(function (g) {
-          if (!g.cats.length) return false;
-          return !g.cats.some(function (c) { return cats.indexOf(c) !== -1; });
-        });
+        if (!wasDone) {
+          /* First time this flight is debriefed. Everything it could have
+             pulled in is settled: the goals sharing a category with it, and the
+             untagged ones every flight gets. Whatever it did not settle keeps
+             waiting for its own category. */
+          var keep = settings.nextGoals.filter(function (g) {
+            if (!g.cats.length) return false;
+            return !g.cats.some(function (c) { return cats.indexOf(c) !== -1; });
+          });
+          // keyed on the categories too, so the same wording waiting on ניווט
+          // does not swallow the copy this AW flight just missed
+          var seen = {};
+          keep.forEach(function (g) { seen[gkey(g.text.trim(), g.cats)] = 1; });
+          now.forEach(function (t) {
+            var k = gkey(t, cats);
+            if (seen[k]) return;
+            seen[k] = 1;
+            keep.push(normalizeGoal({ text: t, cats: cats, from: out.id }));
+          });
+          settings.nextGoals = keep;
+        } else {
+          /* Saving a flight that was ALREADY debriefed — which is what "edit a
+             flight" does, for a typo or a note added later. Rebuilding the
+             shelf from this one record was wrong twice over: it resurrected
+             goals a later flight had since achieved, and it dropped goals a
+             later flight of the same category was still waiting on. Both were
+             reproduced; see dev/probe-resave.js.
+             So apply only what actually CHANGED in this record, and touch no
+             goal that belongs to another flight. An edit that does not move a
+             ✓/✗ is a no-op here, which is the common case. */
+          var had = {}, has = {};
+          before.forEach(function (t) { had[t] = 1; });
+          now.forEach(function (t) { has[t] = 1; });
 
-        // keyed on the categories too, so the same wording waiting on ניווט does
-        // not swallow the copy this AW flight just missed
-        function gkey(t, cs) { return t + ' :: ' + cs.slice().sort().join(','); }
-        var seen = {};
-        keep.forEach(function (g) { seen[gkey(g.text.trim(), g.cats)] = 1; });
-        carry.forEach(function (t) {
-          var k = gkey(t, cats);
-          if (seen[k]) return;
-          seen[k] = 1;
-          keep.push(normalizeGoal({ text: t, cats: cats }));
-        });
-        settings.nextGoals = keep;
+          settings.nextGoals = settings.nextGoals.filter(function (g) {
+            // no longer outstanding, and this flight is the one that put it up
+            return !(g.from === out.id && had[g.text.trim()] && !has[g.text.trim()]);
+          });
+          var onShelf = {};
+          settings.nextGoals.forEach(function (g) { onShelf[g.text.trim()] = 1; });
+          now.forEach(function (t) {
+            if (had[t] || onShelf[t]) return;      // unchanged, or already there
+            // and never contradict a later flight: marking something ✗ on an old
+            // sortie must not undo a ✓ that a flight after it already recorded
+            if (settledAfter(out, t)) return;
+            onShelf[t] = 1;
+            settings.nextGoals.push(normalizeGoal({ text: t, cats: cats, from: out.id }));
+          });
+        }
         saveSettings();
       }
 
@@ -687,10 +816,25 @@
       return idbPut(clone(out)).then(function () { return out; });
     },
 
+    /** Resolves with the record that was removed, so the caller can offer to
+     *  put it back. A flight record is the only copy of that debrief there is,
+     *  and a confirm dialog is a worse safety net than an undo. */
     remove: function (id) {
+      var gone = Store.get(id);
+      var copy = gone ? clone(gone) : null;
       cache = cache.filter(function (r) { return r.id !== id; });
       mirror();
-      return idbDelete(id);
+      Store.clearDraft(id, 'brief'); Store.clearDraft(id, 'debrief');
+      return idbDelete(id).then(function () { return copy; });
+    },
+    /** Put a deleted flight back exactly as it was, goal shelf untouched. */
+    restore: function (rec) {
+      if (!rec) return Promise.resolve(null);
+      var out = normalize(rec);
+      out.updatedAt = rec.updatedAt || Date.now();
+      if (!Store.get(out.id)) cache.push(out);
+      resort(); mirror();
+      return idbPut(clone(out)).then(function () { return out; });
     },
     clearAll: function () {
       cache = []; settings.nextGoals = [];
@@ -764,11 +908,43 @@
     toCSV: toCSV, toJSON: toJSON, importJSON: importJSON, answerToText: answerToText,
     markExported: function () { settings.lastExport = Date.now(); saveSettings(); },
 
-    saveDraft: function (d) { try { localStorage.setItem(LS_DRAFT, JSON.stringify(d)); } catch (e) {} },
-    readDraft: function () {
-      try { return JSON.parse(localStorage.getItem(LS_DRAFT) || 'null'); } catch (e) { return null; }
+    /* --- drafts ---
+       One slot per form: 'new' for a תדריך that has no record yet, otherwise
+       the stage and the record id. A single shared slot could only ever hold
+       one form, which is why the תחקיר had no autosave at all. */
+    draftKey: draftKey,
+    saveDraft: function (d, stage) {
+      try {
+        localStorage.setItem(draftKey(d && d.id, stage),
+          JSON.stringify({ at: Date.now(), rec: d }));
+      } catch (e) {}
     },
-    clearDraft: function () { try { localStorage.removeItem(LS_DRAFT); } catch (e) {} }
+    readDraft: function (id, stage) {
+      var raw = null;
+      try { raw = JSON.parse(localStorage.getItem(draftKey(id, stage)) || 'null'); } catch (e) {}
+      // the single-slot draft written by builds up to v20
+      if (!raw && !id) {
+        try { raw = JSON.parse(localStorage.getItem(LS_DRAFT_OLD) || 'null'); } catch (e) {}
+      }
+      if (!raw) return null;
+      var rec = raw && raw.rec ? raw.rec : raw;          // bare record = old shape
+      var at = +(raw && raw.at) || 0;
+      if (at && Date.now() - at > DRAFT_TTL) return null;
+      return rec && typeof rec === 'object' ? rec : null;
+    },
+    draftAge: function (id, stage) {
+      try {
+        var raw = JSON.parse(localStorage.getItem(draftKey(id, stage)) || 'null');
+        return raw && raw.at ? Date.now() - raw.at : null;
+      } catch (e) { return null; }
+    },
+    clearDraft: function (id, stage) {
+      try {
+        localStorage.removeItem(draftKey(id, stage));
+        if (!id) localStorage.removeItem(LS_DRAFT_OLD);
+      } catch (e) {}
+    },
+    pruneDrafts: pruneDrafts
   };
 
   global.Store = Store;

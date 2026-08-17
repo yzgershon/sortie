@@ -941,4 +941,135 @@ body[data-route="brief"] .toaster, body[data-route="debrief-edit"] .toaster { bo
 .stagger > *:nth-child(n+6) { animation-delay: 150ms }
 @keyframes fadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
+/* ==========================================================================
+   v21 — the fold at the תחקיר, waiting briefs, syllabus progress, instructors,
+   month headers, and a toast that can carry an undo.
+   ========================================================================== */
+
+/* --- a toast with one action on it ---------------------------------------- */
+.toast--act { pointer-events: auto; }
+.toast__b {
+  margin-inline-start: var(--s-2); padding: 4px var(--s-3); min-height: 30px;
+  background: var(--cyan-dim); border: 1px solid var(--cyan-line); border-radius: var(--r-xs);
+  color: var(--cyan); font: inherit; font-size: var(--t-12); font-weight: 700; flex: none;
+}
+.toast__b:active { background: var(--cyan); color: var(--on-lit); }
+
+/* --- notes that carry buttons --------------------------------------------- */
+.note--warn { background: var(--amber-dim); border-color: var(--amber-line); }
+.note__acts { display: flex; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-2); }
+.note__acts .btn { padding-inline: var(--s-3); }
+
+/* --- first run ------------------------------------------------------------ */
+.panel--cyan { border-color: var(--cyan-line); }
+.howto { margin: 0; padding-inline-start: var(--s-5); display: grid; gap: 7px;
+  font-size: var(--t-13); line-height: 1.6; color: var(--fg-mid); }
+.howto li::marker { color: var(--cyan); font-family: var(--font-mono); font-size: var(--t-11); }
+
+/* --- the other briefs still waiting on a תחקיר ---------------------------- */
+.waitmore { border-top: 1px solid var(--rule-2); padding-top: var(--s-2); display: grid; gap: 2px; }
+.waitmore__k { font-size: var(--t-10); font-family: var(--font-mono); letter-spacing: .1em;
+  color: var(--fg-dim); text-transform: uppercase; }
+.waitmore__r {
+  display: flex; align-items: center; gap: var(--s-3); min-height: 42px;
+  background: transparent; border: 0; border-bottom: 1px solid var(--rule);
+  color: var(--fg); font: inherit; font-size: var(--t-14); font-weight: 600; text-align: start;
+}
+.waitmore__r:last-child { border-bottom: 0; }
+.waitmore__r span:first-child { flex: 1; min-width: 0; unicode-bidi: plaintext;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.waitmore__r .mono { font-family: var(--font-mono); font-size: var(--t-11); color: var(--fg-dim); direction: ltr; }
+.waitmore__r:active { color: var(--amber); }
+
+/* --- the brief, folded away at the תחקיר ---------------------------------- */
+.fold { overflow: hidden; }
+.fold__head {
+  width: 100%; display: flex; align-items: center; gap: var(--s-2);
+  padding: var(--s-3) var(--s-4); min-height: 48px;
+  background: var(--face-2); border: 0; border-bottom: 1px solid var(--rule-2);
+  color: var(--fg-mid); font: inherit; text-align: start;
+}
+.fold__head svg:first-child { width: 15px; height: 15px; flex: none; color: var(--amber); }
+.fold__t { flex: 1; font-size: var(--t-11); font-family: var(--font-mono);
+  letter-spacing: .1em; text-transform: uppercase; }
+.fold__a { font-size: var(--t-12); font-weight: 700; color: var(--cyan); }
+.fold__c { width: 16px; height: 16px; flex: none; transition: transform var(--d-fast); }
+.fold.is-open .fold__c { transform: rotate(180deg); }
+.fold__sum { padding: var(--s-2) var(--s-4) var(--s-3); display: grid; }
+.fold__r { display: flex; align-items: baseline; gap: var(--s-3);
+  padding: 7px 0; border-bottom: 1px solid var(--rule); font-size: var(--t-13); }
+.fold__r:last-child { border-bottom: 0; }
+.fold__k { flex: none; min-width: 84px; color: var(--fg-dim); font-size: var(--t-12);
+  unicode-bidi: plaintext; }
+.fold__v { flex: 1; min-width: 0; color: var(--fg); font-weight: 600; unicode-bidi: plaintext;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fold__v.is-empty { color: var(--fg-dim); font-weight: 400; }
+.fold__v.mono { font-family: var(--font-mono); direction: ltr; text-align: start; }
+.fold__body { display: grid; gap: var(--s-3); padding: var(--s-3) var(--s-3) var(--s-4); }
+.fold__body .panel { background: transparent; }
+
+/* --- month headers in the log --------------------------------------------- */
+.listhead {
+  padding: var(--s-2) var(--s-4); background: var(--face-2);
+  border-bottom: 1px solid var(--rule-2);
+  font-size: var(--t-11); font-weight: 700; color: var(--fg-mid);
+  font-family: var(--font-mono); letter-spacing: .08em; text-transform: uppercase;
+}
+
+/* --- syllabus progress ---------------------------------------------------- */
+.nextup { margin-top: var(--s-3); padding: var(--s-3); display: grid; gap: 2px;
+  background: var(--cyan-dim); border: 1px solid var(--cyan-line); border-radius: var(--r-xs); }
+.nextup__k { font-size: var(--t-10); font-family: var(--font-mono); letter-spacing: .1em;
+  color: var(--cyan); text-transform: uppercase; }
+.nextup__v { font-size: var(--t-15); font-weight: 700; color: var(--fg); unicode-bidi: plaintext; }
+.nextup__s { font-size: var(--t-12); color: var(--fg-dim); unicode-bidi: plaintext; }
+
+.sylbar { display: grid; gap: 6px; }
+.sylbar__t { font-size: var(--t-12); color: var(--fg-mid); }
+.sylbar__track { height: 6px; background: var(--face-3); border: 1px solid var(--rule); overflow: hidden; }
+.sylbar__fill { height: 100%; background: var(--cyan); box-shadow: var(--cyan-glow);
+  transform-origin: right center; animation: barIn var(--d-slow) var(--e-out) both; }
+
+.sylgroup { display: grid; gap: 6px; margin-bottom: var(--s-4); }
+.sylrow { border: 1px solid var(--rule); border-radius: var(--r-sm); background: var(--face);
+  overflow: hidden; }
+.sylrow.is-flown { border-color: var(--green-line); }
+.sylrow__head {
+  width: 100%; display: flex; align-items: center; gap: var(--s-2);
+  padding: var(--s-2) var(--s-3); min-height: 46px;
+  background: transparent; border: 0; color: var(--fg); font: inherit; text-align: start;
+}
+.sylrow__tick { flex: none; width: 20px; height: 20px; display: grid; place-items: center;
+  border: 1px solid var(--green-line); border-radius: var(--r-full);
+  background: var(--green-dim); color: var(--green); }
+.sylrow__tick svg { width: 12px; height: 12px; stroke-width: 3; }
+.sylrow__tick--off { border-color: var(--rule-2); background: transparent; }
+.sylrow__n { flex: 1; min-width: 0; font-size: var(--t-14); font-weight: 600;
+  unicode-bidi: plaintext; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sylrow__c { font-family: var(--font-mono); font-size: var(--t-11); color: var(--fg-dim); flex: none; }
+.sylrow__chev { width: 16px; height: 16px; flex: none; color: var(--fg-dim);
+  transition: transform var(--d-fast); }
+.sylrow.is-open .sylrow__chev { transform: rotate(180deg); }
+.sylrow .exlist { padding: 0 var(--s-3) var(--s-3); }
+
+/* --- instructors ---------------------------------------------------------- */
+.instlist { display: grid; gap: 6px; }
+.inst {
+  display: grid; gap: 4px; padding: var(--s-3); text-align: start;
+  background: var(--face-2); border: 1px solid var(--rule); border-radius: var(--r-sm);
+  color: var(--fg); font: inherit;
+}
+.inst:active { border-color: var(--cyan-line); }
+.inst__top { display: flex; align-items: baseline; gap: var(--s-2); }
+.inst__n { flex: 1; min-width: 0; font-size: var(--t-15); font-weight: 700; unicode-bidi: plaintext;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inst__m { font-size: var(--t-13); font-weight: 700; color: var(--green); direction: ltr; }
+.inst__s { font-size: var(--t-12); color: var(--fg-dim); }
+.inst__tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+.inst__tag {
+  padding: 2px var(--s-2); border: 1px solid var(--red-line); border-radius: var(--r-xs);
+  background: var(--red-dim); color: var(--fg-mid);
+  font-size: var(--t-11); unicode-bidi: plaintext;
+}
+
 @media (min-width: 480px) { :root { --gutter: 18px; } }
