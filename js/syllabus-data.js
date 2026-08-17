@@ -665,5 +665,5 @@
   ]);
 
   g.SYLLABUS_DATA = S;
-  if (g.SyllabusRef) g.SyllabusRef.load(S);
+  if (g.SyllabusRef) g.SyllabusRef.register('rishoni', S);
 })(window);

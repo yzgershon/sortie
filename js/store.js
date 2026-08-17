@@ -176,8 +176,22 @@
       schema: SCHEMA, mig: 0, theme: 'dark',
       questions: defaultQuestions(),
       nextGoals: [],
+      /* Which course's syllabus and categories are in force. null means it has
+         never been chosen, which is what makes the picker appear once. */
+      course: null,
       pin: null, lastExport: 0, installDismissed: false
     };
+  }
+
+  /** The active course, always a real one. */
+  function course() {
+    var C = global.Courses;
+    if (!C) return null;
+    return C.resolve(settings && settings.course);
+  }
+  function courseId() {
+    var c = course();
+    return c ? c.id : null;
   }
 
   /* Targeted migrations. Bumping SCHEMA rebuilds the whole question list from
@@ -324,6 +338,11 @@
       id: r.id || uid('f'),
       flownAt: r.flownAt || todayISO(),
       stage: r.stage === 'done' ? 'done' : 'brief',   // brief = flown not yet debriefed
+      /* The course this was flown under, stamped once and never rewritten.
+         Somebody who finishes ראשוני and moves up to מתקדם keeps a logbook that
+         still says what each flight actually was, and their old summaries do
+         not start reading against the wrong syllabus. */
+      course: r.course || courseId(),
       answers: {},
       createdAt: r.createdAt || Date.now(),
       updatedAt: r.updatedAt || r.createdAt || Date.now()
@@ -363,7 +382,13 @@
       .replace(/[״׳"']/g, '"').replace(/\s+/g, ' ');
   }
 
+  /* The categories come from the COURSE, not from the stored question. The two
+     courses have different series, so options saved on the question would be
+     the previous course's the moment anybody switched — and a category that is
+     not in the vocabulary silently drops its flights out of the goal loop. */
   function categoryVocab() {
+    var c = course();
+    if (c && c.categories && c.categories.length) return c.categories.slice();
     var q = subjectQuestion();
     if (q && q.options && q.options.length) return q.options.slice();
     var found = [];
@@ -380,8 +405,12 @@
   /* Spellings that mean a category without naming it. The syllabus matcher
      folds these too — if they only lived there, writing "אווירובטיקה 7" would
      load the right exercises and then file the flight under no category at
-     all, so it would drop out of the AW filter and the AW goal carry. */
-  var CAT_ALIASES = { 'אווירובטיקה': 'AW', 'מבנה מתקדם': 'מ״מ' };
+     all, so it would drop out of the AW filter and the AW goal carry.
+     Per course, because מתקדם spells things its own way (קאב / קא״ב). */
+  function catAliases() {
+    var c = course();
+    return (c && c.aliases) || {};
+  }
 
   /** Which of the known categories appear in a נושא טיסה, e.g. "AW 7 לילה"
    *  is both AW and לילה. The flight number is ignored on purpose. */
@@ -390,8 +419,9 @@
     if (!hay) return [];
     var vocab = categoryVocab();
     var out = vocab.filter(function (c) { return hay.indexOf(normCat(c)) !== -1; });
-    Object.keys(CAT_ALIASES).forEach(function (alias) {
-      var c = CAT_ALIASES[alias];
+    var aliases = catAliases();
+    Object.keys(aliases).forEach(function (alias) {
+      var c = aliases[alias];
       if (hay.indexOf(normCat(alias)) === -1) return;
       if (vocab.indexOf(c) === -1 || out.indexOf(c) !== -1) return;
       out.push(c);
@@ -620,6 +650,27 @@
     },
     roleQuestion: roleQuestion,
     isProtected: isProtected,
+
+    /* --- course --- */
+    course: course,
+    courseId: courseId,
+    /** Has a course ever been chosen? The picker shows exactly once on this. */
+    coursePicked: function () { return !!(settings && settings.course); },
+    setCourse: function (id) {
+      var c = global.Courses ? global.Courses.resolve(id) : null;
+      if (!c) return null;
+      settings.course = c.id;
+      saveSettings();
+      if (global.SyllabusRef) global.SyllabusRef.setCourse(c.id);
+      return c;
+    },
+    /** Point the syllabus at whatever the settings say. Called at boot. */
+    applyCourse: function () {
+      var c = course();
+      if (c && global.SyllabusRef) global.SyllabusRef.setCourse(c.id);
+      return c;
+    },
+
     categoryVocab: categoryVocab,
     categoriesOf: categoriesOf,
     categoriesInText: categoriesInText,

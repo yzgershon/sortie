@@ -1073,3 +1073,68 @@ body[data-route="brief"] .toaster, body[data-route="debrief-edit"] .toaster { bo
 }
 
 @media (min-width: 480px) { :root { --gutter: 18px; } }
+
+/* ==========================================================================
+   COURSES — the stage of training, chosen once after signing in
+   ========================================================================== */
+
+.courses { display: grid; gap: var(--s-2); }
+.course {
+  position: relative; display: flex; align-items: center; gap: var(--s-3);
+  min-height: 62px; padding: var(--s-3) var(--s-4);
+  background: var(--face-2); border: 1px solid var(--rule-2); border-radius: var(--r-sm);
+  color: var(--fg-mid); text-align: start;
+  transition: background var(--d-fast), border-color var(--d-fast), color var(--d-fast);
+}
+.course__n { font-size: var(--t-17); font-weight: 700; unicode-bidi: plaintext; }
+.course__s { margin-inline-start: auto; font-size: var(--t-11); color: var(--fg-dim); }
+.course__tag {
+  position: absolute; inset-block-start: -7px; inset-inline-start: var(--s-3);
+  padding: 1px 6px; font-size: var(--t-9); font-weight: 700; letter-spacing: .08em;
+  background: var(--bg); color: var(--cyan); border: 1px solid var(--cyan-line);
+  border-radius: var(--r-xs);
+}
+.course[aria-pressed="true"] {
+  background: var(--cyan-dim); border-color: var(--cyan); color: var(--fg);
+  box-shadow: var(--cyan-glow);
+}
+.item--on .item__ic { color: var(--cyan); }
+
+/* a גיחה flown in the simulator, which shares its number with an air sortie */
+.simtag {
+  display: inline-flex; align-items: center; flex: none;
+  padding: 1px 6px; margin-inline-start: 6px;
+  font-size: var(--t-9); font-weight: 700; letter-spacing: .06em;
+  background: var(--amber-dim, rgba(255,176,32,.14)); color: var(--amber);
+  border: 1px solid var(--amber); border-radius: var(--r-xs);
+}
+
+/* what the chart says about the גיחה being briefed */
+.ginfo {
+  margin-top: var(--s-3); padding: var(--s-3);
+  background: var(--face); border: 1px solid var(--rule); border-radius: var(--r-sm);
+  border-inline-start: 2px solid var(--cyan-line);
+}
+.ginfo__h {
+  display: flex; align-items: center; gap: 6px;
+  font-size: var(--t-13); font-weight: 700; color: var(--fg);
+}
+.ginfo__h svg { width: 15px; height: 15px; flex: none; color: var(--cyan); }
+.ginfo__m { margin-inline-start: auto; font-size: var(--t-11); color: var(--fg-dim); }
+.ginfo__k {
+  margin: var(--s-3) 0 2px; font-size: var(--t-10); font-weight: 700;
+  letter-spacing: .09em; text-transform: uppercase; color: var(--fg-dim);
+}
+.ginfo__t {
+  margin: 0; font-size: var(--t-12); line-height: 1.6; color: var(--fg-mid);
+  unicode-bidi: plaintext;
+}
+.ginfo__t--warn { color: var(--amber); }
+
+.sylextra {
+  padding: var(--s-2) var(--s-4) var(--s-3);
+  border-top: 1px solid var(--rule);
+}
+
+/* a goal the chart recommended, as opposed to one carried from last flight */
+.goalrow.is-suggested { border-inline-start: 2px solid var(--cyan-line); }

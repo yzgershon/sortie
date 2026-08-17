@@ -1,6 +1,77 @@
 # תחקיר — handoff
 
-Last updated: 2026-08-08
+Last updated: 2026-08-17
+
+## TWO COURSES now — read this before touching the syllabus or categories
+
+The app serves two stages of the course and they are **not** variations on each
+other. A course decides three things:
+
+- which syllabus a גיחה is looked up in
+- which categories נושא טיסה offers
+- therefore which flights the goal loop treats as the same kind of flight
+
+Everything else — the questions, the two-stage form, the weekly summary, the
+export — is shared.
+
+| course | id | גיחות | categories | data file |
+|---|---|---|---|---|
+| ראשוני | `rishoni` | 125 | 11 | `js/syllabus-data.js` |
+| מתקדם | `mitkadem` | 147 | 18 | `js/syllabus-mitkadem.js` |
+
+`js/courses.js` is the only list. Adding a third course means an entry there
+plus a data file; nothing else in the app knows the set.
+
+**The picker is asked once, on the first launch after signing in**, in its own
+`#coursePicker` element (NOT `#authGate` — they are different screens and
+sharing a node made "is the gate up?" unanswerable). The roster in
+`auth-config.js#courses` preselects the right answer so it is a confirmation
+rather than a guess, and it can be changed any time in הגדרות. Everyone already
+using the app meets it once on upgrade; `dev/test-upgrade.js` covers that.
+
+**Every flight is stamped with the course it was flown under** and that stamp is
+never rewritten. Somebody finishing ראשוני and moving up keeps a logbook that
+still says what each flight actually was.
+
+### What is different about מתקדם, beyond the chart being bigger
+
+- **It has a יעדים מומלצים column.** 267 recommended goals across 147 גיחות.
+  Typing a גיחה fills them into יעדים alongside the exercises, as ordinary
+  editable goals — they get graded ✓/✗ and a ✗ carries forward, so they have to
+  be his, not the chart's. ראשוני has no such column and nothing draws there.
+- **It carries הערות לגיחה, הערות למאמן, and a planned duration.** Shown in a
+  panel under the syllabus while briefing, and in the reference screen.
+- **Names collide in ways ראשוני's never did.** A simulator "הכנות 1" and an air
+  "הכנות 1" both exist; "SBT" is five different sessions; "סולו 1" is four. Every
+  entry therefore has a unique `name`, and the wording printed in the chart is
+  kept as `raw`. Typing an ambiguous form offers the candidates instead of
+  guessing — `SyllabusRef.candidates()` returns them, `lookup()` returns null.
+- **Simulator sessions are prefixed מאמן**, following the convention the chart
+  already uses elsewhere ("מאמן קא״ב 2"), and carry `sim: 1` for the badge.
+
+### Regenerating the מתקדם chart
+
+    node dev/mit-parse.js "<the PDF>" --json dev/mit-raw.json
+    node dev/mit-build.js
+    node dev/verify-mitkadem.js
+
+**The PDF has four different table layouts and spells its own headings two
+different ways** (page 30 says "נושא הטיסה" where page 13 says "נושא טיסה").
+The parser reads each table's OWN header rather than fixed column positions.
+A fixed-column parser silently dropped five whole sections before that was
+caught, which is the same way the ראשוני chart lost two. `mit-parse.js` asserts
+every page yields at least one גיחה and fails loudly otherwise.
+
+**`dev/verify-mitkadem.js` is not optional after a chart change.** It caught two
+real defects that nothing else would have: "לילה בסיסי" reaching zero גיחות
+because the section label and the category had drifted apart, and "בנז 1"
+finding nothing because gershayim were not folded.
+
+**Gershayim are folded in the MATCHER, not in another alias table.** `בנז` and
+`בנ״ז` both resolve because the matcher retries with the mark stripped. Do not
+add a second alias table for these — `js/courses.js` aliases are for CATEGORY
+detection and pointing them at syllabus lookup breaks `לילה`, which legitimately
+maps to a different string in each direction.
 
 ## Live
 

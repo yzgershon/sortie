@@ -63,8 +63,37 @@
       // a Google account (Workspace, or a consumer account registered to it).
       // If it is Workspace, the org's admin can block third-party OAuth apps
       // outright, and no change here would fix that.
-      '80bc6edc2a83bd09b5b0b9e638716e9dec0981ebc7b35e3e2d8a6b3f9e38a6d4'    // 27 Eitan
+      '80bc6edc2a83bd09b5b0b9e638716e9dec0981ebc7b35e3e2d8a6b3f9e38a6d4',   // 27 Eitan
+
+      /* --- מתקדם, added 2026-08-17 ------------------------------------- */
+      '2704a19be63a23723fc169744bf936ceb187336d1602a60a7c17066fd4b8c3d1',   // 28 Eldad
+      '9bff9951e19a7c9b06aa81bb0958d91bb918ae3725b682f907888f580e8486d1',   // 29 Royi
+      '1ee58a61e35e64ca994ac1524279b14aaa71e132194d4df5c9831ac52c24d307',   // 30 Ishay
+      '4090024390c7bba2028472b1cc114181529d7aa237c454d6cdcd2a576247edb9',   // 31 Y Birman
+      '8e284fc9554028fd7e7e8af94c2dfbdc9e997720e0d59969ddf89413d9f65458',   // 32 Sagi
+      '6c4e2f2c745c185e12826631a4b915a06542406765ab583bd35d66e92b245d37',   // 33 Rotem
+      '349b0cf94ff53caeecec9ba8d7895aae092a070a68ea1e9be57e44ee538055ff',   // 34 Amit
+      'd82f6f5232669fe381cff285ffc87c3ac5da68569da27905487e3ee96015ec60',   // 35 Alon Lavi
+      'ce6cc33f87bf40cfd419966845e21c8b1d353d2eadc5a1beb4bf608a3e732431'    // 36 Guy M
     ],
+
+    /* Which course an address is on, so the question after signing in is a
+       confirmation rather than a guess. Anyone not listed here gets ראשוני,
+       and ANYONE can change it afterwards in הגדרות — this only sets what the
+       picker opens on, it is not a restriction.
+         node dev/check-access.js   prints the course each address resolves to. */
+    courses: {
+      '2704a19be63a23723fc169744bf936ceb187336d1602a60a7c17066fd4b8c3d1': 'mitkadem',   // 28 Eldad
+      '9bff9951e19a7c9b06aa81bb0958d91bb918ae3725b682f907888f580e8486d1': 'mitkadem',   // 29 Royi
+      '1ee58a61e35e64ca994ac1524279b14aaa71e132194d4df5c9831ac52c24d307': 'mitkadem',   // 30 Ishay
+      '4090024390c7bba2028472b1cc114181529d7aa237c454d6cdcd2a576247edb9': 'mitkadem',   // 31 Y Birman
+      '8e284fc9554028fd7e7e8af94c2dfbdc9e997720e0d59969ddf89413d9f65458': 'mitkadem',   // 32 Sagi
+      '6c4e2f2c745c185e12826631a4b915a06542406765ab583bd35d66e92b245d37': 'mitkadem',   // 33 Rotem
+      '349b0cf94ff53caeecec9ba8d7895aae092a070a68ea1e9be57e44ee538055ff': 'mitkadem',   // 34 Amit
+      'd82f6f5232669fe381cff285ffc87c3ac5da68569da27905487e3ee96015ec60': 'mitkadem',   // 35 Alon Lavi
+      'ce6cc33f87bf40cfd419966845e21c8b1d353d2eadc5a1beb4bf608a3e732431': 'mitkadem',   // 36 Guy M
+      '997528f18e20f3a0e01cf6cc31b43907bb79ef278dbb135d6d55389364527ed2': 'mitkadem'    // 26 Spot
+    },
 
     /* How long a sign-in lasts before Google is asked again. Long on purpose:
        the session is read from the device, so the app still opens with no

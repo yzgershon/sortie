@@ -6,7 +6,7 @@
 (function (global) {
   'use strict';
 
-  var BUILD = 'v21';   // keep in step with VERSION in sw.js
+  var BUILD = 'v22';   // keep in step with VERSION in sw.js
 
   var appEl, viewEl, topbarEl, tabbarEl, toasterEl, sheetEl, lockEl;
   var route = { name: 'home', param: null };
@@ -532,6 +532,9 @@
     /* Goals he pulled back out after they were carried in. Without this the
        next keystroke in נושא טיסה puts them straight back. */
     var dismissed = {};
+    /* The candidates currently on offer when a typed גיחה matches more than
+       one entry, in the order they are drawn. */
+    var pending = [];
 
     renderTopbar({
       title: isBrief ? T.briefTitle : T.debriefTitle,
@@ -685,9 +688,16 @@
         body = '<input class="input input--num" id="f_' + esc(q.id) + '" data-q="' + esc(q.id) +
           '" type="date" value="' + esc(v || '') + '">';
       } else {
-        // a question with options offers them as add-on tokens (so "AW" then a
-        // number), while previous answers replace the field outright
-        var cats = (q.options && q.options.length) ? q.options : [];
+        /* A question with options offers them as add-on tokens (so "AW" then a
+           number), while previous answers replace the field outright.
+           נושא טיסה takes its tokens from the COURSE rather than from the saved
+           question: the two courses have different series, and options stored
+           on the question would still be the old course's the moment anybody
+           switched — which would quietly file every flight under no category
+           at all and take the goal loop down with it. */
+        var cats = (q.role === 'subject')
+          ? Store.categoryVocab()
+          : ((q.options && q.options.length) ? q.options : []);
         var prev = q.suggest ? Store.suggestions(q.id).filter(function (o) {
           return cats.indexOf(o) === -1;
         }) : [];
@@ -754,12 +764,16 @@
           '<button type="button" class="btn" data-exbulk="' + esc(q.id) + '" aria-label="' +
             esc(T.pasteList) + '">' + icon('list3') + '</button>' +
         '</div>' +
+        // several גיחות answer to the same name in מתקדם, so when the chart
+        // cannot tell them apart it asks instead of picking one
+        '<div class="opts" data-expick="' + esc(q.id) + '" hidden></div>' +
         '<button type="button" class="btn btn--block" data-exload="' + esc(q.id) + '" hidden>' +
           icon('download') + esc(T.loadSyllabus) +
           '<span class="btn__hint" data-exloadname></span></button>' +
         // says so when a גיחה is not in the chart. Without this the syllabus
         // just stays empty and there is no way to tell a typo from a gap.
         '<span class="field__hint" data-exnomatch hidden></span>' +
+        '<div class="ginfo" id="gichaInfo" hidden></div>' +
         '</div>';
     }
 
@@ -852,6 +866,16 @@
       return entry.items.length;
     }
 
+    /** The entry the subject names, or null. Where the name is genuinely
+     *  ambiguous — "SBT" is five sessions in מתקדם, and "הכנות 1" is both a
+     *  simulator session and an air sortie — nothing is chosen and the caller
+     *  offers the candidates instead of guessing. */
+    function matchEntry() {
+      if (!global.SyllabusRef) return { entry: null, options: [] };
+      var c = SyllabusRef.candidates(currentSubject());
+      return { entry: c.length === 1 ? c[0] : null, options: c };
+    }
+
     /** Returns how many exercises it filled in, so the caller can say it once
      *  together with the goals rather than firing a second toast on top. */
     function refreshSyllabusMatch(autofill) {
@@ -859,7 +883,8 @@
       var btn = $('[data-exload="' + qSyl.id + '"]');
       if (!btn) return 0;
       var subject = currentSubject();
-      var entry = SyllabusRef.lookup(subject);
+      var m = matchEntry();
+      var entry = m.entry;
       // an entry with no חתך rows has nothing to offer
       btn.hidden = !entry || !entry.items.length;
 
@@ -868,9 +893,28 @@
       var note = $('[data-exnomatch]', btn.parentElement);
       if (note) {
         var named = /\d/.test(subject) && subject.trim().length > 2;
-        note.hidden = !!entry || !named;
-        if (!entry && named) note.textContent = T.noSyllabusFor(subject.trim());
+        var ambiguous = !entry && m.options.length > 1;
+        note.hidden = (!!entry || !named) && !ambiguous;
+        if (ambiguous) note.textContent = T.pickGichaBody;
+        else if (!entry && named) note.textContent = T.noSyllabusFor(subject.trim());
       }
+
+      // more than one candidate: offer them rather than filling the wrong one
+      var pickEl = $('[data-expick="' + qSyl.id + '"]');
+      if (pickEl) {
+        if (!entry && m.options.length > 1) {
+          pickEl.hidden = false;
+          pickEl.innerHTML = m.options.map(function (f, i) {
+            return '<button type="button" class="opt opt--sm" data-pick="' + i + '" dir="auto">' +
+              esc(f.name) + (f.sim ? '<span class="simtag">' + esc(T.simBadge) + '</span>' : '') +
+              '</button>';
+          }).join('');
+          pending = m.options;
+        } else { pickEl.hidden = true; pickEl.innerHTML = ''; pending = []; }
+      }
+
+      // what the chart says about this גיחה, shown while briefing it
+      showGichaInfo(entry);
 
       if (!entry || !entry.items.length) return 0;
       $('[data-exloadname]', btn).textContent = entry.name;
@@ -881,6 +925,55 @@
       });
       if (autofill && isEmpty) return fillSyllabus(entry, true);
       return 0;
+    }
+
+    /* The chart carries more than exercises: a planned duration, notes for the
+       גיחה, and notes for the מאמן. All of it is briefing material, so it is
+       shown while briefing rather than buried in the reference screen. */
+    function showGichaInfo(entry) {
+      var box = $('#gichaInfo');
+      if (!box) return;
+      if (!entry || (!entry.note && !entry.instNote && !entry.minutes && !entry.sim)) {
+        box.hidden = true; box.innerHTML = ''; return;
+      }
+      box.hidden = false;
+      box.innerHTML =
+        '<div class="ginfo__h">' + icon('info') +
+          '<span dir="auto">' + esc(entry.name) + '</span>' +
+          (entry.sim ? '<span class="simtag">' + esc(T.simBadge) + '</span>' : '') +
+          (entry.minutes ? '<span class="ginfo__m mono">' + entry.minutes + '′</span>' : '') +
+        '</div>' +
+        (entry.sim ? '<p class="ginfo__t ginfo__t--warn" dir="auto">' + esc(T.simHint) + '</p>' : '') +
+        (entry.opens ? '<p class="ginfo__t" dir="auto">' + esc(entry.opens) + '</p>' : '') +
+        (entry.note
+          ? '<p class="ginfo__k">' + esc(T.gichaNote) + '</p>' +
+            '<p class="ginfo__t" dir="auto">' + esc(entry.note) + '</p>' : '') +
+        (entry.instNote
+          ? '<p class="ginfo__k">' + esc(T.gichaInstNote) + '</p>' +
+            '<p class="ginfo__t" dir="auto">' + esc(entry.instNote) + '</p>' : '');
+    }
+
+    /** The מתקדם chart recommends goals per גיחה. They go in as ordinary goals
+     *  he can edit or delete — they are graded ✓/✗ and a ✗ carries forward, so
+     *  they have to be his, not the chart's. Only ever added to an EMPTY list,
+     *  the same rule the exercises follow, so nothing he wrote is replaced. */
+    function fillSyllabusGoals(entry) {
+      if (!isBrief || !qGoals || !entry || !entry.goals || !entry.goals.length) return 0;
+      var listEl = $('[data-goals="' + qGoals.id + '"]');
+      if (!listEl) return 0;
+      var have = {};
+      $$('.goalrow', listEl).forEach(function (r) { have[goalTextOf(r).trim()] = 1; });
+      var added = 0;
+      entry.goals.forEach(function (t) {
+        t = String(t).trim();
+        if (!t || have[t]) return;
+        have[t] = 1;
+        listEl.insertAdjacentHTML('beforeend', goalRow(Store.normalizeGoal({ text: t }), false));
+        listEl.lastElementChild.classList.add('is-suggested');
+        added++;
+      });
+      if (added) { haptic(10); touched(); }
+      return added;
     }
 
     /* ---------- goals carried in by category ----------
@@ -933,10 +1026,16 @@
     function onSubjectChanged(announce) {
       var ex = refreshSyllabusMatch(announce) || 0;
       var goals = refreshGoalCarry(announce) || 0;
-      if (!announce || (!ex && !goals)) return;
+      /* The chart's recommended goals go in only after the carry has run, so a
+         goal he actually missed last time is never displaced by a suggestion
+         with the same wording. */
+      var sugg = 0;
+      if (announce && ex) sugg = fillSyllabusGoals(matchEntry().entry) || 0;
+      if (!announce || (!ex && !goals && !sugg)) return;
       var bits = [];
       if (ex) bits.push(T.syllabusFilled(ex));
       if (goals) bits.push(T.goalsPulled(goals));
+      if (sugg) bits.push(T.goalsSuggested(sugg));
       toast(bits.join(' · '), ex ? 'list3' : 'target');
     }
 
@@ -1134,16 +1233,45 @@
       var xb = e.target.closest('[data-exbulk]');
       if (xb) { bulkEx(xb.dataset.exbulk); return; }
 
+      /* Picking between two גיחות with the same name. The chosen name is
+         written back into נושא טיסה so the record says which one it was, and
+         so re-opening the draft resolves to the same entry. */
+      var pk = e.target.closest('[data-pick]');
+      if (pk) {
+        var chosen = pending[+pk.dataset.pick];
+        if (!chosen) return;
+        var subjEl2 = qSubj && $('[data-q="' + qSubj.id + '"]');
+        if (subjEl2) subjEl2.value = chosen.name;
+        var lst2 = $('[data-ex="' + qSyl.id + '"]');
+        var has2 = lst2 && $$('.ex', lst2).some(function (r) { return $('[data-extext]', r).value.trim(); });
+        var n2 = has2 ? 0 : fillSyllabus(chosen, true);
+        var g2 = has2 ? 0 : fillSyllabusGoals(chosen);
+        refreshSyllabusMatch(false);
+        refreshGoalCarry(false);
+        var bits2 = [];
+        if (n2) bits2.push(T.syllabusFilled(n2));
+        if (g2) bits2.push(T.goalsSuggested(g2));
+        if (bits2.length) toast(bits2.join(' · '), 'list3');
+        touched();
+        return;
+      }
+
       var xl = e.target.closest('[data-exload]');
       if (xl) {
         var entry = SyllabusRef.lookup(currentSubject());
         if (!entry) return;
         var lst = $('[data-ex="' + xl.dataset.exload + '"]');
         var has = $$('.ex', lst).some(function (r) { return $('[data-extext]', r).value.trim(); });
-        if (!has) { toast(T.syllabusFilled(fillSyllabus(entry, true)), 'list3'); return; }
+        function loadIt() {
+          var n = fillSyllabus(entry, true), g = fillSyllabusGoals(entry);
+          var bits = [T.syllabusFilled(n)];
+          if (g) bits.push(T.goalsSuggested(g));
+          toast(bits.join(' · '), 'list3');
+        }
+        if (!has) { loadIt(); return; }
         confirmSheet({
           title: T.replaceSyllabus, text: T.replaceSyllabusBody, confirmLabel: T.confirm,
-          onConfirm: function () { toast(T.syllabusFilled(fillSyllabus(entry, true)), 'list3'); }
+          onConfirm: loadIt
         });
       }
     });
@@ -2047,7 +2175,15 @@
           esc(T.restoreDefaults) + '</button>' +
       '</section>' +
 
-      '<section class="stack"><div class="group">' +
+      '<section class="stack"><h2 class="h-sect">' + esc(T.courseSection) + '</h2><div class="group">' +
+        (global.Courses ? Courses.all().map(function (c) {
+          var on = Store.courseId() === c.id;
+          return '<button class="item' + (on ? ' item--on' : '') + '" data-coursepick="' + esc(c.id) + '">' +
+            '<span class="item__ic">' + icon(on ? 'checkCircle' : 'flag') + '</span>' +
+            '<span class="item__b"><span class="item__t" dir="auto">' + esc(c.label) + '</span>' +
+            '<span class="item__s">' + esc(T.courseSyllabusCount(SyllabusRef.count(c.id), c.label)) +
+            '</span></span></button>';
+        }).join('') : '') +
         item('list3', T.syllabusRef,
              T.syllabusRefSub(global.SyllabusRef ? SyllabusRef.count() : 0), 'syllabus') +
       '</div></section>' +
@@ -2093,6 +2229,20 @@
 
     on(viewEl, '[data-theme-set]', 'click', function (e) {
       Store.set('theme', e.currentTarget.dataset.themeSet); applyTheme(); screenSettings();
+    });
+    on(viewEl, '[data-coursepick]', 'click', function (e) {
+      var id = e.currentTarget.dataset.coursepick;
+      if (id === Store.courseId()) return;
+      var c = Courses.resolve(id);
+      confirmSheet({
+        title: T.courseChangeTitle(c.label), text: T.courseChangeBody,
+        confirmLabel: T.confirm, icon: 'flag',
+        onConfirm: function () {
+          Store.setCourse(id);
+          toast(T.courseSwitched(c.label), 'flag');
+          screenSettings();
+        }
+      });
     });
     on(viewEl, '[data-qmove]', 'click', function (e) {
       Store.moveQuestion(e.currentTarget.closest('.qrow').dataset.qid, +e.currentTarget.dataset.qmove);
@@ -2550,7 +2700,10 @@
       var rows = all.filter(function (e) {
         if (!f) return true;
         if (SyllabusRef.norm(e.name).indexOf(f) !== -1) return true;
-        return e.items.some(function (i) { return SyllabusRef.norm(i).indexOf(f) !== -1; });
+        if (e.raw && SyllabusRef.norm(e.raw).indexOf(f) !== -1) return true;
+        if (e.section && SyllabusRef.norm(e.section).indexOf(f) !== -1) return true;
+        if (e.items.some(function (i) { return SyllabusRef.norm(i).indexOf(f) !== -1; })) return true;
+        return (e.goals || []).some(function (i) { return SyllabusRef.norm(i).indexOf(f) !== -1; });
       });
       if (!rows.length) {
         $('#sylResults').innerHTML = empty('search', T.noMatches, T.noMatchesHint);
@@ -2572,17 +2725,38 @@
             (flown ? '<span class="sylrow__tick">' + icon('check') + '</span>'
                    : '<span class="sylrow__tick sylrow__tick--off"></span>') +
             '<span class="sylrow__n" dir="auto">' + esc(e.name) + '</span>' +
+            (e.sim ? '<span class="simtag">' + esc(T.simBadge) + '</span>' : '') +
             (flown ? '<span class="tagline">' + esc(T.sylFlown) + '</span>' : '') +
-            '<span class="sylrow__c mono">' + e.items.length + '</span>' +
+            '<span class="sylrow__c mono">' + (e.minutes ? e.minutes + '′' : e.items.length) + '</span>' +
             icon('chevDown', { cls: 'sylrow__chev' }) +
           '</button>' +
           (open
-            ? '<div class="exlist">' + e.items.map(function (t, i) {
-                return '<div class="ex"><div class="ex__top">' +
-                  '<span class="ex__n">' + (i + 1) + '</span>' +
-                  '<span class="ex__t" dir="auto" style="display:flex;align-items:center">' +
-                    esc(t) + '</span></div></div>';
-              }).join('') + '</div>'
+            ? (e.items.length
+                ? '<div class="exlist">' + e.items.map(function (t, i) {
+                    return '<div class="ex"><div class="ex__top">' +
+                      '<span class="ex__n">' + (i + 1) + '</span>' +
+                      '<span class="ex__t" dir="auto" style="display:flex;align-items:center">' +
+                        esc(t) + '</span></div></div>';
+                  }).join('') + '</div>'
+                : '') +
+              /* The מתקדם chart recommends goals and carries notes per גיחה.
+                 ראשוני has neither, so none of this draws there. */
+              ((e.goals && e.goals.length)
+                ? '<div class="sylextra"><p class="ginfo__k">' + esc(T.suggestedGoals) + '</p>' +
+                  '<div class="bullets">' + e.goals.map(function (t) {
+                    return '<div class="bullet bullet--ro"><span class="bullet__d"></span>' +
+                      '<span class="bullet__t" dir="auto">' + esc(t) + '</span></div>';
+                  }).join('') + '</div></div>'
+                : '') +
+              ((e.note || e.instNote || e.opens)
+                ? '<div class="sylextra">' +
+                  (e.opens ? '<p class="ginfo__t" dir="auto">' + esc(e.opens) + '</p>' : '') +
+                  (e.note ? '<p class="ginfo__k">' + esc(T.gichaNote) + '</p>' +
+                    '<p class="ginfo__t" dir="auto">' + esc(e.note) + '</p>' : '') +
+                  (e.instNote ? '<p class="ginfo__k">' + esc(T.gichaInstNote) + '</p>' +
+                    '<p class="ginfo__t" dir="auto">' + esc(e.instNote) + '</p>' : '') +
+                  '</div>'
+                : '')
             : '') +
         '</section>';
       });
@@ -2697,6 +2871,58 @@
     });
   }
 
+  /* =============================================================== course */
+
+  /** Asked once, straight after signing in, because it decides which syllabus
+   *  a גיחה is looked up in and which categories the goal loop groups by.
+   *  Where the address is on the roster the right answer is preselected, so
+   *  this is a confirmation rather than a question — but it is still a choice,
+   *  since somebody moving up a stage will be on the old roster line.
+   *
+   *  Rendered into the gate's shell, which is already full-screen and already
+   *  the thing on screen at this moment. */
+  function showCoursePicker(suggested, done) {
+    var gate = document.getElementById('coursePicker');
+    appEl.hidden = true; lockEl.hidden = true;
+    document.getElementById('authGate').hidden = true;
+    gate.hidden = false;
+
+    var pick = suggested || Courses.defaultId;
+    var body = document.getElementById('courseBody');
+    var note = document.getElementById('courseNote');
+    var acts = document.getElementById('courseActs');
+
+    body.textContent = T.coursePrompt;
+    note.textContent = T.courseChangeable;
+
+    function paint() {
+      acts.innerHTML =
+        '<div class="courses">' + Courses.all().map(function (c) {
+          return '<button type="button" class="course" data-course="' + esc(c.id) + '"' +
+            ' aria-pressed="' + (c.id === pick) + '">' +
+            '<span class="course__n" dir="auto">' + esc(c.label) + '</span>' +
+            '<span class="course__s mono">' + SyllabusRef.count(c.id) + ' גיחות</span>' +
+            (c.id === suggested
+              ? '<span class="course__tag">' + esc(T.courseSuggested) + '</span>' : '') +
+            '</button>';
+        }).join('') + '</div>' +
+        '<p class="gate__body" style="margin:var(--s-3) 0 0">' + esc(T.courseBody) + '</p>' +
+        '<button class="btn btn--lit btn--block btn--lg" data-coursego style="margin-top:var(--s-4)">' +
+          esc(T.courseConfirm) + '</button>';
+
+      on(acts, '[data-course]', 'click', function (e) {
+        pick = e.currentTarget.dataset.course; haptic(); paint();
+      });
+      on(acts, '[data-coursego]', 'click', function () {
+        Store.setCourse(pick);
+        gate.hidden = true;
+        haptic(16);
+        done();
+      });
+    }
+    paint();
+  }
+
   function boot() {
     appEl = document.getElementById('app');
     viewEl = document.getElementById('view');
@@ -2733,6 +2959,22 @@
       return Auth.resolve();
     }).then(function (a) {
       if (a.state !== 'off' && a.state !== 'ok') { showGate(a); return; }
+      /* The course has to be settled before anything renders: the categories
+         under נושא טיסה, the syllabus a גיחה resolves in, and the goal loop's
+         idea of "the same kind of flight" all come from it. */
+      if (Store.coursePicked()) { Store.applyCourse(); return start(); }
+      var who = a.email || (global.Auth && Auth.session() && Auth.session().email) || '';
+      return (global.Auth && Auth.enabled() ? Auth.courseFor(who) : Promise.resolve(null))
+        .catch(function () { return null; })
+        .then(function (suggested) {
+          showCoursePicker(suggested, function () { Store.applyCourse(); start(); });
+        });
+    }).then(null, function () {
+      // never leave a blank screen because something upstream threw
+      Store.applyCourse(); start();
+    });
+
+    function start() {
       global.addEventListener('hashchange', navigate);
       if (Store.settings().pin) { openLock('unlock'); navigate(); }
       else { appEl.hidden = false; navigate(); }
@@ -2753,7 +2995,7 @@
           if (reg) reg.update().catch(function () {});
         }).catch(function () {});
       }
-    });
+    }
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);

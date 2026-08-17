@@ -42,6 +42,20 @@
   </div>
 </div>
 
+<!-- Which stage of the course. Its own element rather than a second use of
+     #authGate: they are different screens, one is about who you are and the
+     other about what you fly, and sharing a node makes "is the gate up?"
+     unanswerable for anything looking at the DOM. -->
+<div id="coursePicker" class="lock gate" hidden>
+  <div class="lock__inner">
+    <div class="lock__mark" aria-hidden="true"></div>
+    <h1 class="lock__title">תחקיר</h1>
+    <p class="gate__body" id="courseBody"></p>
+    <div class="gate__acts" id="courseActs"></div>
+    <p class="gate__note" id="courseNote"></p>
+  </div>
+</div>
+
 <div id="lockScreen" class="lock" hidden>
   <div class="lock__inner">
     <div class="lock__mark" aria-hidden="true"></div>
@@ -64,8 +78,13 @@
 <script src="js/strings.js"></script>
 <script src="js/auth-config.js"></script>
 <script src="js/auth.js"></script>
+<!-- courses before store: the category vocabulary and the spelling aliases are
+     read off the active course. syllabus before its data files, which register
+     themselves into it. -->
+<script src="js/courses.js"></script>
 <script src="js/syllabus.js"></script>
 <script src="js/syllabus-data.js"></script>
+<script src="js/syllabus-mitkadem.js"></script>
 <script src="js/icons.js"></script>
 <script src="js/store.js"></script>
 <script src="js/app.js"></script>

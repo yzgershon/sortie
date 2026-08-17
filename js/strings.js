@@ -251,6 +251,34 @@
     confirmSignOut: 'להתנתק?',
     confirmSignOutBody: 'הטיסות נשארות במכשיר. תצטרך להיכנס שוב עם Google כדי לפתוח את האפליקציה.',
 
+    /* course selection */
+    courseTitle: 'שלב ההכשרה',
+    coursePrompt: 'באיזה שלב אתה נמצא?',
+    courseBody: 'הבחירה קובעת את הסילבוס, קטגוריות הטיסה והיעדים המומלצים שיוצגו לך.',
+    courseConfirm: 'אישור',
+    courseSuggested: 'זוהה עבורך',
+    courseChangeable: 'ניתן לשנות בכל עת בהגדרות.',
+    courseSection: 'שלב ההכשרה',
+    courseCurrent: function (n) { return 'קורס ' + n; },
+    courseChange: 'שינוי שלב הכשרה',
+    courseChangeTitle: function (n) { return 'לעבור לקורס ' + n + '?'; },
+    courseChangeBody: 'הסילבוס והקטגוריות יתחלפו. הטיסות שכבר רשומות נשמרות כמו שהן ' +
+                      'ונשארות משויכות לקורס שבו בוצעו.',
+    courseSwitched: function (n) { return 'עברת לקורס ' + n; },
+    courseTag: function (n) { return 'קורס ' + n; },
+    courseSyllabusCount: function (n, c) { return n + ' גיחות · קורס ' + c; },
+
+    /* syllabus suggestions */
+    simBadge: 'מאמן',
+    simHint: 'גיחת מאמן. קיימת גם גיחה באוויר באותו מספר.',
+    pickGicha: 'איזו גיחה?',
+    pickGichaBody: 'יש כמה גיחות בשם הזה. בחר את הנכונה כדי לטעון את הסילבוס שלה.',
+    suggestedGoals: 'יעדים מומלצים מהסילבוס',
+    goalsSuggested: function (n) { return n === 1 ? 'יעד מומלץ נוסף' : n + ' יעדים מומלצים נוספו'; },
+    plannedMinutes: function (n) { return 'משך מתוכנן ' + n + ' דק׳'; },
+    gichaNote: 'הערות לגיחה',
+    gichaInstNote: 'הערות למאמן',
+
     enterCode: 'הזן את הקוד',
     wrongCode: 'קוד שגוי',
     chooseCode: 'בחר קוד בן 4 ספרות',

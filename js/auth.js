@@ -86,6 +86,16 @@
     return sha256Hex(e).then(function (h) { return !!h && list.indexOf(h) !== -1; });
   }
 
+  /** Which course this address is expected to be on, or null if unlisted.
+   *  Only ever used to preselect the picker — it is not a permission. */
+  function courseFor(email) {
+    var map = cfg().courses || {};
+    var e = normEmail(email);
+    if (!e) return Promise.resolve(null);
+    if (map[e]) return Promise.resolve(map[e]);
+    return sha256Hex(e).then(function (h) { return (h && map[h]) || null; });
+  }
+
   /* -------------------------------------------------------------- session */
 
   /** The stored session, whatever state it is in. `expired` is reported rather
@@ -214,6 +224,7 @@
     signOut: signOut,
     redirectUri: redirectUri,
     isAllowed: isAllowed,
+    courseFor: courseFor,
     claimsOf: claimsOf,
     consumeRedirect: consumeRedirect,
 
