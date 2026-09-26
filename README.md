@@ -27,7 +27,7 @@ Full JSON backup includes flights, question definitions/order/archive state, wai
 
 Local recovery copies share the device's storage risks. Export a JSON backup to a separate location regularly and before reinstalling. Reinstalling an iOS home-screen app can remove its data. Ordinary updates do not require reinstalling.
 
-Feedback is separate from flight storage. The form sends only the written message, category, optional contact address and explicitly selected diagnostics. **Delivery is not connected in this preview:** `js/feedback-config.js` has an empty endpoint. The screen saves a draft and says that delivery is unavailable. A verified Formspree account/form and an authorized delivery test are required before release. No provider credentials belong in this repository.
+Feedback is separate from flight storage. The form sends only the written message, category, optional contact address and explicitly selected diagnostics. `js/feedback-config.js` contains the public endpoint for the owner's verified Formspree form. Delivery was tested from the local preview on 2026-09-26: the submission appeared in Formspree and the owner confirmed email receipt. Sending from the manual preview uses that real service; automated browser feedback checks use local mocks and block real Formspree submission URLs. No provider credentials belong in this repository. Formshield filtering is enabled; the account currently allows 50 submissions per month. Recheck its quota before release.
 
 ## Local preview
 

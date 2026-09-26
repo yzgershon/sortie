@@ -17,14 +17,14 @@ Updated 2026-09-26. Branch `release/next-update`, baseline `005e762`, local buil
 - [x] Completed-only weekly selection, planned/documented exercise wording, clean plain text, short/full summaries, log/trend filters and goal history.
 - [x] All answer-history questions, retained first-run dismissal, optional brief sections, separated destructive settings, touch/focus improvements and truthful Hebrew privacy/save copy.
 - [x] Verified network-first release manifest, complete-install requirement, previous/unrelated cache retention, HTTP-error/mixed-version fallback and safe update coordination during editing.
-- [x] Feedback UI with retained/offline draft, optional disclosed diagnostics, disabled duplicate clicks and honest uncertain-delivery state; tested against loopback mock only.
+- [x] Feedback UI with retained/offline draft, optional disclosed diagnostics, disabled duplicate clicks and honest uncertain-delivery state; automated checks use loopback mocks. Real Formspree submission and owner-confirmed email receipt verified on 2026-09-26.
 - [x] Stable-version What's New appears after auth/PIN at Home, acknowledges once and remains in Settings. Preview acknowledgment is separate.
 - [x] Private access-maintenance CLI defaults to preview, validates hashes/course mapping and never pushes. Synthetic test only; real allowlist unchanged.
 - [x] README and HANDOFF rewritten to current behavior. Local private roster/dev files remain ignored.
 
 ## Evidence
 
-`node tools/build-release.cjs` and `node tools/test.cjs` passed **348 checks across 14 suites**, plus manifest/script/string/access-mapping validation.
+`node tools/build-release.cjs` and `node tools/test.cjs` passed **349 checks across 14 suites**, plus manifest/script/string/access-mapping validation.
 
 | Suite | Checks |
 |---|---:|
@@ -39,17 +39,18 @@ Updated 2026-09-26. Branch `release/next-update`, baseline `005e762`, local buil
 | Real Chrome v22 upgrade and rollback | 11 |
 | Browser screen and data flows | 26 |
 | Real worker interruption, activation and offline relaunch | 10 |
-| Local mock feedback and release announcement | 10 |
+| Local mock feedback, live-endpoint isolation and release announcement | 11 |
 | Buffers, storage failure, conflicts, filters, 360px enlarged text | 22 |
 | Notebook touch/navigation, long folders, 320-412px and enlarged text | 16 |
 
-Latest log: `C:\Dev\artifacts\sortie-v23\mobile-tests.log` (previous full run: `final-tests.log`). Screenshots are in the same directory, including `mobile-notebook-*.png`. Actual loopback preview was inspected through the sidebar browser. Chrome runtime errors were checked by the browser suites; screenshot and short viewport inspection are not real-phone/keyboard acceptance.
+Latest log: `C:\Dev\artifacts\sortie-v23\feedback-connected-tests.log` (previous full runs: `mobile-tests.log`, `final-tests.log`). Screenshots are in the same directory, including `mobile-notebook-*.png`. Actual loopback preview was inspected through the sidebar browser; one labeled live feedback test was received in Formspree and confirmed by Yish in Gmail. Automated suites block real Formspree submission URLs. Chrome runtime errors were checked by the browser suites; screenshot and short viewport inspection are not real-phone/keyboard acceptance.
 
 The 12 private legacy suites were rerun too. The retained store suite has four intentional expectation changes: MIG 4; explicitly carry/achieve a goal before expecting settlement (two assertions); retain orphan drafts. Its tracked replacement passes all 64 checks. The other legacy suites passed, including the 31-check pre-course upgrade and 20-check older upgrade. Original logs remain available; the catalogue verifiers retain 3/7 source-content notes.
 
 ## Required before deployment
 
-- [ ] Yish signs into/creates his own Formspree account and verifies the intended receiving address. Create the form, configure the public endpoint in `js/feedback-config.js`, review provider-side spam controls, and run an explicitly authorized real submission/receipt test. No real delivery has occurred.
+- [x] Owner's Formspree account/email verified, Sortie Feedback form created, public endpoint configured, provider settings reviewed. One synthetic test from the local candidate appeared in the Formspree inbox and Yish confirmed Gmail receipt. Formshield is on; CAPTCHA remains off by default. No paid upgrade or account-security change.
+- [ ] Recheck provider quota (currently 50 submissions/month) and domain restriction when releasing. A restriction to `yzgershon.github.io` would filter local-preview submissions into spam; production-origin delivery still needs release verification.
 - [ ] Yish reviews the local candidate. No UI acceptance has been assumed from automated checks.
 - [ ] Test candidate on Galaxy S24 Chrome and installed iPhone Safari: Hebrew input, date/dialogs, safe areas, drag/edge scroll, offline opening/update, JSON recovery, native file/image sharing and opening summary in Google Docs.
 - [ ] Confirm course completion basis and real milestone/event names/dates with Evyatar. Current progress is recorded syllabus coverage, with personal milestones; it does not claim official qualification/completion.

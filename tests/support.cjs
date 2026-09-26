@@ -13,6 +13,9 @@ async function browser(options={}) {
   if(options.respond && options.respond(req,res,p))return;
   if(p==='/sw.js'&&!options.worker){res.writeHead(404);res.end();return;}
   if(p==='/js/auth-config.js'){res.setHeader('Content-Type','text/javascript');res.end('window.AUTH_CONFIG={clientId:"",allow:[],courses:{}};');return;}
+  // Worker tests need exact manifest-hashed bytes; their outbound Formspree
+  // requests are blocked below. Other suites opt into loopback mocks explicitly.
+  if(p==='/js/feedback-config.js'&&!options.worker){res.setHeader('Content-Type','text/javascript');res.end('window.FEEDBACK_CONFIG={endpoint:""};');return;}
   const file=path.resolve(root,'.'+(p==='/'?'/index.html':p));
   if(!file.startsWith(root+path.sep)){res.writeHead(403);res.end();return;}
   fs.readFile(file,(err,data)=>{if(err){res.writeHead(404);res.end();return;}if(options.source)data=options.source(file,data);res.setHeader('Content-Type',({'.html':'text/html','.js':'text/javascript','.json':'application/json','.css':'text/css','.png':'image/png','.jpg':'image/jpeg','.webmanifest':'application/manifest+json'})[path.extname(file)]||'text/plain');res.end(data);});
@@ -33,6 +36,7 @@ async function browser(options={}) {
  const route=async(name,selector)=>{if(name==='home')selector='[href="#/progress"]';await ev('location.hash='+JSON.stringify('#/'+name));await until('document.body.dataset.route==='+JSON.stringify(name.split('/')[0]||'home')+'&&!!document.querySelector('+JSON.stringify(selector)+')');};
  const shot=async name=>{await ev('Promise.all(document.getAnimations().filter(a=>a.effect.getTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{})))');const r=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});const dir=path.resolve(root,'../artifacts/sortie-v23');fs.mkdirSync(dir,{recursive:true});fs.writeFileSync(path.join(dir,name+'.png'),Buffer.from(r.data,'base64'));};
  await send('Page.enable');await send('Runtime.enable');await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
+ await send('Network.enable');await send('Network.setBlockedURLs',{urls:['https://formspree.io/f/*']});
  await send('Page.navigate',{url:base});await until("typeof Store!=='undefined' && !!document.querySelector('[data-coursego]')");await click('[data-coursego]');await until("!document.querySelector('#app').hidden && document.body.dataset.route==='home'");
  return {base,ev,send,until,click,type,route,shot,errors,close:()=>{ws.close();chrome.kill();server.close();}};
 }

@@ -10,7 +10,8 @@ Updated 2026-09-26. Read this and the actual git status before editing. Preserve
 - The new code is implemented locally and tested. The release is **not ready to deploy** until the service/device/content acceptance items in `RELEASE-CHECKLIST.md` are addressed.
 - Local preview: `node tools/preview.cjs`, `http://127.0.0.1:8980/`. Auth is overridden in the local server response, never in the production file. A clearly labeled example notebook page was created in that preview only.
 - Mobile formatting is a primary requirement. The notebook now has a compact cover, a native folder picker with an always-visible New folder action, 48px controls, scalable text/rules, save status above writing and no bottom tabs while editing. Chrome checks cover 320/360/390/412px, 150% text, long folder names, touch creation and saving on Back. Storage formats and save logic were unchanged in this follow-up.
-- Feedback recipient is already established with Yish. The Formspree endpoint remains empty. Its purpose/account ownership was explained and registration was reopened in the sidebar at his request. No account, endpoint or real delivery has been claimed; no email was sent.
+- Feedback is connected to Yish's verified Formspree account via public endpoint `https://formspree.io/f/xgavlqlj` (Sortie Feedback). One labeled synthetic test, `SORTIE-SETUP-20260926`, was sent through the local preview, appeared in the provider inbox and was confirmed received by Yish in Gmail. The manual preview now sends real feedback. Automated browser suites block outbound Formspree submission URLs; non-worker suites also replace the endpoint with empty and explicitly opt into loopback mocks. Worker tests must serve the exact hashed config bytes so release verification remains meaningful.
+- Provider settings were inspected: form enabled, submission archive enabled, Formshield enabled, CAPTCHA disabled by default. No paid upgrade or account-security change was made. The account UI shows 50 submissions/month. Before release, recheck quota and consider the project domain restriction for `yzgershon.github.io`; restricting now would filter localhost preview submissions into spam. Dashboard: `https://formspree.io/forms/xgavlqlj/submissions`.
 
 ## People and settled constraints
 
@@ -61,7 +62,7 @@ For a behavior release, update app BUILD and worker VERSION together, then run `
 
 A waiting worker is activated at a safe point, or by an explicit Update action after draft flush. A controller change from another tab must not force an active editor to reload. Real-Chrome tests cover an interrupted download, offline recovery, waiting while editing, explicit activation and retained drafts/notebook.
 
-Stable releases show What's New once at Home after auth/PIN. Preview builds suppress automatic announcements and do not consume the real acknowledgment. Feedback is currently draft-only; service activation/delivery and provider-side spam settings remain outstanding. A timeout cannot prove non-delivery; retry copy says so.
+Stable releases show What's New once at Home after auth/PIN. Preview builds suppress automatic announcements and do not consume the real acknowledgment. Feedback service activation and email receipt are verified from the local candidate, not a production deployment. A timeout cannot prove non-delivery; retry copy says so.
 
 ## Verification and maintenance
 
@@ -69,13 +70,13 @@ Run `node tools/build-release.cjs` then `node tools/test.cjs`. The tracked suite
 
 The private legacy suites were also rerun. All passed except four obsolete `test-store.js` expectations; the tracked copy updates MIG 4, explicit carried-and-achieved goal setup, and retained orphan drafts. Their original logs remain for comparison. The pre-course upgrade test passes 31 checks; older upgrade passes 20. No real-device acceptance is implied by Chrome emulation.
 
-Evidence: the full suite now passes 348 checks across 14 suites, logged in `C:\Dev\artifacts\sortie-v23\mobile-tests.log`; notebook screenshots are `mobile-notebook-*.png` in that directory. Earlier evidence remains in `final-tests.log`; original audit/report/probes are under `C:\Dev\artifacts\sortie-review-2026-09-25`. The public tracked tests are Node files, not seed HTML. Never run `dev/serve-test.js` or `dev/shots.js` against the live origin. Short viewport emulation is not a real phone keyboard test.
+Evidence: the full suite now passes 349 checks across 14 suites, logged in `C:\Dev\artifacts\sortie-v23\feedback-connected-tests.log`; notebook screenshots are `mobile-notebook-*.png` in that directory. Earlier evidence remains in `mobile-tests.log` and `final-tests.log`; original audit/report/probes are under `C:\Dev\artifacts\sortie-review-2026-09-25`. The public tracked tests are Node files, not seed HTML. Never run `dev/serve-test.js` or `dev/shots.js` against the live origin. Short viewport emulation is not a real phone keyboard test.
 
 Live traps: wrap `.map(flightRow)`; map's second argument is selectable. Use pointer events and `touch-action: none` for dragging. Keep LF and never insert control characters. Export new Store APIs at the bottom. Gate install prompts from rendering behind authentication. Browser tests must wait for an actual new document, disable the worker in migration-only suites, avoid virtual-time-budget, and wait for entrance animations before screenshots. New tests use CDP device metrics for phone-size rendering.
 
 ## Remaining acceptance work
 
-- Connect and verify feedback delivery using Yish's own Formspree account. No provider credential belongs in source; only its public form endpoint.
+- Recheck feedback provider quota/domain settings for the final release. No provider credential belongs in source; only its public form endpoint. Local delivery and email receipt are verified; no cadet deployment has occurred.
 - Review candidate on the real S24 and installed iPhone: drag/edge scroll, Hebrew keyboard/date/dialogs, safe areas, offline update and recovery, file/image sharing, and summary opening in Google Docs.
 - Ask Evyatar for actual course milestone/event names, dates and completion rules. Current milestones are personal and syllabus coverage is explicitly an estimate of recorded catalogue coverage.
 - Reconcile the source PDF doubts: reconstructed AW 2 and סולו משולבת 2, missing הקפות section, and catalogue entries with no exercises. Internal verifier success is not PDF reconciliation.

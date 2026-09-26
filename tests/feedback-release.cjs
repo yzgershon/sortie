@@ -3,6 +3,7 @@ const assert=require('assert/strict'),path=require('path'),{browser,root}=requir
 async function ok(label,expression,expected){assert.deepEqual(await b.ev(expression),expected);checks++;console.log('PASS '+label);}
 (async()=>{
  b=await browser({respond:(req,res,p)=>{if(p!='/feedback')return false;let body='';req.on('data',x=>body+=x);req.on('end',()=>{requests.push(JSON.parse(body));res.writeHead(fail?422:200,{'Content-Type':'application/json'});res.end(JSON.stringify(fail?{errors:[{message:'mock rejection'}]}:{ok:true}));});return true;}});
+ await ok('browser test profile cannot inherit the live feedback endpoint','FEEDBACK_CONFIG.endpoint','');
  await b.ev("FEEDBACK_CONFIG.endpoint=location.origin+'/feedback'");await b.route('feedback','#feedbackMessage');await b.type('#feedbackMessage','feedback saved locally');
  await b.ev("Object.defineProperty(navigator,'onLine',{configurable:true,value:false})");await b.click('#feedbackSend');await ok('offline feedback stays as a draft',"[document.querySelector('#feedbackState').textContent,Workspace.feedbackDraft().message]",[await b.ev('T.feedbackOffline'),'feedback saved locally']);assert.equal(requests.length,0);
  await b.ev("Object.defineProperty(navigator,'onLine',{configurable:true,value:true})");await b.click('#feedbackSend');await b.until("document.querySelector('#feedbackState').textContent===T.feedbackFailed");await ok('rejected feedback retains text',"Workspace.feedbackDraft().message",'feedback saved locally');
