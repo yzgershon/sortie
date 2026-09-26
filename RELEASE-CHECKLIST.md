@@ -13,7 +13,7 @@ Updated 2026-09-26. Branch `release/next-update`, baseline `005e762`, local buil
 - [x] Recovered missed-goal linkage; edited suggested goals protected; zero-exercise recommendations; past-subject and searchable-picker paths.
 - [x] Course-aware catalogue progress, unassigned-history distinction, stable selected identities, personal milestones, catalogue-derived solo/night markers and image/text sharing preview.
 - [x] One-click notebook access, ruled pages, folders, priorities, pinning/search, autosave, local conflict-copy recovery, full backup and individual page download.
-- [x] Mobile notebook: compact cover, reachable folder picker/create action, 48px controls, scalable text, save status above writing and full editor space. Verified long folders, touch creation and saving on Back without changing storage formats.
+- [x] Mobile notebook: shared cockpit palette, collapsible RTL folder sidebar, two main actions, one expandable page-options menu, 48px controls and full writing space. Verified long folders, both themes, enlarged text, touch/keyboard navigation and saving across folder changes/Back/pinning. Storage format unchanged.
 - [x] Completed-only weekly selection, planned/documented exercise wording, clean plain text, short/full summaries, log/trend filters and goal history.
 - [x] All answer-history questions, retained first-run dismissal, optional brief sections, separated destructive settings, touch/focus improvements and truthful Hebrew privacy/save copy.
 - [x] Verified network-first release manifest, complete-install requirement, previous/unrelated cache retention, HTTP-error/mixed-version fallback and safe update coordination during editing.
@@ -24,7 +24,7 @@ Updated 2026-09-26. Branch `release/next-update`, baseline `005e762`, local buil
 
 ## Evidence
 
-`node tools/build-release.cjs` and `node tools/test.cjs` passed **349 checks across 14 suites**, plus manifest/script/string/access-mapping validation.
+`node tools/build-release.cjs` and `node tools/test.cjs` passed **374 checks across 14 suites**, plus manifest/script/string/access-mapping validation.
 
 | Suite | Checks |
 |---|---:|
@@ -32,7 +32,7 @@ Updated 2026-09-26. Branch `release/next-update`, baseline `005e762`, local buil
 | Syllabus matching | 31 |
 | ראשוני internal catalogue verifier | 35 |
 | מתקדם internal catalogue verifier | 59 |
-| Preservation / backup / conflicts / journal | 26 |
+| Preservation / backup / conflicts / journal | 27 |
 | Storage abort, deadline, failed quarantine | 3 |
 | Worker asset/fallback/ownership fault cases | 31 |
 | Private access tool | 4 |
@@ -41,11 +41,13 @@ Updated 2026-09-26. Branch `release/next-update`, baseline `005e762`, local buil
 | Real worker interruption, activation and offline relaunch | 10 |
 | Local mock feedback, live-endpoint isolation and release announcement | 11 |
 | Buffers, storage failure, conflicts, filters, 360px enlarged text | 22 |
-| Notebook touch/navigation, long folders, 320-412px and enlarged text | 16 |
+| Notebook sidebar, preservation, 320-412px, themes and enlarged text | 40 |
 
-Latest log: `C:\Dev\artifacts\sortie-v23\feedback-connected-tests.log` (previous full runs: `mobile-tests.log`, `final-tests.log`). Screenshots are in the same directory, including `mobile-notebook-*.png`. Actual loopback preview was inspected through the sidebar browser; one labeled live feedback test was received in Formspree and confirmed by Yish in Gmail. Automated suites block real Formspree submission URLs. Chrome runtime errors were checked by the browser suites; screenshot and short viewport inspection are not real-phone/keyboard acceptance.
+Latest log: `C:\Dev\artifacts\sortie-v23\notebook-sidebar-tests.log` (previous full runs: `feedback-connected-tests.log`, `mobile-tests.log`, `final-tests.log`). Screenshots are in the same directory, including `mobile-notebook-*.png`. Actual loopback preview was inspected through the sidebar browser; one labeled live feedback test was received in Formspree and confirmed by Yish in Gmail. Automated suites block real Formspree submission URLs. Chrome runtime errors were checked by the browser suites; screenshot and short viewport inspection are not real-phone/keyboard acceptance.
 
 The 12 private legacy suites were rerun too. The retained store suite has four intentional expectation changes: MIG 4; explicitly carry/achieve a goal before expecting settlement (two assertions); retain orphan drafts. Its tracked replacement passes all 64 checks. The other legacy suites passed, including the 31-check pre-course upgrade and 20-check older upgrade. Original logs remain available; the catalogue verifiers retain 3/7 source-content notes.
+
+A finding-by-finding reconciliation with the original proposal is in [IMPLEMENTATION-STATUS.md](IMPLEMENTATION-STATUS.md). Conditional ideas and feedback retry limitations are recorded there.
 
 ## Required before deployment
 

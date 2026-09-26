@@ -18,6 +18,14 @@ let checks=0;function check(label,fn){fn();checks++;console.log('PASS '+label);}
  await c.S.save({id:'newer',flownAt:'2026-08-03',stage:'done',answers:{q_subject:'AW 4',q_goals_next:[{text:'newer goal'}]}});
  await c.S.save({id:'older',stage:'done',answers:{q_subject:'AW 3'}});
  check('out-of-order first debrief preserves newer goal',()=>assert.equal(c.S.nextGoals()[0].text,'newer goal'));
+ const copies=store();await copies.S.init();
+ await copies.S.save({id:'old-aw',flownAt:'2026-08-01',stage:'done',answers:{q_subject:'AW 3'}});
+ await copies.S.save({id:'new-navigation',flownAt:'2026-08-03',stage:'done',answers:{q_subject:'ניווט 3',q_goals_next:[{text:'same wording'}]}});
+ await copies.S.save({id:'old-aw',stage:'done',answers:{q_subject:'AW 3',q_goals:[{text:'same wording',status:'missed'}]}});
+ check('G02 old-flight edit preserves identical wording in different categories',()=>{
+  const shelf=JSON.parse(JSON.stringify(copies.S.nextGoals()));
+  assert.equal(shelf.length,2);assert.ok(shelf.some(g=>g.from==='old-aw'&&g.cats.includes('AW')));assert.ok(shelf.some(g=>g.from==='new-navigation'&&g.cats.includes('ניווט')));
+ });
  const aw=c.S.get('older');c.S.setCourse('mitkadem');
  check('historical categories use record course',()=>assert.deepEqual(Array.from(c.S.categoriesOf(aw)),['AW']));
  check('course goals do not cross courses',()=>assert.equal(c.S.pendingGoalsFor(['AW']).length,0));

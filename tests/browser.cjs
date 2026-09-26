@@ -2,7 +2,8 @@ const assert=require('assert/strict'),{browser}=require('./support.cjs');
 let b,checks=0;async function eq(label,expression,expected){const actual=await b.ev(expression);assert.deepEqual(actual,expected,label);checks++;console.log('PASS '+label);}
 (async()=>{
  b=await browser();
- await b.route('notebook','[data-newnote]');await b.click('[data-newfolder]');await b.type('#folderTitle','מחשבות');await b.click('#sheet [data-act="0"]');await b.click('[data-newnote]');await b.until("!!document.querySelector('#noteBody')");
+ await b.route('notebook','[data-newnote]');await b.click('[data-folders]');await b.click('[data-newfolder]');await b.type('#folderTitle','מחשבות');await b.click('#sheet [data-act="0"]');await b.click('[data-newnote]');await b.until("!!document.querySelector('#noteBody')");
+ await b.click('#noteOptions summary');
  await b.type('#noteTitle','עמוד לבדיקה');await b.type('#noteBody','מחשבה קצרה שנשמרת\nושורה נוספת');await b.type('#notePriority','2');
  await b.route('home','[data-new]');await eq('notebook autosaves on leaving',"Workspace.all().notes.map(n=>({title:n.title,body:n.body,priority:n.priority}))",[{title:'עמוד לבדיקה',body:'מחשבה קצרה שנשמרת\nושורה נוספת',priority:2}]);
  await b.route('notebook','[data-newnote]');await b.shot('notebook');

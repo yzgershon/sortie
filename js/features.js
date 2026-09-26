@@ -11,36 +11,54 @@
     ui.topbar({ title: T.notebookTitle, back: true, backTo: '' });
     var data = Workspace.all(), folders = data.folders.filter(function (f) { return !f.deletedAt; });
     var folder = g.Features.folder || '', query = g.Features.noteQuery || '';
+    if (folder && folder !== 'inbox' && !folders.some(function (f) { return f.id === folder; })) folder = g.Features.folder = '';
+    var selectedFolder = folders.find(function (f) { return f.id === folder; });
     var existing = route.param && Workspace.note(route.param);
     if (existing && !existing.deletedAt) return editor(existing, folders, ui);
-    ui.view.innerHTML = '<section class="notebook"><header class="notebook__cover"><span class="notebook__stamp">' + esc(T.app) + '</span>' +
-      '<h1>' + esc(T.notebookTitle) + '</h1><p>' + esc(T.notebookSub) + '</p>' + button(T.noteNew, 'data-newnote', 'plus', 'btn--lit') + '</header>' +
-      '<div class="notebook__folders"><label class="notebook__folderpick">' + icon('folder') + '<select id="notebookFolder" aria-label="' + esc(T.noteFolders) + '">' +
+    ui.view.innerHTML = '<section class="notebook"><header class="notebook__heading"><div class="notebook__toolbar">' +
+      button(T.noteFolders, 'data-folders aria-controls="notebookFolders" aria-expanded="false" aria-haspopup="dialog"', 'folder') + button(T.noteNew, 'data-newnote', 'plus', 'btn--lit') + '</div>' +
+      '<h1>' + esc(selectedFolder ? selectedFolder.title : folder === 'inbox' ? T.noteInbox : T.noteAll) + '</h1><p id="noteCount" role="status"></p></header>' +
+      '<label class="search">' + icon('search') + '<input class="input" id="noteSearch" type="search" value="' + esc(query) + '" placeholder="' + esc(T.noteSearch) + '" aria-label="' + esc(T.noteSearch) + '"></label>' +
+      '<div id="noteRows"></div><p class="notebook__foot">' + esc(T.onDeviceOnly) + '</p>' +
+      '<dialog id="notebookFolders" class="notebook-drawer" aria-labelledby="notebookFoldersTitle"><div class="notebook-drawer__head"><h2 id="notebookFoldersTitle">' + esc(T.noteFolders) + '</h2>' +
+      '<button type="button" class="iconbtn" data-closefolders aria-label="' + esc(T.closeFolders) + '">' + icon('x') + '</button></div><nav aria-label="' + esc(T.noteFolders) + '">' +
       [{ id: '', title: T.noteAll }, { id: 'inbox', title: T.noteInbox }].concat(folders).map(function (f) {
-        return '<option value="' + esc(f.id) + '"' + (folder === f.id ? ' selected' : '') + '>' + esc(f.title) + '</option>';
-      }).join('') + '</select></label>' + button(T.folderNew, 'data-newfolder', 'plus') + '</div>' +
-      '<div class="notebook__paper"><label class="search">' + icon('search') + '<input class="input" id="noteSearch" type="search" value="' + esc(query) + '" placeholder="' + esc(T.noteSearch) + '" aria-label="' + esc(T.noteSearch) + '"></label>' +
-      '<div id="noteRows"></div><p class="notebook__foot">' + esc(T.onDeviceOnly) + '</p></div></section>';
+        var count = data.notes.filter(function (n) { return !n.deletedAt && (!f.id || (f.id === 'inbox' ? !n.folder : n.folder === f.id)); }).length;
+        return '<button type="button" class="notebook-drawer__folder" data-folder="' + esc(f.id) + '"' + (folder === f.id ? ' aria-current="page"' : '') + '>' + icon(f.id ? 'folder' : 'notebook') + '<span>' + esc(f.title) + '</span><small>' + count + '</small></button>';
+      }).join('') + '</nav><div class="notebook-drawer__tools">' + button(T.folderNew, 'data-newfolder', 'plus') +
+      (selectedFolder ? '<details class="notebook__options"><summary>' + esc(T.folderOptions) + icon('chevDown') + '</summary><div class="notebook__actions">' + button(T.folderRename, 'data-renamefolder', 'pencil') + button(T.folderDelete, 'data-deletefolder', 'trash') + '</div></details>' : '') + '</div></dialog></section>';
+    var drawer = $('#notebookFolders'), toggle = $('[data-folders]');
+    toggle.onclick = function () { drawer.showModal(); toggle.setAttribute('aria-expanded', 'true'); };
+    drawer.addEventListener('close', function () { toggle.setAttribute('aria-expanded', 'false'); toggle.focus(); });
+    $('[data-closefolders]').onclick = function () { drawer.close(); };
+    drawer.onclick = function (e) {
+      if (e.target !== drawer) return;
+      var r = drawer.getBoundingClientRect();
+      if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) drawer.close();
+    };
+    all('[data-folder]', drawer).forEach(function (el) { el.onclick = function () {
+      drawer.close(); g.Features.folder = el.dataset.folder; notebook(route, ui); $('[data-folders]').focus();
+    }; });
     function paint() {
       var notes = Workspace.all().notes.filter(function (n) {
         return !n.deletedAt && (!folder || (folder === 'inbox' ? !n.folder : n.folder === folder)) &&
           (!query || (n.title + '\n' + n.body).toLowerCase().indexOf(query.toLowerCase()) !== -1);
       }).sort(function (a, b) { return (+b.pinned - +a.pinned) || b.priority - a.priority || b.updatedAt - a.updatedAt; });
-      var selectedFolder = folders.find(function (f) { return f.id === folder; });
-      $('#noteRows').innerHTML = (selectedFolder ? '<div class="notebook__foldertools">' + button(T.folderRename, 'data-renamefolder', 'pencil') + button(T.folderDelete, 'data-deletefolder', 'trash') + '</div>' : '') +
-        (notes.length ? notes.map(function (n) {
-          return '<a class="note-page" href="#/notebook/' + encodeURIComponent(n.id) + '"><span class="note-page__priority priority-' + (+n.priority || 0) + '">' + esc(T.priorities[n.priority || 0]) + '</span>' +
+      $('#noteCount').textContent = T.noteCount(notes.length);
+      $('#noteRows').innerHTML = notes.length ? notes.map(function (n) {
+          return '<a class="note-page" href="#/notebook/' + encodeURIComponent(n.id) + '"><div class="note-page__meta"><span class="note-page__date">' + esc(date(n.updatedAt)) + '</span>' + (n.priority ? '<span class="note-page__priority priority-' + n.priority + '">' + esc(T.priorities[n.priority]) + '</span>' : '') + '</div>' +
             '<h2>' + (n.pinned ? icon('flag') : '') + esc(n.title || T.noteUntitled) + '</h2><p dir="auto">' + esc((n.body || '').slice(0, 150)) + '</p>' +
-            '<span class="note-page__date">' + esc(date(n.updatedAt)) + '</span></a>';
-        }).join('') : '<div class="notebook__empty">' + icon('notebook') + '<h2>' + esc(T.noteEmpty) + '</h2><p>' + esc(T.noteEmptyBody) + '</p></div>');
-      if (selectedFolder) {
-        $('[data-renamefolder]').onclick = function () { folderSheet(selectedFolder); };
-        $('[data-deletefolder]').onclick = function () { ui.confirm({ title: T.folderDelete, text: T.folderDeleteBody, onConfirm: function () {
-          try { Workspace.removeFolder(folder); g.Features.folder = ''; notebook(route, ui); } catch (e) { ui.toast(T.saveFailedBody, 'alert'); }
-        } }); };
-      }
+            '</a>';
+        }).join('') : '<div class="notebook__empty">' + icon(query ? 'search' : 'notebook') + '<h2>' + esc(query ? T.noteSearchEmpty : T.noteEmpty) + '</h2><p>' + esc(query ? T.noteSearchEmptyBody : T.noteEmptyBody) + '</p></div>';
+    }
+    if (selectedFolder) {
+      $('[data-renamefolder]').onclick = function () { folderSheet(selectedFolder); };
+      $('[data-deletefolder]').onclick = function () { drawer.close(); ui.confirm({ title: T.folderDelete, text: T.folderDeleteBody, onConfirm: function () {
+        try { Workspace.removeFolder(folder); g.Features.folder = ''; notebook(route, ui); } catch (e) { ui.toast(T.saveFailedBody, 'alert'); }
+      } }); };
     }
     function folderSheet(f) {
+      drawer.close();
       ui.sheet({ title: f ? T.folderRename : T.folderNew, body: input(T.folderName, 'folderTitle', f && f.title), actions: [
         { label: T.save, cls: 'btn--lit', keepOpen: true, run: function (sh) {
           var title = $('#folderTitle', sh).value.trim(); if (!title) return $('#folderTitle', sh).focus();
@@ -53,20 +71,19 @@
       try { var note = Workspace.saveNote({ title: '', body: '', folder: folder && folder !== 'inbox' ? folder : '', priority: 0 }); ui.go('notebook/' + note.id); }
       catch (e) { ui.toast(T.saveFailedBody, 'alert'); }
     };
-    $('#notebookFolder').onchange = function (e) { g.Features.folder = e.target.value; notebook(route, ui); };
     $('#noteSearch').oninput = function (e) { query = e.target.value; g.Features.noteQuery = query; paint(); };
     paint();
   }
   function editor(note, folders, ui) {
     ui.topbar({ title: T.notebook, back: true, backTo: 'notebook' });
-    ui.view.innerHTML = '<article class="notebook notebook--editor"><div class="notebook__binding"></div><div class="notebook__paper">' +
-      '<div class="notebook__editorbar"><label><span>' + esc(T.noteFolder) + '</span><select id="noteFolder">' + [{ id: '', title: T.noteInbox }].concat(folders).map(function (f) { return '<option value="' + esc(f.id) + '"' + (note.folder === f.id ? ' selected' : '') + '>' + esc(f.title) + '</option>'; }).join('') + '</select></label>' +
+    ui.view.innerHTML = '<article class="notebook notebook--editor"><div class="notebook__paper">' +
+      '<details class="notebook__options" id="noteOptions"><summary>' + icon('settings') + '<span>' + esc(T.noteOptions) + '</span>' + icon('chevDown') + '</summary><div class="notebook__editorbar"><label><span>' + esc(T.noteFolder) + '</span><select id="noteFolder">' + [{ id: '', title: T.noteInbox }].concat(folders).map(function (f) { return '<option value="' + esc(f.id) + '"' + (note.folder === f.id ? ' selected' : '') + '>' + esc(f.title) + '</option>'; }).join('') + '</select></label>' +
       '<label><span>' + esc(T.priority) + '</span><select id="notePriority">' + T.priorities.map(function (p, i) { return '<option value="' + i + '"' + (+note.priority === i ? ' selected' : '') + '>' + esc(p) + '</option>'; }).join('') + '</select></label></div>' +
+      '<div class="notebook__actions">' + button(note.pinned ? T.unpinNote : T.pinNote, 'data-pinnote', 'flag') + button(T.downloadNote, 'data-downloadnote', 'download') + button(T.noteDelete, 'data-deletenote', 'trash') + '</div></details>' +
       '<input id="noteTitle" class="notebook__title" dir="auto" maxlength="200" value="' + esc(note.title) + '" placeholder="' + esc(T.noteTitle) + '" aria-label="' + esc(T.noteTitle) + '">' +
       '<div class="notebook__status"><span id="noteState" role="status">' + esc(T.draftSaved) + '</span><span>' + esc(date(note.updatedAt)) + '</span></div>' +
       '<button class="btn" data-notecopy hidden>' + esc(T.saveSeparateCopy) + '</button>' +
-      '<textarea id="noteBody" class="notebook__writing" dir="auto" placeholder="' + esc(T.noteBody) + '" aria-label="' + esc(T.noteBody) + '">' + esc(note.body) + '</textarea>' +
-      '<div class="notebook__actions">' + button(note.pinned ? T.unpinNote : T.pinNote, 'data-pinnote', 'flag') + button(T.downloadNote, 'data-downloadnote', 'download') + button(T.noteDelete, 'data-deletenote', 'trash') + '</div></div></article>';
+      '<textarea id="noteBody" class="notebook__writing" dir="auto" placeholder="' + esc(T.noteBody) + '" aria-label="' + esc(T.noteBody) + '">' + esc(note.body) + '</textarea></div></article>';
     var timer, dirty = false, alive = true, root = $('.notebook--editor');
     function flush() {
       clearTimeout(timer);
@@ -87,7 +104,7 @@
     };
     $('[data-pinnote]').onclick = function () {
       if (!flush()) return;
-      try { note = Workspace.saveNote(Object.assign({}, note, { pinned: !note.pinned, baseUpdatedAt: note.updatedAt })); editor(note, folders, ui); }
+      try { note = Workspace.saveNote(Object.assign({}, note, { pinned: !note.pinned, baseUpdatedAt: note.updatedAt })); editor(note, folders, ui); $('#noteOptions summary').focus(); }
       catch (e) { ui.toast(T.saveFailedBody, 'alert'); }
     };
     $('[data-deletenote]').onclick = function () { ui.confirm({ title: T.noteDelete, onConfirm: function () {
