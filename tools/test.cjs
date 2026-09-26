@@ -1,7 +1,7 @@
 // No real accounts, live origins, feedback deliveries or private roster required.
 const cp=require('child_process'),path=require('path');const root=path.resolve(__dirname,'..');
 const suites=['test-store','test-syllabus','verify-syllabus','verify-mitkadem','preservation','storage-faults','worker','access'];
-if(!process.argv.includes('--unit'))suites.push('upgrade','browser','update-browser','feedback-release','usability','mobile-notebook');
+if(!process.argv.includes('--unit'))suites.push('upgrade','browser','update-browser','feedback-release','usability','mobile-notebook','frontend');
 let failed=0;
 for(const [file,args] of [['tools/build-release.cjs',['--check']],...suites.map(s=>['tests/'+s+'.cjs',[]])]){
  const result=cp.spawnSync(process.execPath,[file,...args],{cwd:root,encoding:'utf8',windowsHide:true,timeout:180000});

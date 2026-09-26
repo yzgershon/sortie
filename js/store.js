@@ -233,7 +233,7 @@
          never been chosen, which is what makes the picker appear once. */
       course: null,
       pin: null, lastExport: 0, lastBackup: 0, installDismissed: false, startDismissed: false,
-      releaseSeen: null
+      releaseSeen: null, pilotProfile: { name: '', callsign: '', focus: '' }
     };
   }
 
@@ -251,7 +251,7 @@
   /* Targeted migrations. Bumping SCHEMA rebuilds the whole question list from
      the defaults, which throws away anything he renamed or added; these change
      one field and leave the rest of his setup alone. */
-  var MIG = 4;
+  var MIG = 5;
   function migrate(base) {
     var m = +base.mig || 0;
     function byId(id) {
@@ -282,6 +282,10 @@
       // Additive only. A previous CSV export does not establish a recovery backup.
       base.lastBackup = +base.lastBackup || 0;
       base.startDismissed = !!base.startDismissed;
+    }
+    if (m < 5) {
+      // Optional local identity only; no flight, question, draft or course changes.
+      base.pilotProfile = base.pilotProfile || { name: '', callsign: '', focus: '' };
     }
     base.mig = MIG;
   }
@@ -678,7 +682,7 @@
       app: 'tahkir', schema: SCHEMA, backupVersion: 1, exportedAt: new Date().toISOString(),
       questions: settings.questions, nextGoals: settings.nextGoals, flights: cache,
       preferences: { course: settings.course, theme: settings.theme, startDismissed: settings.startDismissed,
-        installDismissed: settings.installDismissed, releaseSeen: settings.releaseSeen },
+        installDismissed: settings.installDismissed, releaseSeen: settings.releaseSeen, pilotProfile: settings.pilotProfile },
       drafts: draftEntries(), workspace: readJSON('sortie:workspace', null), feedbackDraft: readJSON('sortie:feedback-draft', null), trash: readArray(LS_TRASH)
     }, null, 2);
   }
@@ -704,6 +708,12 @@
         if (!q || typeof q !== 'object' || !q.id || typeof q.id !== 'string' || questionIds[q.id] || (q.type && TYPES.indexOf(q.type) === -1) || (q.options && !Array.isArray(q.options))) throw failure('INVALID_BACKUP');
         questionIds[q.id] = true;
       });
+    }
+    if (data.preferences && data.preferences.pilotProfile != null) {
+      var profile = data.preferences.pilotProfile;
+      if (typeof profile !== 'object' || Array.isArray(profile) || ['name', 'callsign', 'focus'].some(function (k) {
+        return profile[k] != null && typeof profile[k] !== 'string';
+      })) throw failure('INVALID_BACKUP');
     }
     if (data.nextGoals != null && !Array.isArray(data.nextGoals)) throw failure('INVALID_BACKUP');
     Object.keys(data.drafts || {}).forEach(function (key) {
@@ -749,7 +759,7 @@
       });
       ensureRoles(settings.questions);
     }
-    if (restore && data.preferences) ['course', 'theme', 'startDismissed', 'installDismissed', 'releaseSeen'].forEach(function (k) {
+    if (restore && data.preferences) ['course', 'theme', 'startDismissed', 'installDismissed', 'releaseSeen', 'pilotProfile'].forEach(function (k) {
       if (data.preferences[k] !== undefined) settings[k] = data.preferences[k];
     });
     if (Array.isArray(data.nextGoals)) {

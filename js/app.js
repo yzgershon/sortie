@@ -121,6 +121,7 @@
   }
 
   function openSheet(o) {
+    sheetEl.setAttribute('aria-label', o.title || T.app);
     sheetEl.innerHTML = '<div class="sheet__panel"><div class="sheet__grab"></div>' +
       (o.title ? '<h2 class="sheet__title">' + esc(o.title) + '</h2>' : '') +
       (o.text ? '<p class="sheet__text">' + esc(o.text) + '</p>' : '') +
@@ -152,7 +153,12 @@
   function applyTheme() {
     var p = Store.settings().theme, m = p;
     if (p === 'auto') m = global.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    if (['dark', 'calm', 'light'].indexOf(m) === -1) m = 'dark';
     document.documentElement.setAttribute('data-theme', m);
+    document.documentElement.style.colorScheme = m === 'light' ? 'light' : 'dark';
+    $$('meta[name="theme-color"]').forEach(function (meta) {
+      meta.removeAttribute('media'); meta.content = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+    });
   }
 
   function saveFile(name, text, mime, kind) {
@@ -183,7 +189,7 @@
   function go(p) { location.hash = '#/' + p; }
 
   var ROUTES = ['home', 'brief', 'debrief', 'log', 'flight', 'trends', 'settings', 'summary', 'syllabus',
-    'notebook', 'progress', 'feedback', 'whatsnew', 'recovery'];
+    'notebook', 'progress', 'feedback', 'whatsnew', 'recovery', 'profile'];
 
   function navigate() {
     // leaving a form saves what is in it, including via the back button
@@ -213,7 +219,7 @@
   ];
 
   function renderTabs() {
-    var cur = route.name === 'flight' ? 'log' : route.name;
+    var cur = ({ flight: 'log', summary: 'log', progress: 'trends', profile: 'settings', feedback: 'settings', recovery: 'settings', whatsnew: 'settings', syllabus: 'settings' })[route.name] || route.name;
     tabbarEl.innerHTML = TABS.map(function (t) {
       return '<a class="tab" href="#/' + (t.id === 'home' ? '' : t.id) + '"' +
         (t.id === cur ? ' aria-current="page"' : '') + '>' + icon(t.ic) +
@@ -223,7 +229,7 @@
 
   function renderTopbar(c) {
     topbarEl.innerHTML =
-      (c.back ? '<button class="iconbtn iconbtn--flip" data-back aria-label="חזרה">' + icon('chevLeft') + '</button>' : '') +
+      (c.back ? '<button class="iconbtn iconbtn--flip" data-back aria-label="' + esc(T.back) + '">' + icon('chevLeft') + '</button>' : '') +
       '<div class="topbar__title">' + esc(c.title || '') + '</div>' +
       (route.name !== 'notebook' ? '<a class="iconbtn notebook-shortcut" href="#/notebook" aria-label="' + esc(T.notebook) + '">' + icon('notebook') + '</a>' : '') +
       (c.sub ? '<span class="topbar__sub">' + esc(c.sub) + '</span>' : '') +
@@ -244,7 +250,7 @@
     // the outgoing screen's draft hook dies with its DOM
     formFlush = null;
     document.body.dataset.route = route.name;
-    var formish = route.name === 'brief' || route.name === 'debrief';
+    var formish = route.name === 'brief' || route.name === 'debrief' || route.name === 'profile';
     tabbarEl.hidden = formish;
     viewEl.classList.toggle('view--noTabs', formish);
     if (!formish) renderTabs();
@@ -276,13 +282,17 @@
     return '<div class="empty"><div class="empty__icon">' + icon(ic) + '</div>' +
       '<h3>' + esc(t) + '</h3><p>' + esc(p) + '</p></div>';
   }
+  function pageHeading(title, description, context) {
+    return '<header class="page-heading">' + (context ? '<span class="page-heading__context">' + esc(context) + '</span>' : '') +
+      '<h1>' + esc(title) + '</h1>' + (description ? '<p>' + esc(description) + '</p>' : '') + '</header>';
+  }
 
   /* ================================================================= home */
 
   function screenHome() {
     var all = Store.all(), done = Store.done(), waiting = Store.openBriefs();
     var open = waiting[0] || null;
-    var s = Store.settings(), goals = Store.nextGoals();
+    var s = Store.settings(), goals = Store.nextGoals(), pilot = s.pilotProfile || {};
 
     renderTopbar({
       title: T.app,
@@ -330,29 +340,28 @@
 
     var h = '<div class="stack-6 stagger">';
 
-    h += '<div class="hero">' +
-      '<div class="hero__meta"><i></i>' + esc(open ? T.statusBriefed : T.statusReady) +
-        ' · ' + esc(new Date().toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' })) + '</div>' +
-      '<h1 class="hero__h">' + esc(new Date().toLocaleDateString('he-IL', { weekday: 'long' })) + '</h1>' +
-      '<div class="hero__date">' + esc(new Date().toLocaleDateString('he-IL',
-        { day: 'numeric', month: 'long', year: 'numeric' })) + '</div><div class="course-label">' + esc(Store.course().label) + '</div>' +
-    '</div>';
-
-    h += '<div class="feature-links"><a class="feature-link" href="#/progress">' + icon('trending') + '<span><b>' + esc(T.courseProgress) + '</b><small>' + esc(Store.course().label) + '</small></span></a>' +
-      '<a class="feature-link" href="#/notebook">' + icon('notebook') + '<span><b>' + esc(T.notebookTitle) + '</b><small>' + esc(T.noteNew) + '</small></span></a></div>' +
+    h += '<header class="pilot-home"><div class="pilot-home__top"><span class="page-heading__context">' + esc(T.pilotJournal) + '</span><a href="#/profile">' + esc(T.personalizeProfile) + '</a></div>' +
+      '<div class="pilot-identity"><span class="pilot-mark" aria-hidden="true">' + icon('horizon') + '</span><div><h1>' + esc(T.pilotGreeting(pilot.name)) + '</h1>' +
+      '<div class="pilot-identity__meta"><span>' + esc(Store.course().label) + '</span>' + (pilot.callsign ? '<b dir="auto">' + esc(pilot.callsign) + '</b>' : '') + '</div></div></div>' +
+      '<p class="pilot-home__date">' + esc(new Date().toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' })) + '</p>' +
+      '<a class="pilot-focus" href="#/profile">' + icon('target') + '<span><small>' + esc(T.pilotFocus) + '</small><b dir="auto">' + esc(pilot.focus || T.focusPrompt) + '</b></span>' + icon('chevLeft') + '</a></header>';
+    var progress = syllabusProgress(), percentage = Math.round(progress.done / Math.max(1, progress.total) * 100);
+    var shortcuts = '<a class="course-strip" href="#/progress"><div><span>' + esc(T.courseProgress) + '</span><strong dir="ltr">' + percentage + '<small>%</small></strong></div>' +
+      '<div class="course-strip__track" aria-hidden="true"><span style="width:' + percentage + '%"></span></div><p>' + esc(T.progressCount(progress.done, progress.total)) + ' · ' + esc(Store.course().label) + '</p></a>';
+    h +=
       (Store.readDraft() ? '<a class="btn btn--block" href="#/brief">' + icon('pencil') + esc(T.resumeDraft) + '</a>' : '');
 
-    h += '<div class="readouts">' +
+    var overview = '<section class="journal-overview"><div class="section-heading"><h2>' + esc(T.journalOverview) + '</h2></div><p class="field__hint">' + esc(T.allJournalData) + '</p><div class="readouts">' +
       readout('cyan', 'clock', T.rHours, T.capHours, hours, mins + ' ' + T.rMinutes) +
       readout('', 'layers', T.rFlights, T.capFlights, String(done.length), '') +
       readout('green', 'target', T.rGoals, T.capGoals,
-        (tot ? Math.round(met / tot * 100) : 0) + '<small>%</small>', tot ? met + '/' + tot : '') +
+        tot ? Math.round(met / tot * 100) + '<small>%</small>' : '<small>' + esc(T.notAnswered) + '</small>', tot ? T.recordedGoals(met, tot) : T.noGradedGoals) +
       (qSolo
         ? readout('amber', 'checkCircle', T.rSolo, T.capSolo,
             soloTot ? Math.round(soloYes / soloTot * 100) + '<small>%</small>' : '<small>—</small>',
-            soloTot ? soloYes + '/' + soloTot + ' THIS WEEK' : '')
+            soloTot ? soloYes + '/' + soloTot + ' · ' + T.rWeek : T.rWeek)
         : readout('amber', 'trending', T.rWeek, T.capWeek, String(week), '')) +
-    '</div>';
+    '</div></section>';
 
     /* Everything still waiting on a תחקיר, not just the newest. Flying several
        times a week means forgetting one is routine, and showing only the most
@@ -385,6 +394,7 @@
       h += '<button class="btn btn--lit btn--block btn--lg" data-new>' +
         icon('plus') + esc(T.newBrief) + '</button>';
     }
+    h += shortcuts + overview;
 
     /* First run. 27 people got a link and no manual, and the three things that
        make this app worth opening are all invisible from an empty screen. */
@@ -418,7 +428,7 @@
             '<p>' + esc(T.noGoalsHint) + '</p></div>') +
         '<div class="addrow">' +
           '<input class="input" id="newGoal" type="text" dir="auto" enterkeyhint="done" placeholder="' + esc(T.addGoal) + '">' +
-          '<button class="btn" data-goaladd>' + icon('plus') + '</button>' +
+          '<button class="btn" data-goaladd aria-label="' + esc(T.addGoal) + '">' + icon('plus') + '</button>' +
         '</div></div></section>';
 
     /* recent */
@@ -635,7 +645,9 @@
     }
 
     var h = '<div class="formprog"><span class="formprog__fill" id="progFill"></span></div>' +
-      '<div class="stack-4">' +
+      '<div class="stack-4"><ol class="flight-steps" aria-label="' + esc(T.workflowLabel) + '">' +
+        '<li' + (isBrief ? ' aria-current="step"' : '') + '><span>01</span><div><b>' + esc(T.briefTitle) + '</b><small>' + esc(T.briefStep) + '</small></div></li>' +
+        '<li' + (!isBrief ? ' aria-current="step"' : '') + '><span>02</span><div><b>' + esc(T.debriefTitle) + '</b><small>' + esc(T.debriefStep) + '</small></div></li></ol>' +
       /* Autosave means a half-filled form comes back, which is the point — but
          it also means there has to be a way to say "not that one, start over".
          Without it a draft you no longer want is impossible to get rid of. */
@@ -796,7 +808,7 @@
         '<div class="addrow">' +
           '<input class="input" data-goalinput="' + esc(q.id) + '" type="text" dir="auto" ' +
             'enterkeyhint="done" placeholder="' + esc(T.addGoal) + '">' +
-          '<button type="button" class="btn" data-goalpush="' + esc(q.id) + '">' + icon('plus') + '</button>' +
+          '<button type="button" class="btn" data-goalpush="' + esc(q.id) + '" aria-label="' + esc(T.addGoal) + '">' + icon('plus') + '</button>' +
         '</div></div>';
     }
 
@@ -820,7 +832,7 @@
                 (g.status === 'met') + '">' + icon('check') + '</button>' +
               '<button type="button" data-v="missed" aria-label="' + esc(T.goalMissed) + '" aria-pressed="' +
                 (g.status === 'missed') + '">' + icon('x') + '</button></span>'
-          : '<input class="goalrow__in" data-goaltext type="text" dir="auto" value="' + esc(g.text) + '">' +
+          : '<input class="goalrow__in" data-goaltext type="text" dir="auto" aria-label="' + esc(T.goalText) + '" value="' + esc(g.text) + '">' +
             '<button type="button" class="rowx" data-rowx aria-label="' + esc(T.remove) + '">' + icon('x') + '</button>') +
       '</div>';
     }
@@ -859,7 +871,7 @@
         '" data-exid="' + esc(x.id) + '" data-focus="' + esc(focus) + '" data-notes="' + esc(x.notes || '') + '">' +
         '<div class="ex__top">' +
           '<span class="ex__n">' + (i + 1) + '</span>' +
-          '<input class="ex__t" type="text" dir="auto" value="' + esc(x.text) + '" data-extext>' +
+          '<input class="ex__t" type="text" dir="auto" aria-label="' + esc(T.exerciseText) + '" value="' + esc(x.text) + '" data-extext>' +
           '<span class="ex__grip" data-grip role="button" tabindex="0" aria-label="' + esc(T.reorderKeys) + '">' +
             icon('grip') + '</span>' +
           '<button type="button" class="rowx" data-rowx aria-label="' + esc(T.remove) + '">' + icon('x') + '</button>' +
@@ -893,7 +905,7 @@
     function itemRow(x) {
       return '<div class="bullet" data-itemid="' + esc(x.id) + '">' +
         '<span class="bullet__d"></span>' +
-        '<input class="bullet__t" type="text" dir="auto" data-itemtext value="' + esc(x.text) + '">' +
+        '<input class="bullet__t" type="text" dir="auto" data-itemtext aria-label="' + esc(T.pointText) + '" value="' + esc(x.text) + '">' +
         '<button type="button" class="rowx" data-rowx aria-label="' + esc(T.remove) + '">' + icon('x') + '</button>' +
       '</div>';
     }
@@ -973,8 +985,8 @@
       if (!listEl) return '';
       return $$('.ex', listEl).map(function (r) {
         var f = $('[data-exfocus]', r), n = $('[data-exnotes]', r);
-        return $('[data-extext]', r).value + '' + (f ? f.value : '') + '' + (n ? n.value : '');
-      }).join('');
+        return $('[data-extext]', r).value + '\u0001' + (f ? f.value : '') + '\u0001' + (n ? n.value : '');
+      }).join('\u0002');
     }
 
     /** Returns how many exercises it filled in, so the caller can say it once
@@ -1802,7 +1814,7 @@
       return t >= wk.start.getTime() && t <= wk.stop.getTime();
     }).length;
 
-    viewEl.innerHTML = '<div class="stack-4" id="logRoot">' +
+    viewEl.innerHTML = '<div class="stack-4" id="logRoot">' + (!logSelect ? pageHeading(T.flightLogTitle, T.flightLogSub) : '') +
       (!logSelect && Store.count()
         ? '<button class="weekbtn" data-weeksum' + (weekN ? '' : ' disabled') + '>' +
             icon('calendar') +
@@ -1829,22 +1841,23 @@
             (!!logCats[o]) + '">' + esc(o) +
             '<span class="opt__n mono">' + used[o] + '</span></button>';
         }).join('') + '</div>' : '') +
-      '<details class="log-filter-details"><summary>' + esc(T.logFilters) + '</summary><div class="log-filter-grid">' +
+      '<details class="log-filter-details"><summary id="logFilterSummary">' + esc(T.logFilters) + '</summary><div class="log-filter-grid">' +
         '<label>' + esc(T.courseSection) + '<select class="input" data-logfilter="course"><option value="">' + esc(T.allCourses) + '</option>' + Courses.all().map(function (c) { return '<option value="' + c.id + '"' + (logFilters.course === c.id ? ' selected' : '') + '>' + esc(c.label) + '</option>'; }).join('') + '</select></label>' +
         '<label>' + esc(T.allStages) + '<select class="input" data-logfilter="stage">' + [['', T.allStages], ['done', T.completedOnly], ['brief', T.pendingOnly]].map(function (x) { return '<option value="' + x[0] + '"' + (logFilters.stage === x[0] ? ' selected' : '') + '>' + esc(x[1]) + '</option>'; }).join('') + '</select></label>' +
         '<label>' + esc(T.fromDate) + '<input class="input" type="date" data-logfilter="from" value="' + esc(logFilters.from) + '"></label>' +
         '<label>' + esc(T.toDate) + '<input class="input" type="date" data-logfilter="to" value="' + esc(logFilters.to) + '"></label>' +
         '<label>' + esc(T.instructorFilter) + '<input class="input" type="search" data-logfilter="instructor" value="' + esc(logFilters.instructor) + '"></label>' +
-      '</div></details><div id="logResults"></div></div>' +
+      '</div></details><button class="btn btn--quiet" data-clearfilters hidden>' + esc(T.clearFilters) + '</button><div id="logResults"></div></div>' +
       (logSelect
         ? '<div class="savebar"><div class="savebar__inner">' +
-            '<span class="savestate" id="selCount">' + selCount() + ' SELECTED</span>' +
+            '<span class="savestate" id="selCount">' + esc(T.nSelected(selCount())) + '</span>' +
             '<span class="spacer"></span>' +
             '<button class="btn btn--lit" data-summary>' + icon('list3') + esc(T.makeSummary) + '</button>' +
           '</div></div>'
         : '');
 
     viewEl.classList.toggle('view--noTabs', logSelect);
+    tabbarEl.hidden = logSelect;
 
     function shownRows() {
       var picked = Object.keys(logCats).filter(function (k) { return logCats[k]; });
@@ -1863,6 +1876,9 @@
     }
 
     function paint() {
+      var active = Object.keys(logFilters).filter(function (k) { return !!logFilters[k]; }).length + Object.keys(logCats).filter(function (k) { return !!logCats[k]; }).length + (logQuery ? 1 : 0);
+      $('#logFilterSummary').textContent = active ? T.activeFilters(active) : T.logFilters;
+      $('[data-clearfilters]').hidden = !active;
       var rows = shownRows();
       if (!rows.length) {
         $('#logResults').innerHTML = empty('search', Store.count() ? T.noMatches : T.noFlights,
@@ -1885,6 +1901,7 @@
       out += '</div></div>';
       $('#logResults').innerHTML = out;
     }
+    on(viewEl, '[data-clearfilters]', 'click', function () { logQuery = ''; logCats = {}; Object.keys(logFilters).forEach(function (k) { logFilters[k] = ''; }); screenLog(); });
     on(viewEl, '[data-logfilter]', 'input', function (e) { logFilters[e.currentTarget.dataset.logfilter] = e.currentTarget.value; paint(); });
     paint();
 
@@ -1921,7 +1938,7 @@
         row.classList.toggle('is-on', !!selected[row.dataset.id]);
         row.setAttribute('aria-pressed', String(!!selected[row.dataset.id]));
         var n = selCount();
-        $('#selCount').textContent = n + ' SELECTED';
+        $('#selCount').textContent = T.nSelected(n);
         $('.topbar__title').textContent = T.nSelected(n);
         haptic();
       } else {
@@ -1969,12 +1986,10 @@
       return !q.archived || hasAns(q, r.answers[q.id]);
     });
 
+    var subjectQ = Store.questionFor(r, 'subject');
     viewEl.innerHTML = '<div class="stack-4 stagger">' +
-      '<div class="hero">' +
-        '<div class="hero__meta"><i style="background:' + (pending ? 'var(--amber)' : 'var(--green)') +
-          ';box-shadow:0 0 8px currentColor"></i>' + esc(pending ? T.capBrief : T.capDebrief) + '</div>' +
-        '<h1 class="hero__h">' + esc(fmtLong(r.flownAt)) + '</h1>' +
-      '</div>' +
+      pageHeading(subjectQ && r.answers[subjectQ.id] || T.flightLogTitle, fmtLong(r.flownAt),
+        (r.course ? Courses.resolve(r.course).label + ' · ' : '') + (pending ? T.pendingOnly : T.completedOnly)) +
       (pending
         ? '<button class="btn btn--amber btn--block btn--lg" data-godebrief>' + icon('check') +
           esc(T.openBrief) + '</button>'
@@ -2036,7 +2051,7 @@
                 '"><span class="goalrow__t" dir="auto"><span>' + esc(g.text) + '</span></span>' +
                 (g.status === 'open' ? '' :
                   '<span class="vx"><button type="button" disabled data-v="' + esc(g.status) +
-                    '" aria-pressed="true" tabindex="-1">' +
+                    '" aria-label="' + esc(g.status === 'met' ? T.goalMet : T.goalMissed) + '" aria-pressed="true" tabindex="-1">' +
                     icon(g.status === 'met' ? 'check' : 'x') +
                   '</button></span>') + '</div>';
             }).join('') + '</div>'
@@ -2090,7 +2105,7 @@
     var done = Store.done().filter(function (r) { return (!trendScope.course || r.course === trendScope.course) && (!trendScope.from || r.flownAt >= trendScope.from) && (!trendScope.to || r.flownAt <= trendScope.to); });
     var filters = '<details class="log-filters"' + (trendScope.course || trendScope.from || trendScope.to ? ' open' : '') + '><summary>' + esc(T.logFilters) + '</summary><div class="log-filters__grid"><label>' + esc(T.courseLabel) + '<select class="input" data-trendscope="course"><option value="">' + esc(T.allCourses) + '</option>' + Courses.all().map(function (c) { return '<option value="' + c.id + '"' + (trendScope.course === c.id ? ' selected' : '') + '>' + esc(c.label) + '</option>'; }).join('') + '</select></label>' + ['from', 'to'].map(function (key) { return '<label>' + esc(key === 'from' ? T.fromDate : T.toDate) + '<input class="input" type="date" data-trendscope="' + key + '" value="' + esc(trendScope[key]) + '"></label>'; }).join('') + '</div></details>';
     function bindFilters() { on(viewEl, '[data-trendscope]', 'change', function (e) { trendScope[e.currentTarget.dataset.trendscope] = e.currentTarget.value; screenTrends(); }); }
-    if (!done.length) { viewEl.innerHTML = filters + empty('trending', T.trendsEmpty, T.trendsEmptyHint); bindFilters(); return; }
+    if (!done.length) { viewEl.innerHTML = pageHeading(T.trendsTitle, T.trendsSub) + filters + empty('trending', T.trendsEmpty, T.trendsEmptyHint); bindFilters(); return; }
 
     var qg = Store.roleQuestion('goals'), met = 0, tot = 0, miss = {};
     if (qg) done.forEach(function (r) {
@@ -2114,7 +2129,7 @@
         n: done.filter(function (r) {
           var t = parseISO(r.flownAt).getTime();
           return t >= st.getTime() && t <= end.getTime();
-        }).length, l: String(st.getDate())
+        }).length, l: st.getDate() + '.' + (st.getMonth() + 1)
       });
     }
     var wMax = Math.max(1, Math.max.apply(null, weeks.map(function (x) { return x.n; })));
@@ -2134,7 +2149,7 @@
     // the readout used to show every goal missed even once under that label
     var recurringN = Object.keys(miss).filter(function (k) { return miss[k] > 1; }).length;
 
-    var h = '<div class="stack-4 stagger">' + filters +
+    var h = '<div class="stack-4 stagger">' + pageHeading(T.trendsTitle, T.trendsSub) + filters +
       '<div class="readouts">' +
         ro('cyan', 'clock', T.totalMinutes, 'HOURS', (mins / 60).toFixed(1)) +
         ro('', 'layers', T.rFlights, 'FLIGHTS', String(done.length)) +
@@ -2146,9 +2161,9 @@
         '<span class="panel__t">' + esc(T.flightsPerWeek) + '</span>' +
         '<span class="panel__a">8W</span></div><div class="panel__body">' +
         '<div class="weeks">' + weeks.map(function (x, i) {
-          return '<div class="week"><div class="week__bar' + (x.n ? '' : ' is-zero') + '" style="height:' +
+          return '<div class="week" role="img" aria-label="' + esc(T.weekChartLabel(x.l, x.n)) + '"><div class="week__count">' + x.n + '</div><div class="week__bar' + (x.n ? '' : ' is-zero') + '" style="height:' +
             Math.max(3, Math.round(x.n / wMax * 54)) + 'px;animation-delay:' + (i * 26) + 'ms"></div>' +
-            '<div class="week__l">' + esc(x.l) + '</div></div>';
+            '<div class="week__l" aria-hidden="true">' + esc(x.l).replace('.', '<br>') + '</div></div>';
         }).join('') + '</div></div></section>';
 
     Store.questions().filter(function (q) { return q.type === 'choice'; }).forEach(function (q) {
@@ -2343,42 +2358,22 @@
 
   /* ============================================================= settings */
 
+  var questionEditorOpen = false;
   function screenSettings() {
     renderTopbar({ title: T.settings, sub: T.capSet });
     var s = Store.settings(), since = daysSince(s.lastBackup), qs = Store.questions();
 
-    viewEl.innerHTML = '<div class="stack-6 stagger">' +
+    viewEl.innerHTML = '<div class="stack-6 stagger">' + pageHeading(T.settings, T.settingsSub) +
+      '<div class="group">' + item('horizon', T.pilotProfile, (s.pilotProfile && (s.pilotProfile.name || s.pilotProfile.callsign)) || T.pilotProfileSub, 'profile') + '</div>' +
       (since === null || since >= 14
         ? '<div class="note">' + icon('alert') + '<div><b>' + esc(T.backupTitle) + '</b><br>' +
           esc(since === null ? T.backupNever : T.backupDays(since)) + ' ' + esc(T.backupBody) + '</div></div>' : '') +
 
-      '<section class="stack"><h2 class="h-sect">' + esc(T.appearance) + '</h2><div class="seg">' +
-        [['dark', T.themeDark], ['light', T.themeLight], ['auto', T.themeAuto]].map(function (t) {
-          return '<button data-theme-set="' + t[0] + '" aria-pressed="' + (s.theme === t[0]) + '">' +
-            esc(t[1]) + '</button>';
+      '<section class="stack"><h2 class="h-sect">' + esc(T.appearance) + '</h2><div class="theme-grid">' +
+        [['dark', T.themeDark, T.themeDarkHint], ['calm', T.themeCalm, T.themeCalmHint], ['light', T.themeLight, T.themeLightHint], ['auto', T.themeAuto, T.themeAutoHint]].map(function (t) {
+          return '<button class="theme-choice" data-theme-set="' + t[0] + '" aria-pressed="' + (s.theme === t[0]) + '"><span class="theme-swatch theme-swatch--' + t[0] + '" aria-hidden="true"><i></i><i></i><i></i></span><b>' +
+            esc(t[1]) + '</b><small>' + esc(t[2]) + '</small></button>';
         }).join('') + '</div></section>' +
-
-      '<section class="stack">' +
-        '<h2 class="h-sect">' + esc(T.questions) + '</h2>' +
-        '<p class="dim" style="font-size:var(--t-12);line-height:1.6;margin-top:-6px">' + esc(T.questionsHint) + '</p>' +
-        '<div class="group">' + qs.map(function (q, i) {
-          var lock = Store.isProtected(q);
-          return '<div class="qrow' + (lock ? ' qrow--lock' : '') + '" data-qid="' + esc(q.id) + '">' +
-            '<span class="qrow__b"><span class="qrow__t">' + esc(q.label) + '</span>' +
-            '<span class="qrow__s">' + esc(q.stage === 'brief' ? T.stageBrief : T.stageDebrief) +
-              ' · ' + esc(typeLabel(q.type)) + '</span></span>' +
-            '<span class="qrow__acts">' +
-              '<button data-qmove="-1" aria-label="' + esc(T.moveUp) + '"' + (i === 0 ? ' disabled' : '') + '>' + icon('chevUp') + '</button>' +
-              '<button data-qmove="1" aria-label="' + esc(T.moveDown) + '"' + (i === qs.length - 1 ? ' disabled' : '') + '>' + icon('chevDown') + '</button>' +
-              '<button data-qedit aria-label="' + esc(T.editQuestion) + '">' + icon('pencil') + '</button>' +
-              (lock ? '' : '<button data-qdel aria-label="' + esc(T.delete) + '">' + icon('trash') + '</button>') +
-            '</span></div>';
-        }).join('') +
-        '<button class="item" data-qadd><span class="item__ic">' + icon('plus') + '</span>' +
-        '<span class="item__b"><span class="item__t">' + esc(T.addQuestion) + '</span></span></button></div>' +
-        '<button class="btn btn--quiet btn--block" data-qreset style="min-height:38px;font-size:var(--t-12)">' +
-          esc(T.restoreDefaults) + '</button>' +
-      '</section>' +
 
       '<section class="stack"><h2 class="h-sect">' + esc(T.courseSection) + '</h2><div class="group">' +
         (global.Courses ? Courses.all().map(function (c) {
@@ -2398,9 +2393,30 @@
         item('download', T.exportJson, T.exportJsonSub, 'export-json') +
         item('upload', T.importJson, T.importJsonSub, 'import-json') +
         item('layers', T.recovery, T.backupRecoveryBody, 'recovery') + '</div></section>' +
-      '<section class="stack"><div class="group">' + item('notebook', T.notebookTitle, T.onDeviceOnly, 'notebook') +
+      '<section class="stack"><h2 class="h-sect">' + esc(T.trainingTools) + '</h2><div class="group">' + item('notebook', T.notebookTitle, T.onDeviceOnly, 'notebook') +
         item('trending', T.courseProgress, T.progressSub, 'progress') + item('pencil', T.feedback, T.feedbackSub, 'feedback') +
         item('flag', T.whatsNew, BUILD, 'whatsnew') + '</div></section>' +
+
+      '<details class="settings-disclosure" id="questionEditor"' + (questionEditorOpen ? ' open' : '') + '><summary>' + icon('list3') + '<span><b>' + esc(T.questionEditor) + '</b><small>' + esc(T.questionCount(qs.length)) + '</small></span>' + icon('chevDown') + '</summary><section class="stack">' +
+        '<p class="dim" style="font-size:var(--t-12);line-height:1.6;margin-top:-6px">' + esc(T.questionsHint) + '</p>' +
+        '<div class="group">' + qs.map(function (q, i) {
+          var lock = Store.isProtected(q);
+          return '<div class="qrow' + (lock ? ' qrow--lock' : '') + '" data-qid="' + esc(q.id) + '">' +
+            '<span class="qrow__b"><span class="qrow__t">' + esc(q.label) + '</span>' +
+            '<span class="qrow__s">' + esc(q.stage === 'brief' ? T.stageBrief : T.stageDebrief) +
+              ' · ' + esc(typeLabel(q.type)) + '</span></span>' +
+            '<span class="qrow__acts">' +
+              '<button data-qmove="-1" aria-label="' + esc(T.moveUp) + '"' + (i === 0 ? ' disabled' : '') + '>' + icon('chevUp') + '</button>' +
+              '<button data-qmove="1" aria-label="' + esc(T.moveDown) + '"' + (i === qs.length - 1 ? ' disabled' : '') + '>' + icon('chevDown') + '</button>' +
+              '<button data-qedit aria-label="' + esc(T.editQuestion) + '">' + icon('pencil') + '</button>' +
+              (lock ? '' : '<button data-qdel aria-label="' + esc(T.delete) + '">' + icon('trash') + '</button>') +
+            '</span></div>';
+        }).join('') +
+        '<button class="item" data-qadd><span class="item__ic">' + icon('plus') + '</span>' +
+        '<span class="item__b"><span class="item__t">' + esc(T.addQuestion) + '</span></span></button></div>' +
+        '<button class="btn btn--quiet btn--block" data-qreset style="min-height:38px;font-size:var(--t-12)">' +
+          esc(T.restoreDefaults) + '</button>' +
+      '</section></details>' +
 
       // only when the gate is actually configured; otherwise there is no account
       (global.Auth && Auth.enabled() && Auth.session()
@@ -2436,8 +2452,11 @@
         '<span class="item__r">' + icon('chevRight', { cls: 'chev' }) + '</span></button>';
     }
 
+    $('#questionEditor').addEventListener('toggle', function (e) { questionEditorOpen = e.currentTarget.open; });
     on(viewEl, '[data-theme-set]', 'click', function (e) {
-      Store.set('theme', e.currentTarget.dataset.themeSet); applyTheme(); screenSettings();
+      var nextTheme = e.currentTarget.dataset.themeSet;
+      if (!Store.set('theme', nextTheme)) return toast(T.saveFailedBody, 'alert');
+      applyTheme(); screenSettings(); $('[data-theme-set="' + nextTheme + '"]').focus({ preventScroll: true });
     });
     on(viewEl, '[data-coursepick]', 'click', function (e) {
       var id = e.currentTarget.dataset.coursepick;
@@ -2478,7 +2497,7 @@
 
     on(viewEl, '[data-act]', 'click', function (e) {
       var a = e.currentTarget.dataset.act;
-      if (['notebook', 'progress', 'feedback', 'whatsnew', 'recovery'].indexOf(a) !== -1) { go(a); return; }
+      if (['notebook', 'progress', 'feedback', 'whatsnew', 'recovery', 'profile'].indexOf(a) !== -1) { go(a); return; }
       if (a === 'export-csv') {
         if (!Store.count()) return toast(T.noFlights, 'alert');
         saveFile('tahkir-' + stamp() + '.csv', Store.toCSV(), 'text/csv');
@@ -2512,7 +2531,7 @@
               var restore = $('#restorePreferences', sh).checked;
               $$('button', sh).forEach(function (b) { b.disabled = true; });
               Store.importJSON(text, { restorePreferences: restore }).then(function (res) {
-                sh.close(); toast(T.importComplete(res)); screenSettings();
+                sh.close(); toast(T.importComplete(res)); applyTheme(); screenSettings();
               }).catch(function () { sh.close(); toast(T.importFailed, 'alert'); });
             } }, { label: T.cancel }]
           });
@@ -2896,6 +2915,7 @@
 
   /** The training chart, read-only. Typing a גיחה into נושא טיסה pulls its
    *  חתך rows into the תדריך; this is where he can see the whole thing. */
+  var sylSectionOpen = {};
   var sylOpen = {};   // which גיחות are expanded, kept across repaints
 
   function screenSyllabus() {
@@ -2908,7 +2928,7 @@
     }
     var prog = syllabusProgress() || { flown: {}, done: 0, total: all.length };
 
-    viewEl.innerHTML = '<div class="stack-4 stagger">' +
+    viewEl.innerHTML = '<div class="stack-4 stagger">' + pageHeading(T.syllabusRef, T.syllabusSub, Store.course().label) +
       '<div class="search">' + icon('search') +
         '<input class="input" id="sq" type="search" dir="auto" autocomplete="off" placeholder="' +
         esc(T.searchSyllabus) + '"></div>' +
@@ -2935,13 +2955,16 @@
         return;
       }
 
+      var sections = {};
+      all.forEach(function (entry) { var key = entry.section || '—'; if (!sections[key]) sections[key] = { total: 0, done: 0 }; sections[key].total++; if (prog.flown[entry.name]) sections[key].done++; });
       var out = '', section = null;
       rows.forEach(function (e) {
         var sec = e.section || '—';
         if (sec !== section) {
-          if (section !== null) out += '</div>';
+          if (section !== null) out += '</div></details>';
           section = sec;
-          out += '<h2 class="h-sect" dir="auto">' + esc(sec) + '</h2><div class="sylgroup">';
+          var key = Store.courseId() + ':' + sec, stats = sections[sec];
+          out += '<details class="syllabus-section" data-sylsection="' + esc(key) + '"' + (f || sylSectionOpen[key] ? ' open' : '') + '><summary><b dir="auto">' + esc(sec || T.syllabusRef) + '</b><small dir="ltr">' + stats.done + ' / ' + stats.total + '</small>' + icon('chevDown') + '</summary><div class="sylgroup">';
         }
         var open = !!f || !!sylOpen[e.name];
         var flown = !!prog.flown[e.name];
@@ -2985,8 +3008,11 @@
             : '') +
         '</section>';
       });
-      out += '</div>';
+      out += '</div></details>';
       $('#sylResults').innerHTML = out;
+      $$('[data-sylsection]').forEach(function (el) { el.addEventListener('toggle', function () {
+        if (!$('#sq').value.trim()) sylSectionOpen[el.dataset.sylsection] = el.open;
+      }); });
     }
     paint('');
 
@@ -3149,6 +3175,8 @@
   }
 
   function boot() {
+    var skip = $('#skipContent'); skip.textContent = T.skipContent;
+    skip.addEventListener('click', function (e) { e.preventDefault(); viewEl.focus(); });
     appEl = document.getElementById('app');
     viewEl = document.getElementById('view');
     topbarEl = document.getElementById('topbar');

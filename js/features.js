@@ -7,6 +7,24 @@
   function date(ts) { return new Date(ts).toLocaleDateString('he-IL', { day: 'numeric', month: 'short', year: 'numeric' }); }
   function button(label, attr, ic, cls) { return '<button type="button" class="btn ' + (cls || '') + '" ' + attr + '>' + (ic ? icon(ic) : '') + esc(label) + '</button>'; }
   function input(label, id, value, type) { return '<label class="field"><span class="field__label"><b>' + esc(label) + '</b></span><input class="input" id="' + id + '" type="' + (type || 'text') + '" dir="auto" value="' + esc(value || '') + '"></label>'; }
+  function profile(route, ui) {
+    ui.topbar({ title: T.pilotProfile, back: true, backTo: 'settings' });
+    var pilot = Store.settings().pilotProfile || {}, dirty = false, timer;
+    ui.view.innerHTML = '<section class="profile-editor stack-6"><header class="page-heading"><span class="page-heading__context">' + esc(Store.course().label) + '</span><h1>' + esc(T.pilotProfile) + '</h1><p>' + esc(T.pilotProfileSub) + '</p></header>' +
+      '<div class="panel"><div class="panel__body stack-6">' + input(T.pilotName, 'pilotName', pilot.name) + input(T.pilotCallsign, 'pilotCallsign', pilot.callsign) +
+      '<label class="field"><span class="field__label"><b>' + esc(T.pilotFocus) + '</b></span><textarea class="input ta" id="pilotFocus" rows="3" maxlength="240" dir="auto" placeholder="' + esc(T.pilotFocusPlaceholder) + '">' + esc(pilot.focus || '') + '</textarea></label></div></div>' +
+      '<p class="field__hint">' + esc(T.pilotProfileHint) + '</p><p class="profile-status" id="profileState" role="status">' + esc(T.profileSaved) + '</p></section>';
+    $('#pilotName').maxLength = 80; $('#pilotCallsign').maxLength = 32;
+    function flush() {
+      clearTimeout(timer); if (!dirty) return true;
+      var saved = Store.set('pilotProfile', { name: $('#pilotName').value.trim(), callsign: $('#pilotCallsign').value.trim(), focus: $('#pilotFocus').value.trim() });
+      $('#profileState').textContent = saved ? T.profileSaved : T.saveFailed;
+      if (saved) dirty = false;
+      return saved;
+    }
+    $('.profile-editor').addEventListener('input', function () { dirty = true; $('#profileState').textContent = T.draftSaving; clearTimeout(timer); timer = setTimeout(flush, 400); });
+    ui.setFlush(flush);
+  }
   function notebook(route, ui) {
     ui.topbar({ title: T.notebookTitle, back: true, backTo: '' });
     var data = Workspace.all(), folders = data.folders.filter(function (f) { return !f.deletedAt; });
@@ -125,7 +143,8 @@
       var kind = /סולו/.test(entry.name) ? T.checkpointSolo : T.checkpointNight;
       if (!checkpoints.some(function (item) { return item.kind === kind; })) checkpoints.push({ kind: kind, entry: entry });
     });
-    ui.view.innerHTML = '<div class="journey stack-6"><header class="journey__hero"><div class="journey__eyebrow">' + icon('flag') + '<span>' + esc(course.label) + '</span></div>' +
+    var pilot = Store.settings().pilotProfile || {};
+    ui.view.innerHTML = '<div class="journey stack-6"><header class="journey__hero"><div class="journey__eyebrow">' + icon('flag') + '<span>' + esc(course.label) + '</span>' + (pilot.name || pilot.callsign ? '<b dir="auto">' + esc(pilot.callsign || pilot.name) + '</b>' : '') + '</div>' +
       '<h1>' + esc(T.courseProgress) + '</h1><p>' + esc(T.progressSub) + '</p>' +
       '<div class="journey__instrument"><svg viewBox="0 0 320 320" aria-hidden="true"><circle class="journey__outer" cx="160" cy="160" r="148"/>' +
       Array.from({ length: 60 }, function (_, i) { var a = i * Math.PI / 30, r1 = i % 5 === 0 ? 131 : 138; return '<line class="journey__tick" x1="' + (160 + Math.sin(a) * r1) + '" y1="' + (160 - Math.cos(a) * r1) + '" x2="' + (160 + Math.sin(a) * 144) + '" y2="' + (160 - Math.cos(a) * 144) + '"/>'; }).join('') +
@@ -167,20 +186,22 @@
     if (document.fonts && document.fonts.ready) await document.fonts.ready;
     var pct = Math.round(p.done / Math.max(1, p.total) * 100), canvas = document.createElement('canvas');
     canvas.width = 1080; canvas.height = 1350;
-    var c = canvas.getContext('2d'); c.fillStyle = '#03060A'; c.fillRect(0, 0, 1080, 1350);
-    c.strokeStyle = '#173341'; c.lineWidth = 2; c.strokeRect(40, 40, 1000, 1270);
-    for (var x = 80; x < 1040; x += 40) { c.beginPath(); c.moveTo(x, 60); c.lineTo(x, 1290); c.strokeStyle = '#091620'; c.stroke(); }
-    c.direction = 'rtl'; c.textAlign = 'right'; c.fillStyle = '#22D3EE'; c.font = '500 32px Heebo, Arial'; c.fillText(T.app, 976, 118);
-    c.fillStyle = '#DCE9F5'; c.font = '700 64px Heebo, Arial'; c.fillText(T.courseProgress, 976, 236);
-    c.fillStyle = '#8FA6BC'; c.font = '400 36px Heebo, Arial'; c.fillText(course.label, 976, 296);
-    c.beginPath(); c.arc(540, 610, 220, 0, Math.PI * 2); c.strokeStyle = '#142B37'; c.lineWidth = 18; c.stroke();
-    if (pct) { c.beginPath(); c.arc(540, 610, 220, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * p.done / p.total); c.strokeStyle = '#22D3EE'; c.lineCap = 'round'; c.stroke(); }
-    c.textAlign = 'center'; c.direction = 'ltr'; c.fillStyle = '#DCE9F5'; c.font = '600 126px Arial'; c.fillText(pct + '%', 540, 630);
-    c.direction = 'rtl'; c.font = '400 30px Heebo, Arial'; c.fillStyle = '#8FA6BC'; c.fillText(T.progressCount(p.done, p.total), 540, 697);
+    var theme = getComputedStyle(document.documentElement);
+    function color(token) { return theme.getPropertyValue(token).trim(); }
+    var c = canvas.getContext('2d'); c.fillStyle = color('--bg'); c.fillRect(0, 0, 1080, 1350);
+    c.strokeStyle = color('--rule-2'); c.lineWidth = 2; c.strokeRect(40, 40, 1000, 1270);
+    for (var x = 80; x < 1040; x += 40) { c.beginPath(); c.moveTo(x, 60); c.lineTo(x, 1290); c.strokeStyle = color('--rule'); c.stroke(); }
+    c.direction = 'rtl'; c.textAlign = 'right'; c.fillStyle = color('--cyan'); c.font = '500 32px Heebo, Arial'; c.fillText(T.app, 976, 118);
+    c.fillStyle = color('--fg'); c.font = '700 64px Heebo, Arial'; c.fillText(T.courseProgress, 976, 236);
+    c.fillStyle = color('--fg-mid'); c.font = '400 36px Heebo, Arial'; c.fillText(course.label, 976, 296);
+    c.beginPath(); c.arc(540, 610, 220, 0, Math.PI * 2); c.strokeStyle = color('--rule-2'); c.lineWidth = 18; c.stroke();
+    if (pct) { c.beginPath(); c.arc(540, 610, 220, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * p.done / p.total); c.strokeStyle = color('--cyan'); c.lineCap = 'round'; c.stroke(); }
+    c.textAlign = 'center'; c.direction = 'ltr'; c.fillStyle = color('--fg'); c.font = '600 126px Arial'; c.fillText(pct + '%', 540, 630);
+    c.direction = 'rtl'; c.font = '400 30px Heebo, Arial'; c.fillStyle = color('--fg-mid'); c.fillText(T.progressCount(p.done, p.total), 540, 697);
     var visible = milestones.filter(function (m) { return m.share; }).slice(0, 3);
     c.textAlign = 'right';
-    visible.forEach(function (m, i) { c.fillStyle = '#FFB020'; c.fillRect(960, 934 + i * 80, 10, 10); c.fillStyle = '#DCE9F5'; c.font = '500 30px Heebo, Arial'; c.fillText(m.title.slice(0, 48), 930, 952 + i * 80, 805); c.fillStyle = '#8FA6BC'; c.font = '400 22px Heebo, Arial'; c.fillText(m.date ? date(m.date + 'T12:00:00') : T.milestonePersonal, 930, 980 + i * 80); });
-    c.textAlign = 'center'; c.font = '400 22px Heebo, Arial'; c.fillStyle = '#8FA6BC'; c.fillText(T.progressBasis, 540, 1230, 920); c.fillText(date(Date.now()), 540, 1268);
+    visible.forEach(function (m, i) { c.fillStyle = color('--amber'); c.fillRect(960, 934 + i * 80, 10, 10); c.fillStyle = color('--fg'); c.font = '500 30px Heebo, Arial'; c.fillText(m.title.slice(0, 48), 930, 952 + i * 80, 805); c.fillStyle = color('--fg-mid'); c.font = '400 22px Heebo, Arial'; c.fillText(m.date ? date(m.date + 'T12:00:00') : T.milestonePersonal, 930, 980 + i * 80); });
+    c.textAlign = 'center'; c.font = '400 22px Heebo, Arial'; c.fillStyle = color('--fg-mid'); c.fillText(T.progressBasis, 540, 1230, 920); c.fillText(date(Date.now()), 540, 1268);
     var blob = await new Promise(function (resolve) { canvas.toBlob(resolve, 'image/png'); });
     if (!blob) return ui.toast(T.shareFailed, 'alert');
     var url = URL.createObjectURL(blob), caption = T.shareCaption(course.label, pct, p.done, p.total);
@@ -266,7 +287,7 @@
     $('[data-rawbackup]').onclick = function () { ui.saveFile('sortie-raw-recovery.json', Store.emergencyJSON(), 'application/json'); };
     if ($('[data-recoverycopy]')) $('[data-recoverycopy]').onclick = function () {
       var r = Store.recovery(); ui.saveFile('sortie-recovery.json', JSON.stringify({ app: 'tahkir', schema: 4, backupVersion: 1, flights: r.flights, questions: r.settings.questions, nextGoals: r.settings.nextGoals,
-        preferences: { course: r.settings.course, theme: r.settings.theme }, drafts: r.drafts, workspace: r.workspace, trash: r.trash }, null, 2), 'application/json');
+      preferences: { course: r.settings.course, theme: r.settings.theme, pilotProfile: r.settings.pilotProfile }, drafts: r.drafts, workspace: r.workspace, trash: r.trash }, null, 2), 'application/json');
     };
     all('[data-restoreflight]').forEach(function (b) { b.onclick = function () { var item = trash.find(function (t) { return t.id === b.dataset.restoreflight; }); Store.restore(item.record).then(function () { ui.toast(T.restored); recovery(route, ui); }).catch(function () { ui.toast(T.saveFailedBody, 'alert'); }); }; });
     all('[data-restorenote]').forEach(function (b) { b.onclick = function () { try { Workspace.restoreNote(b.dataset.restorenote); ui.toast(T.restored); recovery(route, ui); } catch (e) { ui.toast(T.saveFailedBody, 'alert'); } }; });
@@ -283,7 +304,7 @@
     }; });
   }
   g.Features = { render: function (route, ui) {
-    try { ({ notebook: notebook, progress: progress, feedback: feedback, whatsnew: whatsnew, recovery: recovery })[route.name](route, ui); }
+    try { ({ notebook: notebook, progress: progress, feedback: feedback, whatsnew: whatsnew, recovery: recovery, profile: profile })[route.name](route, ui); }
     catch (e) { ui.view.innerHTML = '<section class="empty"><h1>' + esc(T.startupError) + '</h1><p>' + esc(T.startupErrorBody) + '</p><a class="btn" href="#/recovery">' + esc(T.backupRecovery) + '</a></section>'; console.error('Feature could not open', e); }
   } };
 })(window);

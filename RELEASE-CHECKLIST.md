@@ -14,6 +14,7 @@ Updated 2026-09-26. Branch `release/next-update`, baseline `005e762`, local buil
 - [x] Course-aware catalogue progress, unassigned-history distinction, stable selected identities, personal milestones, catalogue-derived solo/night markers and image/text sharing preview.
 - [x] One-click notebook access, ruled pages, folders, priorities, pinning/search, autosave, local conflict-copy recovery, full backup and individual page download.
 - [x] Mobile notebook: shared cockpit palette, collapsible RTL folder sidebar, two main actions, one expandable page-options menu, 48px controls and full writing space. Verified long folders, both themes, enlarged text, touch/keyboard navigation and saving across folder changes/Back/pinning. Storage format unchanged.
+- [x] Frontend audit: optional profile and personal focus, task-first Home, calm charcoal/sage theme, consistent typography and controls, filter reset, collapsible question editor and syllabus sections, theme-aware progress image and updated release notes. MIG 5 adds profile only; SCHEMA stays 4. See `FRONTEND-AUDIT.md`.
 - [x] Completed-only weekly selection, planned/documented exercise wording, clean plain text, short/full summaries, log/trend filters and goal history.
 - [x] All answer-history questions, retained first-run dismissal, optional brief sections, separated destructive settings, touch/focus improvements and truthful Hebrew privacy/save copy.
 - [x] Verified network-first release manifest, complete-install requirement, previous/unrelated cache retention, HTTP-error/mixed-version fallback and safe update coordination during editing.
@@ -24,7 +25,7 @@ Updated 2026-09-26. Branch `release/next-update`, baseline `005e762`, local buil
 
 ## Evidence
 
-`node tools/build-release.cjs` and `node tools/test.cjs` passed **374 checks across 14 suites**, plus manifest/script/string/access-mapping validation.
+`node tools/build-release.cjs` and `node tools/test.cjs` passed **412 checks across 15 suites**, plus manifest/script/string/access-mapping validation (22 shell files).
 
 | Suite | Checks |
 |---|---:|
@@ -34,7 +35,7 @@ Updated 2026-09-26. Branch `release/next-update`, baseline `005e762`, local buil
 | מתקדם internal catalogue verifier | 59 |
 | Preservation / backup / conflicts / journal | 27 |
 | Storage abort, deadline, failed quarantine | 3 |
-| Worker asset/fallback/ownership fault cases | 31 |
+| Worker asset/fallback/ownership fault cases | 32 |
 | Private access tool | 4 |
 | Real Chrome v22 upgrade and rollback | 11 |
 | Browser screen and data flows | 26 |
@@ -42,10 +43,11 @@ Updated 2026-09-26. Branch `release/next-update`, baseline `005e762`, local buil
 | Local mock feedback, live-endpoint isolation and release announcement | 11 |
 | Buffers, storage failure, conflicts, filters, 360px enlarged text | 22 |
 | Notebook sidebar, preservation, 320-412px, themes and enlarged text | 40 |
+| Profile preservation/failure, 16-screen theme/size matrix, filters, sections, access screens and sharing | 37 |
 
-Latest log: `C:\Dev\artifacts\sortie-v23\notebook-sidebar-tests.log` (previous full runs: `feedback-connected-tests.log`, `mobile-tests.log`, `final-tests.log`). Screenshots are in the same directory, including `mobile-notebook-*.png`. Actual loopback preview was inspected through the sidebar browser; one labeled live feedback test was received in Formspree and confirmed by Yish in Gmail. Automated suites block real Formspree submission URLs. Chrome runtime errors were checked by the browser suites; screenshot and short viewport inspection are not real-phone/keyboard acceptance.
+Latest log: `C:\Dev\artifacts\sortie-v23\frontend-audit-tests.log` (previous full runs: `notebook-sidebar-tests.log`, `feedback-connected-tests.log`, `mobile-tests.log`, `final-tests.log`). Screenshots are in the same directory, including `frontend-*.png` and `mobile-notebook-*.png`. Actual loopback preview was inspected through the sidebar browser; one labeled live feedback test was received in Formspree and confirmed by Yish in Gmail. Automated suites block real Formspree submission URLs. Chrome runtime errors were checked by the browser suites; screenshot and short viewport inspection are not real-phone/keyboard acceptance.
 
-The 12 private legacy suites were rerun too. The retained store suite has four intentional expectation changes: MIG 4; explicitly carry/achieve a goal before expecting settlement (two assertions); retain orphan drafts. Its tracked replacement passes all 64 checks. The other legacy suites passed, including the 31-check pre-course upgrade and 20-check older upgrade. Original logs remain available; the catalogue verifiers retain 3/7 source-content notes.
+The 12 private legacy suites were rerun too. The retained store suite has four intentional expectation changes: migration number (now MIG 5); explicitly carry/achieve a goal before expecting settlement (two assertions); retain orphan drafts. Its tracked replacement passes all 64 checks. The other legacy suites passed, including the 31-check pre-course upgrade and 20-check older upgrade, both rerun after MIG 5. Original logs remain available; the catalogue verifiers retain 3/7 source-content notes.
 
 A finding-by-finding reconciliation with the original proposal is in [IMPLEMENTATION-STATUS.md](IMPLEMENTATION-STATUS.md). Conditional ideas and feedback retry limitations are recorded there.
 
@@ -55,6 +57,7 @@ A finding-by-finding reconciliation with the original proposal is in [IMPLEMENTA
 - [ ] Recheck provider quota (currently 50 submissions/month) and domain restriction when releasing. A restriction to `yzgershon.github.io` would filter local-preview submissions into spam; production-origin delivery still needs release verification.
 - [ ] Yish reviews the local candidate. No UI acceptance has been assumed from automated checks.
 - [ ] Test candidate on Galaxy S24 Chrome and installed iPhone Safari: Hebrew input, date/dialogs, safe areas, drag/edge scroll, offline opening/update, JSON recovery, native file/image sharing and opening summary in Google Docs.
+- [ ] Review the intermittent explicit-update reload timeout seen in one repeated browser suite run. Four isolated reruns and the final full suite passed, but the cause is unconfirmed. Failure evidence is retained in `frontend-update-timeout.log`; the test now captures additional failure state. Include open-draft update activation in real-device acceptance.
 - [ ] Confirm course completion basis and real milestone/event names/dates with Evyatar. Current progress is recorded syllabus coverage, with personal milestones; it does not claim official qualification/completion.
 - [ ] Reconcile the original PDF uncertainties before making catalogue corrections. AW 2, the reconstructed solo entry, הקפות coverage and empty-exercise entries remain content questions. The catalogue data was not changed in this candidate.
 - [ ] Decide with cadets whether extra not-assessed/not-performed controls are useful. They were conditional in the proposal; no speculative grading step was added.

@@ -13,6 +13,8 @@ The current development branch is `release/next-update`, build `v23-preview`. Th
 - Open the notebook from the top bar, organize pages into folders, set priorities, pin important pages and search.
 - See recorded syllabus coverage by course/section, add personal milestones, and preview an image before sharing it.
 - Customize questions while retaining definitions needed to read historical answers.
+- Personalize the journal with an optional name, callsign and current focus. Home puts unfinished work before statistics and course coverage.
+- Choose cockpit dark, quiet charcoal/sage dark, light or automatic appearance. Browse the syllabus through collapsible sections.
 - Recover deleted flights/pages, revisit retained drafts, and export/restore a full JSON backup.
 
 Syllabus coverage counts distinct, identified catalogue entries from completed debriefs in the active course. It is not official course completion or an instructor's qualification decision. Unassigned historical flights do not receive guessed course credit. Dates and additional course events must come from the cadet; none are invented.
@@ -23,7 +25,7 @@ Google sign-in is an access gate. It does not synchronize or back up flights. Th
 
 Flights use IndexedDB (`sortie`, `sorties`) and a localStorage mirror, merged by ID and timestamp at startup. Settings, drafts and the notebook use localStorage. Coordinated local writes retain a transaction intent so an interrupted operation can be recovered at launch. A failed durable save keeps the form available and offers recovery export.
 
-Full JSON backup includes flights, question definitions/order/archive state, waiting goals, drafts and pending input buffers, course/theme preferences, notebook folders/pages, milestones, unsent feedback and recently deleted items. Standard backups exclude Google sessions and the PIN. CSV and summary exports do not count as recovery backups. A raw recovery download is also available for inspection of damaged storage; it is not an ordinary import file and can contain local PIN hash metadata. Keep it private.
+Full JSON backup includes flights, question definitions/order/archive state, waiting goals, drafts and pending input buffers, course/theme/profile preferences, notebook folders/pages, milestones, unsent feedback and recently deleted items. Standard backups exclude Google sessions and the PIN. CSV and summary exports do not count as recovery backups. A raw recovery download is also available for inspection of damaged storage; it is not an ordinary import file and can contain local PIN hash metadata. Keep it private.
 
 Local recovery copies share the device's storage risks. Export a JSON backup to a separate location regularly and before reinstalling. Reinstalling an iOS home-screen app can remove its data. Ordinary updates do not require reinstalling.
 
@@ -62,9 +64,9 @@ The tracked tests are Node programs, not browser-accessible seed pages. Never pu
 | `js/syllabus*.js` | Matching and two syllabus catalogues |
 | `js/store.js` | Flights, settings, goal reconciliation, backup and recovery |
 | `js/workspace.js` | Local notebook, folders, milestones and feedback draft |
-| `js/features.js` | Notebook, progress/share, feedback, release notes and recovery screens |
+| `js/features.js` | Profile, notebook, progress/share, feedback, release notes and recovery screens |
 | `js/app.js` | Router, original screens, forms and update coordination |
-| `css/app.css`, `css/features.css` | Cockpit design and notebook/progress styling |
+| `css/app.css`, `css/features.css`, `css/frontend.css` | Shared design, feature styling, quiet theme and mobile refinements |
 | `sw.js`, `release-manifest.json` | Verified network-first offline shell |
 | `tools/`, `tests/` | Local maintenance and reproducible checks |
 

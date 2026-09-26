@@ -206,7 +206,7 @@ console.log('\nגוררים יעדים לפי קטגוריה');
        Store.pendingGoalsFor(['AW']).length, 1);
     eq('the מאמן category was merged in',
        Store.categoryVocab().indexOf('מאמן') !== -1, true);
-    eq('additive migration recorded', Store.settings().mig, 4);
+    eq('additive migration recorded', Store.settings().mig, 5);
     eq('נקודות עיקריות got its role too', Store.roleQuestion('points').id, 'q_points');
     // this pilot had deleted מדריך, so the instructor breakdown has to cope
     eq('a missing מדריך question is simply absent', Store.roleQuestion('instructor'), null);

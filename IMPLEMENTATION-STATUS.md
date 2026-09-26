@@ -50,11 +50,13 @@ All rows below are implemented locally. The evidence column identifies regressio
 | What's New | Hebrew grouped highlights, once per stable version after sign-in/PIN at Home, plus Settings access. Preview builds do not consume the stable release acknowledgment. |
 | Recovery | Full backup, validated merge/import, deleted-item restoration, retained drafts and archived questions. Local recovery snapshots supplement exported backups. |
 | Daily screens | Home shortcut to an unfinished new brief, searchable flight picker, optional brief sections, filters, goal history, short/full summaries, keyboard exercise reordering, larger controls and clearer save/privacy wording. |
+| Personalization and frontend | Optional local name/callsign/focus with full backup; personal Home prioritizes unfinished work and course coverage. Quiet charcoal/sage dark theme, consistent headings and touch controls, collapsible syllabus sections/question editor, filter reset, readable chart and theme-aware share image. See `FRONTEND-AUDIT.md`. |
 | Maintenance | Reproducible tracked checks, release manifest, updated docs and a private local access-maintenance CLI. There is no in-app administrator dashboard. |
 
 ## Not finished or deliberately conditional
 
 - **Real-device acceptance:** Galaxy S24 Chrome and installed iPhone Safari still need testing for keyboard/date/dialog behavior, safe areas, drag/edge scrolling, offline upgrades, restore, native sharing and Google Docs import. Chrome emulation is not this evidence.
+- **Update-test reliability:** One repeated browser suite run timed out after explicit worker activation. Four isolated reruns and the final full suite passed; no cause or product fix is established. Failure diagnostics and evidence are retained for release review.
 - **Course content:** Evyatar still needs to supply actual milestone/event names, dates and completion rules. The app currently reports recorded syllabus coverage, not official qualification or guaranteed course completion. Original PDF uncertainties remain unreconciled; catalogue contents were not guessed or changed.
 - **Optional product decisions:** Extra not-assessed/not-performed grading states were conditional suggestions and have not been added. Cadet feedback should determine whether those distinctions help.
 - **Feedback delivery limits:** Double clicks are prevented and retries retain a submission ID. Exactly-once delivery after a network timeout is not guaranteed by the current integration; the UI explains that a timed-out message may already have arrived. Provider quota/domain settings and production-origin delivery need release review.
@@ -62,6 +64,6 @@ All rows below are implemented locally. The evidence column identifies regressio
 
 ## Verification
 
-`node tools/build-release.cjs` and `node tools/test.cjs`: **374 checks across 14 suites**, plus release manifest/script/string/access-mapping validation. This includes 40 notebook checks at 320–412px, light/dark themes, enlarged text, touch and keyboard sidebar use, and preservation when renaming/removing folders, navigating, pinning and deleting pages.
+`node tools/build-release.cjs` and `node tools/test.cjs`: **412 checks across 15 suites**, plus release manifest/script/string/access-mapping validation. This includes 40 notebook checks at 320–412px, light/dark themes, enlarged text, touch and keyboard sidebar use, and preservation when renaming/removing folders, navigating, pinning and deleting pages. The 37 frontend checks add all three themes across 16 screens, profile migration/backup/save-failure checks, enlarged text, access screens, filtering, section search and sharing. The older 20-check and pre-course 31-check upgrade suites were also rerun after MIG 5.
 
-Latest local evidence: `C:\Dev\artifacts\sortie-v23\notebook-sidebar-tests.log` and `mobile-notebook-*.png`. Full deployment gates are in [RELEASE-CHECKLIST.md](RELEASE-CHECKLIST.md). No test result promises protection against device loss, manual data deletion or OS storage eviction.
+Latest local evidence: `C:\Dev\artifacts\sortie-v23\frontend-audit-tests.log`, `frontend-*.png` and `mobile-notebook-*.png`. Full deployment gates are in [RELEASE-CHECKLIST.md](RELEASE-CHECKLIST.md). No test result promises protection against device loss, manual data deletion or OS storage eviction.
