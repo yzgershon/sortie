@@ -35,7 +35,7 @@ All rows below are implemented locally. The evidence column identifies regressio
 | U02 | HTTP failures and mixed assets fall back to verified cached files | worker, update-browser |
 | U03 | Activation preserves unrelated caches and a previous Sortie release | worker |
 | R01 | This Week replaces old summary selection | browser |
-| R02 | Weekly summaries default to completed flights and distinguish planned content | browser; summary rendering in `js/app.js` |
+| R02 | Instructor reports use completed flights, distinguish planned/documented exercises, preserve custom/history answers and count recurring goals by distinct flights | browser, summary; read-only `js/summary.js` |
 | R03 | Plain summary copy omits document CSS | browser |
 | R04 | Answer history exposes all eligible questions | browser |
 | R05 | First-run dismissal survives reload | preservation, upgrade |
@@ -50,6 +50,8 @@ All rows below are implemented locally. The evidence column identifies regressio
 | What's New | Hebrew grouped highlights, once per stable version after sign-in/PIN at Home, plus Settings access. Preview builds do not consume the stable release acknowledgment. |
 | Recovery | Full backup, validated merge/import, deleted-item restoration, retained drafts and archived questions. Local recovery snapshots supplement exported backups. |
 | Daily screens | Home shortcut to an unfinished new brief, searchable flight picker, optional brief sections, filters, goal history, short/full summaries, keyboard exercise reordering, larger controls and clearer save/privacy wording. |
+| Instructor report | Week/date/course controls and manual flight selection, contextual goal recurrence/later achievement, next-flight goals, safety and custom answers, optional name/callsign, exact sandboxed preview, document/rich-text export and browser Print/Save as PDF. No saved-record mutation. |
+| Original artwork | Three locally served aviation images across Home, notebook, progress, syllabus and other overview headers; about 300 KB total, cached offline, subdued per theme. Forms and notebook writing remain clear. See `assets/ARTWORK.md`. |
 | Personalization and frontend | Optional local name/callsign/focus with full backup; personal Home prioritizes unfinished work and course coverage. Quiet charcoal/sage dark theme, consistent headings and touch controls, collapsible syllabus sections/question editor, filter reset, readable chart and theme-aware share image. See `FRONTEND-AUDIT.md`. |
 | Maintenance | Reproducible tracked checks, release manifest, updated docs and a private local access-maintenance CLI. There is no in-app administrator dashboard. |
 
@@ -64,6 +66,6 @@ All rows below are implemented locally. The evidence column identifies regressio
 
 ## Verification
 
-`node tools/build-release.cjs` and `node tools/test.cjs`: **412 checks across 15 suites**, plus release manifest/script/string/access-mapping validation. This includes 40 notebook checks at 320–412px, light/dark themes, enlarged text, touch and keyboard sidebar use, and preservation when renaming/removing folders, navigating, pinning and deleting pages. The 37 frontend checks add all three themes across 16 screens, profile migration/backup/save-failure checks, enlarged text, access screens, filtering, section search and sharing. The older 20-check and pre-course 31-check upgrade suites were also rerun after MIG 5.
+`node tools/build-release.cjs` and `node tools/test.cjs`: **456 checks across 16 suites**, plus release manifest/script/string/access-mapping validation (27 shell files). This includes 39 instructor report checks, 40 notebook checks at 320–412px, light/dark themes, enlarged text, touch and keyboard sidebar use, and preservation when renaming/removing folders, navigating, pinning and deleting pages. The 37 frontend checks add all three themes across 16 screens, profile migration/backup/save-failure checks, enlarged text, access screens, filtering, section search and sharing. The older 20-check and pre-course 31-check upgrade suites were also rerun after MIG 5; this report/artwork change adds no migration.
 
-Latest local evidence: `C:\Dev\artifacts\sortie-v23\frontend-audit-tests.log`, `frontend-*.png` and `mobile-notebook-*.png`. Full deployment gates are in [RELEASE-CHECKLIST.md](RELEASE-CHECKLIST.md). No test result promises protection against device loss, manual data deletion or OS storage eviction.
+Latest local evidence: `C:\Dev\artifacts\sortie-v23\instructor-report-tests.log`, `frontend-*.png`, `report-*.png` and `mobile-notebook-*.png`. Full deployment gates are in [RELEASE-CHECKLIST.md](RELEASE-CHECKLIST.md). No test result promises protection against device loss, manual data deletion or OS storage eviction.

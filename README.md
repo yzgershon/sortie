@@ -9,7 +9,7 @@ The current development branch is `release/next-update`, build `v23-preview`. Th
 - Prepare a brief, find a flight in the active course's syllabus, set goals and write exercise focus points.
 - Debrief the same flight: enter minutes, assess goals, write exercise notes and set next-flight goals.
 - Goals carry forward within their course/category context. Editing an older debrief preserves newer work.
-- Search/filter flights; review trends, goal history and short/full summaries; export a document or copy text.
+- Search/filter flights; review trends and goal history. Prepare an instructor report for this week, last week, a date/course range or manually selected flights. Preview the exact short/full report, optionally include your name/callsign, export a document, copy rich text or use Print/Save as PDF.
 - Open the notebook from the top bar, organize pages into folders, set priorities, pin important pages and search.
 - See recorded syllabus coverage by course/section, add personal milestones, and preview an image before sharing it.
 - Customize questions while retaining definitions needed to read historical answers.
@@ -65,8 +65,10 @@ The tracked tests are Node programs, not browser-accessible seed pages. Never pu
 | `js/store.js` | Flights, settings, goal reconciliation, backup and recovery |
 | `js/workspace.js` | Local notebook, folders, milestones and feedback draft |
 | `js/features.js` | Profile, notebook, progress/share, feedback, release notes and recovery screens |
+| `js/summary.js` | Read-only instructor report model and standalone document output |
 | `js/app.js` | Router, original screens, forms and update coordination |
-| `css/app.css`, `css/features.css`, `css/frontend.css` | Shared design, feature styling, quiet theme and mobile refinements |
+| `css/app.css`, `css/features.css`, `css/frontend.css`, `css/editorial.css` | Shared design, quiet theme, mobile refinements, artwork and report styling |
+| `assets/sortie-*.jpg`, `assets/ARTWORK.md` | Three original aviation images, prompts and provenance; local and available offline |
 | `sw.js`, `release-manifest.json` | Verified network-first offline shell |
 | `tools/`, `tests/` | Local maintenance and reproducible checks |
 

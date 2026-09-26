@@ -1816,7 +1816,7 @@
 
     viewEl.innerHTML = '<div class="stack-4" id="logRoot">' + (!logSelect ? pageHeading(T.flightLogTitle, T.flightLogSub) : '') +
       (!logSelect && Store.count()
-        ? '<button class="weekbtn" data-weeksum' + (weekN ? '' : ' disabled') + '>' +
+        ? '<button class="weekbtn" data-weeksum>' +
             icon('calendar') +
             '<span class="weekbtn__b"><span class="weekbtn__t">' + esc(T.weekSummary) + '</span>' +
             '<span class="weekbtn__s">' + esc(weekN ? T.nThisWeek(weekN) : T.noneThisWeek) + '</span></span>' +
@@ -1953,7 +1953,6 @@
 
     on(viewEl, '[data-weeksum]', 'click', function () {
       selectThisWeek();
-      if (!selCount()) { toast(T.noneThisWeek, 'alert'); return; }
       go('summary');
     });
   }
@@ -2637,277 +2636,123 @@
   }
 
   /* ============================================================== summary */
-
-  /** Rolls a set of flights into the things worth reviewing with an instructor:
-   *  which goals stuck, which keep coming back, and what was worked on. */
-  function buildSummary(recs) {
-    var qGoals = Store.roleQuestion('goals');
-    var qNext = Store.roleQuestion('goalsNext');
-    var qSyl = Store.questions().filter(function (q) { return q.type === 'syllabus'; })[0];
-    var qMin = Store.questions().filter(function (q) { return q.type === 'minutes'; })[0];
-    var qSubj = Store.roleQuestion('subject') || Store.question('q_subject');
-    var qInst = Store.question('q_instructor');
-    var qPoints = Store.question('q_points'), qSafety = Store.question('q_safety_d');
-    var qSolo = Store.roleQuestion('solo');
-    var soloYesVal = qSolo ? ((qSolo.options && qSolo.options[0]) || 'כן') : '';
-
-    var sorted = recs.slice().sort(function (a, b) { return a.flownAt < b.flownAt ? -1 : 1; });
-    var minutes = 0, met = {}, missed = {}, focus = {}, ex = {}, points = [], safety = [];
-    var soloYes = 0, soloTot = 0;
-
-    function subjOf(r) { var q = Store.questionFor(r, 'subject'); return q ? String(r.answers[q.id] || '').trim() : ''; }
-
-    sorted.forEach(function (r) {
-      qGoals = Store.questionFor(r, 'goals'); qPoints = Store.questionFor(r, 'points'); qSolo = Store.questionFor(r, 'solo');
-      qSyl = Store.questions(true).find(function (q) { return q.type === 'syllabus' && r.answers[q.id] !== undefined; });
-      qMin = Store.questions(true).find(function (q) { return q.type === 'minutes' && r.answers[q.id] !== undefined; });
-      if (qSolo) {
-        var sv = String(r.answers[qSolo.id] == null ? '' : r.answers[qSolo.id]).trim();
-        if (sv) { soloTot++; if (sv === soloYesVal) soloYes++; }
-      }
-      if (qMin) { var m = parseInt(r.answers[qMin.id], 10); if (!isNaN(m)) minutes += m; }
-      if (qGoals) (r.answers[qGoals.id] || []).forEach(function (g) {
-        var t = String(g.text || '').trim();
-        if (!t) return;
-        if (g.status === 'met') met[t] = (met[t] || 0) + 1;
-        else if (g.status === 'missed') missed[t] = (missed[t] || 0) + 1;
-      });
-      if (qSyl) (r.answers[qSyl.id] || []).forEach(function (x) {
-        var t = String(x.text || '').trim();
-        if (t && String(x.notes || '').trim()) ex[t] = (ex[t] || 0) + 1;
-        var f = String(x.focus || '').trim();
-        if (f) focus[f] = (focus[f] || 0) + 1;
-      });
-      if (qPoints) {
-        var p = Store.linesOf(r.answers[qPoints.id]);
-        if (p.length) points.push({ d: r.flownAt, subj: subjOf(r), lines: p });
-      }
-      if (qSafety) {
-        var s = String(r.answers[qSafety.id] || '').trim();
-        if (s) safety.push({ d: r.flownAt, subj: subjOf(r), lines: [s] });
-      }
-    });
-
-    function rank(obj) {
-      return Object.keys(obj).sort(function (a, b) { return obj[b] - obj[a] || a.localeCompare(b); })
-        .map(function (k) { return { t: k, n: obj[k] }; });
-    }
-    var metL = rank(met), missedL = rank(missed), focusL = rank(focus), exL = rank(ex);
-    var recurring = missedL.filter(function (x) { return x.n > 1; });
-    var repeatFocus = focusL.filter(function (x) { return x.n > 1; });
-
-    var from = sorted.length ? fmtLong(sorted[0].flownAt) : '';
-    var to = sorted.length ? fmtLong(sorted[sorted.length - 1].flownAt) : '';
-    // plain dates for the document, which gets read long after "לפני 3 ימים"
-    // has stopped meaning anything
-    var fromN = sorted.length ? fmtFull(sorted[0].flownAt) : '';
-    var toN = sorted.length ? fmtFull(sorted[sorted.length - 1].flownAt) : '';
-
-    return {
-      range: sorted.length ? (from === to ? from : T.summaryOf(from, to)) : '',
-      dateRange: sorted.length ? (fromN === toN ? fromN : T.summaryOf(fromN, toN)) : '',
-      flights: sorted.length, minutes: minutes,
-      hours: (minutes / 60).toFixed(1),
-      solo: { yes: soloYes, total: soloTot },
-      met: metL, missed: missedL, recurring: recurring,
-      focus: repeatFocus, exercises: exL, points: points, safety: safety,
-      records: sorted,
-      q: { qSubj: qSubj, qInst: qInst, qMin: qMin, qSyl: qSyl, qGoals: qGoals, qNext: qNext }
-    };
-  }
-
-  /** The same summary as a standalone HTML document, which Google Docs opens
-   *  and converts. There is no Docs API here on purpose: that would need an
-   *  account and a server, and nothing in this app leaves the phone.
-   *
-   *  Kept deliberately short. Every date is a real date, never "לפני 3 ימים",
-   *  because this is read weeks later. The per-flight detail carries only the
-   *  exercises he wrote something about — the rest go on one line — and the
-   *  full exercise tally is gone, since it only repeated that detail. */
-  function summaryDocHTML(s) {
-    function list(items, fmt) {
-      return '<ul>' + items.map(function (i) { return '<li>' + fmt(i) + '</li>'; }).join('') + '</ul>';
-    }
-    function head(r) {
-      var bits = [fmtFull(r.flownAt)];
-      var subject = Store.questionFor(r, 'subject'), instructor = Store.questionFor(r, 'instructor');
-      if (subject && r.answers[subject.id]) bits.push(r.answers[subject.id]);
-      if (instructor && r.answers[instructor.id]) bits.push(r.answers[instructor.id]);
-      var minutes = Store.questions(true).find(function (q) { return q.type === 'minutes' && r.answers[q.id] !== undefined; });
-      if (minutes && r.answers[minutes.id]) bits.push(r.answers[minutes.id] + ' ' + T.minutesUnit);
-      return bits.join(' · ');
-    }
-    function dated(entries) {
-      return entries.map(function (i) {
-        return '<p class="d">' + esc(fmtFull(i.d)) + (i.subj ? ' · ' + esc(i.subj) : '') + '</p>' +
-          list(i.lines, function (t) { return esc(t); });
-      }).join('');
-    }
-
-    var stats = [T.docStats(s.flights, s.hours)];
-    if (s.solo.total) stats.push(T.docSolo(s.solo.yes, s.solo.total));
-
-    var h = '<h1>' + esc(T.summaryTitle) + '</h1>' +
-      '<p class="sub">' + esc(s.dateRange) + ' &nbsp;·&nbsp; ' + esc(stats.join(' · ')) + '</p>';
-
-    if (s.met.length || s.missed.length) {
-      h += '<h2>' + esc(T.secGoals) + '</h2>';
-      if (s.met.length) {
-        h += '<p class="d">' + esc(T.goalsMet) + ' (' + s.met.length + ')</p>' +
-          list(s.met, function (i) { return esc(i.t) + (i.n > 1 ? ' &times;' + i.n : ''); });
-      }
-      if (s.missed.length) {
-        h += '<p class="d">' + esc(T.goalsMissed) + ' (' + s.missed.length + ')</p>' +
-          list(s.missed, function (i) { return esc(i.t) + (i.n > 1 ? ' &times;' + i.n : ''); });
-      }
-    }
-    if (s.recurring.length) {
-      h += '<h2>' + esc(T.secRepeatGoals) + '</h2>' +
-        list(s.recurring, function (i) { return '<b>' + esc(i.t) + '</b> · ' + esc(T.inNFlights(i.n)); });
-    }
-    if (s.focus.length) {
-      h += '<h2>' + esc(T.secFocus) + '</h2>' +
-        list(s.focus, function (i) { return esc(i.t) + ' · ' + esc(T.timesN(i.n)); });
-    }
-    if (s.points.length) h += '<h2>' + esc(T.secPoints) + '</h2>' + dated(s.points);
-    if (s.safety.length) h += '<h2>' + esc(T.secSafety) + '</h2>' + dated(s.safety);
-
-    if (!summaryCompact) h += '<h2>' + esc(T.secFlights) + '</h2>';
-    (summaryCompact ? [] : s.records).forEach(function (r) {
-      h += '<h3>' + esc(head(r)) + '</h3>';
-      var q = Store.questions(true).find(function (q) { return q.type === 'syllabus' && r.answers[q.id] !== undefined; });
-      if (!q) return;
-      var xs = (r.answers[q.id] || []).filter(function (x) { return String(x.text || '').trim(); });
-      var told = xs.filter(function (x) { return String(x.notes || '').trim(); });
-      var rest = xs.filter(function (x) { return !String(x.notes || '').trim(); });
-      if (told.length) h += list(told, function (x) {
-        return '<b>' + esc(x.text) + ':</b> ' + esc(String(x.notes).trim()) +
-          (String(x.focus || '').trim() ? ' <i>(' + esc(x.focus) + ')</i>' : '');
-      });
-      if (rest.length) {
-        h += '<p class="also">' + esc(T.plannedExercises) +
-          esc(rest.map(function (x) { return x.text.trim(); }).join(' · ')) + '</p>';
-      }
-    });
-
-    return '<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">' +
-      '<title>' + esc(T.summaryTitle) + '</title><style>' +
-      'body{font-family:Arial,sans-serif;direction:rtl;text-align:right;line-height:1.45;color:#111;font-size:11pt}' +
-      'h1{font-size:19pt;margin:0}' +
-      'h2{font-size:12.5pt;margin:14pt 0 3pt;padding-bottom:2pt;border-bottom:1px solid #bbb}' +
-      'h3{font-size:10.5pt;margin:9pt 0 1pt;color:#1a3a5c}' +
-      'p{margin:0}p.sub{color:#555;font-size:10pt;margin:2pt 0 0}' +
-      'p.d{margin:5pt 0 1pt;font-size:10pt;font-weight:bold;color:#444}' +
-      'p.also{margin:1pt 0 0;font-size:9.5pt;color:#666}' +
-      'ul{margin:1pt 0 4pt;padding-inline-start:16pt}li{margin:1pt 0}' +
-      'i{color:#8a6d00;font-size:9.5pt}' +
-      '</style></head><body>' + h + '</body></html>';
-  }
-
+  var summaryScope = null;
+  var summaryIdentity = false;
   function screenSummary() {
+    renderTopbar({ title: T.summary, back: true, backTo: 'log' });
     var recs = Store.done().filter(function (r) { return selected[r.id]; });
-    renderTopbar({ title: T.summary, sub: 'SUMMARY', back: true, backTo: 'log' });
-
-    if (!recs.length) {
-      viewEl.innerHTML = empty('list3', T.noneSelected, T.noneSelectedHint) +
-        '<div class="stack" style="margin-top:var(--s-4)">' +
-        '<button class="btn btn--lit btn--block" data-pickweek>' + icon('calendar') +
-          esc(T.selectWeek) + '</button>' +
-        '<a class="btn btn--block" href="#/log">' + esc(T.pickManually) + '</a></div>';
-      on(viewEl, '[data-pickweek]', 'click', function () {
-        selectThisWeek();
-        if (!selCount()) { toast(T.noneThisWeek, 'alert'); return; }
-        screenSummary();
-      });
-      return;
-    }
-
+    function selectionKey() { return Object.keys(selected).filter(function (id) { return selected[id]; }).sort().join('|'); }
     var wk = thisWeekRange();
-    var isWeek = recs.every(function (r) {
-      var t = parseISO(r.flownAt).getTime();
-      return t >= wk.start.getTime() && t <= wk.stop.getTime();
-    });
-    var s = buildSummary(recs);
-
-    function sec(title, tone, body) {
-      return '<section class="panel' + (tone ? ' panel--' + tone : '') + '">' +
-        '<div class="panel__head">' + icon('list3') + '<span class="panel__t">' + esc(title) + '</span></div>' +
-        '<div class="panel__body">' + body + '</div></section>';
+    if (!summaryScope || summaryScope.selection !== selectionKey()) {
+      var dates = recs.map(function (r) { return r.flownAt; }).sort();
+      summaryScope = { from: dates[0] || Store.todayISO(wk.start), to: dates[dates.length - 1] || Store.todayISO(wk.stop), course: '', selection: selectionKey() };
     }
-    function rows(items, cls) {
-      return '<div class="sumlist">' + items.map(function (i) {
-        return '<div class="sumrow' + (cls ? ' ' + cls : '') + '">' +
-          '<span class="sumrow__t" dir="auto">' + esc(i.t) + '</span>' +
-          '<span class="sumrow__n mono">' + i.n + '</span></div>';
+    var s = Summary.build(recs);
+    var profile = Store.settings().pilotProfile || {};
+    var identity = [profile.name, profile.callsign].filter(Boolean).join(' · ');
+    function sourceLinks(row) {
+      return '<details class="report-sources"><summary>' + esc(T.reportSources) + ' (' + row.sources.length + ')</summary>' +
+        row.sources.map(function (x) { return '<a href="#/flight/' + encodeURIComponent(x.id) + '">' + esc(Summary.sourceLabel(x)) + '</a>'; }).join('') + '</details>';
+    }
+    function rows(items, kind) {
+      return '<div class="report-rows">' + items.map(function (x) {
+        return '<article class="report-row"><div class="report-row__head"><b dir="auto">' + esc(x.t) + '</b>' +
+          '<span class="report-count">' + x.n + '</span></div><p class="report-context">' + esc([Summary.course(x.course)].concat(x.cats || []).join(' · ')) + '</p>' +
+          ((kind === 'missed' && x.latest === 'met') || (kind === 'next' && x.resolved) ? '<p class="report-resolved">' + icon('checkCircle') + esc(T.reportLaterMet) + '</p>' : '') + sourceLinks(x) + '</article>';
       }).join('') + '</div>';
     }
-
-    var h = '<div class="stack-4 stagger">' +
-      '<div class="hero">' +
-        '<div class="hero__meta"><i></i>SUMMARY</div>' +
-        '<h1 class="hero__h">' + esc(isWeek ? T.summaryTitle : T.summaryCustom) + '</h1>' +
-        '<div class="hero__date">' + esc(s.range) + '</div>' +
-      '</div>' +
-      '<div class="readouts">' +
-        '<div class="readout readout--cyan"><div class="readout__k">' + icon('layers') +
-          '<span>' + esc(T.rFlights) + '</span></div><div class="readout__v">' + s.flights +
-          '</div><div class="readout__s">FLIGHTS</div></div>' +
-        // hours, with the minutes underneath — the same way home reads, and the
-        // way flight time is actually talked about
-        '<div class="readout readout--amber"><div class="readout__k">' + icon('clock') +
-          '<span>' + esc(T.rHours) + '</span></div><div class="readout__v">' + s.hours +
-          '</div><div class="readout__s">' + s.minutes + ' ' + esc(T.rMinutes) + '</div></div>' +
-      '</div>';
-
-    if (s.met.length) h += sec(T.goalsMet + ' (' + s.met.length + ')', 'green', rows(s.met, 'is-met'));
-    if (s.missed.length) h += sec(T.goalsMissed + ' (' + s.missed.length + ')', 'red', rows(s.missed, 'is-missed'));
-    if (s.recurring.length) h += sec(T.secRepeatGoals, 'red', rows(s.recurring, 'is-missed'));
-    if (s.focus.length) h += sec(T.secFocus, 'amber', rows(s.focus));
-    if (!summaryCompact && s.exercises.length) h += sec(T.documentedExercises, '', rows(s.exercises));
-    /* dates, not "לפני 3 ימים" — the summary is read next to a logbook */
+    function section(title, body, count, tone, open) {
+      return '<details class="report-section' + (tone ? ' report-section--' + tone : '') + '"' + (open ? ' open' : '') + '><summary><span>' + esc(title) + '</span>' +
+        (count == null ? '' : '<small>' + count + '</small>') + icon('chevDown') + '</summary><div class="report-section__body">' + body + '</div></details>';
+    }
     function timeline(entries) {
-      return '<div class="tl">' + entries.map(function (p) {
-        return '<div class="tlrow"><div class="tlrow__m">' + esc(fmtNum(p.d)) +
-            (p.subj ? '<span class="tlrow__s" dir="auto">' + esc(p.subj) + '</span>' : '') + '</div>' +
-          p.lines.map(function (t) {
-            return '<div class="tlrow__t" dir="auto">' + esc(t) + '</div>';
-          }).join('') + '</div>';
-      }).join('') + '</div>';
+      return entries.map(function (x) { return '<article class="report-note"><a class="report-context" href="#/flight/' + encodeURIComponent(x.source.id) + '">' +
+        esc(Summary.sourceLabel(x.source)) + '</a>' + x.lines.map(function (t) { return '<p dir="auto">' + esc(t) + '</p>'; }).join('') + '</article>'; }).join('');
     }
-    if (s.points.length) h += sec(T.secPoints, '', timeline(s.points));
-    if (s.safety.length) h += sec(T.secSafety, 'amber', timeline(s.safety));
-
-    h += '<div class="stack"><p class="field__hint">' + esc(T.summaryCompletedOnly) + '</p>' +
-      '<div class="seg"><button class="seg__b" data-summarymode="short" aria-pressed="' + summaryCompact + '">' + esc(T.summaryShort) + '</button><button class="seg__b" data-summarymode="full" aria-pressed="' + !summaryCompact + '">' + esc(T.summaryFull) + '</button></div>' +
-      '<button class="btn btn--lit btn--block btn--lg" data-copydoc>' + icon('copy') + esc(T.copyDoc) + '</button>' +
-      '<button class="btn btn--block" data-exportdoc>' + icon('download') + esc(T.exportDoc) + '</button>' +
-      '<p class="dim" style="font-size:var(--t-12);line-height:1.6;text-align:center">' + esc(T.docHint) + '</p>' +
-    '</div></div>';
-
-    viewEl.innerHTML = h;
-
-    on(viewEl, '[data-summarymode]', 'click', function (e) { summaryCompact = e.currentTarget.dataset.summarymode === 'short'; screenSummary(); });
-    on(viewEl, '[data-copydoc]', 'click', function () {
-      var html = summaryDocHTML(s);
-      var clean = new DOMParser().parseFromString(html, 'text/html');
-      var plain = clean.body.innerHTML.replace(/<[^>]+>/g, function (m) {
-        return /<\/(h1|h2|h3|li|p)>/.test(m) ? '\n' : '';
-      }).replace(/\n{3,}/g, '\n\n').trim();
-      var decoded = document.createElement('textarea'); decoded.innerHTML = plain; plain = decoded.value;
-      if (global.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
-        navigator.clipboard.write([new ClipboardItem({
-          'text/html': new Blob([html], { type: 'text/html' }),
-          'text/plain': new Blob([plain], { type: 'text/plain' })
-        })]).then(function () { toast(T.copiedDoc); },
-                  function () { fallbackCopy(plain); });
-      } else { fallbackCopy(plain); }
-      function fallbackCopy(t) {
-        if (navigator.clipboard) navigator.clipboard.writeText(t).then(function () { toast(T.copiedToast); });
+    var scope = '<details class="report-scope"' + (!recs.length ? ' open' : '') + '><summary>' + icon('calendar') + '<span>' + esc(T.reportPeriod) + '</span>' + icon('chevDown') + '</summary><div class="report-scope__body">' +
+      '<div class="report-presets"><button class="btn" data-pickweek>' + esc(T.reportThisWeek) + '</button><button class="btn" data-lastweek>' + esc(T.reportLastWeek) + '</button></div>' +
+      '<div class="report-dates"><label>' + esc(T.fromDate) + '<input class="input" id="reportFrom" type="date" value="' + esc(summaryScope.from) + '"></label>' +
+      '<label>' + esc(T.toDate) + '<input class="input" id="reportTo" type="date" value="' + esc(summaryScope.to) + '"></label></div>' +
+      '<label class="report-course">' + esc(T.courseSection) + '<select class="input" id="reportCourse"><option value="">' + esc(T.allCourses) + '</option>' +
+      Courses.all().map(function (c) { return '<option value="' + esc(c.id) + '"' + (summaryScope.course === c.id ? ' selected' : '') + '>' + esc(c.label) + '</option>'; }).join('') +
+      '<option value="unassigned"' + (summaryScope.course === 'unassigned' ? ' selected' : '') + '>' + esc(T.reportUnassigned) + '</option></select></label>' +
+      '<p id="reportRangeError" role="alert" hidden></p><button class="btn btn--lit btn--block" data-applyreport>' + esc(T.reportApply) + '</button>' +
+      '<a class="report-manual" data-pickmanual href="#/log">' + esc(T.reportManual) + '</a></div></details>';
+    var h = '<div class="report stack-4"><header class="report-hero"><div class="report-hero__image" aria-hidden="true"></div><div class="report-hero__copy">' +
+      '<span class="page-heading__context">' + esc(T.reportEyebrow) + '</span><h1>' + esc(T.reportTitle) + '</h1><p>' + esc(s.dateRange || T.reportIntro) + '</p>' +
+      (s.flights ? '<small>' + esc(s.courses.join(' · ')) + '</small>' : '') + '</div></header>' + scope;
+    if (!s.flights) {
+      h += empty('list3', T.reportEmpty, T.reportEmptyHint);
+    } else {
+      h += '<div class="report-stats"><div><span>' + esc(T.rFlights) + '</span><strong>' + s.flights + '</strong></div>' +
+        '<div><span>' + esc(T.rHours) + '</span><strong>' + s.hours + '</strong></div><div><span>' + esc(T.reportGoalsRate) + '</span><strong>' +
+        (s.graded ? Math.round(s.metCount / s.graded * 100) + '<small>%</small>' : '<small>' + esc(T.reportNoGrade) + '</small>') + '</strong></div></div>' +
+        '<p class="report-statnote">' + esc(T.reportGraded(s.metCount, s.graded, s.openCount)) + '</p>' +
+        (s.durationMissing ? '<p class="field__hint">' + esc(T.reportMissingMinutes(s.durationMissing)) + '</p>' : '') +
+        (s.solo.total ? '<p class="report-solo">' + icon('checkCircle') + esc(T.docSolo(s.solo.yes, s.solo.total)) + '</p>' : '') +
+        '<div class="report-export"><div class="seg"><button data-summarymode="short" aria-pressed="' + summaryCompact + '">' + esc(T.summaryShort) + '</button>' +
+        '<button data-summarymode="full" aria-pressed="' + !summaryCompact + '">' + esc(T.summaryFull) + '</button></div><p class="field__hint">' + esc(summaryCompact ? T.reportShortHint : T.reportFullHint) + '</p>' +
+        (identity ? '<label class="report-identity"><input type="checkbox" id="reportIdentity"' + (summaryIdentity ? ' checked' : '') + '><span>' + esc(T.reportIncludeIdentity) + '<small dir="auto">' + esc(identity) + '</small></span></label>' : '') +
+        '<button class="btn btn--lit btn--block" data-previewdoc>' + icon('list3') + esc(T.reportPreview) + '</button><button class="btn btn--block" data-exportdoc>' + icon('download') + esc(T.exportDoc) + '</button><div class="report-export__secondary">' +
+        '<button class="btn" data-copydoc>' + icon('copy') + esc(T.copyDoc) + '</button><button class="btn" data-printdoc>' + icon('share') + esc(T.reportPrint) + '</button></div>' +
+        '<p class="field__hint">' + esc(T.reportExportHint) + '</p></div>';
+      if (s.recurring.length) h += section(T.secRepeatGoals, rows(s.recurring, 'missed'), s.recurring.length, 'amber', true);
+      if (s.next.length) h += section(T.reportNext, '<p class="field__hint">' + esc(T.reportNextHint) + '</p>' + rows(s.next, 'next'), s.next.length, '', true);
+      if (s.met.length) h += section(T.goalsMet, rows(s.met), s.met.length, 'green', true);
+      if (s.missed.length) h += section(T.goalsMissed, rows(s.missed, 'missed'), s.missed.length, '', false);
+      if (!s.graded) h += '<p class="field__hint">' + esc(T.reportNoGoals) + '</p>';
+      if (s.focus.length) h += section(T.secFocus, rows(s.focus), s.focus.length, '', false);
+      if (s.points.length) h += section(T.secPoints, timeline(s.points), s.points.length, '', true);
+      h += section(T.secSafety, s.safety.length ? timeline(s.safety) : '<p class="field__hint">' + esc(T.reportNoSafety) + '</p>', s.safety.length, 'amber', !!s.safety.length);
+      if (!summaryCompact) {
+        h += '<section class="report-flights"><h2>' + esc(T.reportDetails) + '</h2>' + s.details.map(function (d, i) {
+          return '<details class="report-flight"><summary><span class="report-flight__index">' + String(i + 1).padStart(2, '0') + '</span><span><b dir="auto">' + esc(d.subject || T.flightLogTitle) + '</b><small>' + esc(Summary.date(d.source.date) + ' · ' + Summary.course(d.source.course)) + '</small></span>' + icon('chevDown') + '</summary><div>' +
+            '<p class="report-context">' + esc([d.instructor, d.minutes !== null ? d.minutes + ' ' + T.rMinutes : ''].filter(Boolean).join(' · ')) + '</p>' +
+            d.exercises.map(function (x) { return '<article class="report-exercise"><b dir="auto">' + esc(x.text) + '</b>' + (x.focus ? '<small>' + esc(T.reportBriefFocus) + ': ' + esc(x.focus) + '</small>' : '') +
+              '<p dir="auto">' + esc(x.notes || T.reportNoExerciseNote) + '</p></article>'; }).join('') +
+            '<a class="btn btn--block" href="#/flight/' + encodeURIComponent(d.record.id) + '">' + esc(T.reportOpenFlight) + '</a></div></details>';
+        }).join('') + '</section>';
       }
+      h += '<p class="report-basis">' + esc(T.reportBasis) + '</p>';
+    }
+    viewEl.innerHTML = h + '</div>';
+    function applyRange(from, to) {
+      function valid(v) { return /^\d{4}-\d{2}-\d{2}$/.test(v) && !isNaN(new Date(v + 'T12:00:00').getTime()) && Store.todayISO(new Date(v + 'T12:00:00')) === v; }
+      if (!valid(from) || !valid(to) || from > to) { $('#reportRangeError').textContent = T.reportRangeInvalid; $('#reportRangeError').hidden = false; return; }
+      var cid = $('#reportCourse').value; selected = {};
+      Store.done().filter(function (r) { return r.flownAt >= from && r.flownAt <= to && (!cid || (cid === 'unassigned' ? !r.course : r.course === cid)); }).forEach(function (r) { selected[r.id] = true; });
+      writeSel(); summaryScope = { from: from, to: to, course: cid, selection: selectionKey() }; screenSummary();
+    }
+    on(viewEl, '[data-applyreport]', 'click', function () { applyRange($('#reportFrom').value, $('#reportTo').value); });
+    on(viewEl, '[data-pickmanual]', 'click', function () { logSelect = true; });
+    on(viewEl, '[data-pickweek]', 'click', function () { applyRange(Store.todayISO(wk.start), Store.todayISO(wk.stop)); });
+    on(viewEl, '[data-lastweek]', 'click', function () { var from = new Date(wk.start), to = new Date(wk.stop); from.setDate(from.getDate() - 7); to.setDate(to.getDate() - 7); applyRange(Store.todayISO(from), Store.todayISO(to)); });
+    on(viewEl, '[data-summarymode]', 'click', function (e) { summaryCompact = e.currentTarget.dataset.summarymode === 'short'; screenSummary(); });
+    on(viewEl, '#reportIdentity', 'change', function (e) { summaryIdentity = e.currentTarget.checked; });
+    function reportHTML() { return Summary.documentHTML(s, { compact: summaryCompact, identity: summaryIdentity ? identity : '' }); }
+    on(viewEl, '[data-previewdoc]', 'click', function () {
+      var html = reportHTML();
+      openSheet({ title: T.reportPreview, body: '<iframe class="report-preview" title="' + esc(T.reportPreview) + '" sandbox="" srcdoc="' + esc(html) + '"></iframe>',
+        actions: [{ label: T.exportDoc, cls: 'btn--lit', run: function () { saveFile('sortie-report-' + s.from + '-' + s.to + '.doc', html, 'application/msword'); } }, { label: T.closeReport }] });
     });
-
-    on(viewEl, '[data-exportdoc]', 'click', function () {
-      saveFile('tahkir-summary-' + stamp() + '.doc', summaryDocHTML(s), 'application/msword');
+    on(viewEl, '[data-copydoc]', 'click', function () {
+      var html = reportHTML(), plain = Summary.plain(html);
+      function fallback() { if (!navigator.clipboard || !navigator.clipboard.writeText) { toast(T.reportCopyFailed, 'alert'); return; }
+        navigator.clipboard.writeText(plain).then(function () { toast(T.copiedToast); }, function () { toast(T.reportCopyFailed, 'alert'); }); }
+      if (global.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
+        navigator.clipboard.write([new ClipboardItem({ 'text/html': new Blob([html], { type: 'text/html' }), 'text/plain': new Blob([plain], { type: 'text/plain' }) })])
+          .then(function () { toast(T.copiedDoc); }, fallback);
+      } else fallback();
+    });
+    on(viewEl, '[data-exportdoc]', 'click', function () { saveFile('sortie-report-' + s.from + '-' + s.to + '.doc', reportHTML(), 'application/msword'); });
+    on(viewEl, '[data-printdoc]', 'click', function () {
+      var win = global.open('', '_blank');
+      if (!win) { toast(T.reportPrintBlocked, 'alert'); return; }
+      win.opener = null; win.document.write(reportHTML()); win.document.close();
+      var printed = false;
+      function printReady() { if (printed) return; printed = true; win.focus(); win.print(); }
+      win.addEventListener('load', printReady, { once: true });
+      if (win.document.readyState === 'complete') printReady();
     });
   }
 

@@ -16,6 +16,8 @@ Updated 2026-09-26. Branch `release/next-update`, baseline `005e762`, local buil
 - [x] Mobile notebook: shared cockpit palette, collapsible RTL folder sidebar, two main actions, one expandable page-options menu, 48px controls and full writing space. Verified long folders, both themes, enlarged text, touch/keyboard navigation and saving across folder changes/Back/pinning. Storage format unchanged.
 - [x] Frontend audit: optional profile and personal focus, task-first Home, calm charcoal/sage theme, consistent typography and controls, filter reset, collapsible question editor and syllabus sections, theme-aware progress image and updated release notes. MIG 5 adds profile only; SCHEMA stays 4. See `FRONTEND-AUDIT.md`.
 - [x] Completed-only weekly selection, planned/documented exercise wording, clean plain text, short/full summaries, log/trend filters and goal history.
+- [x] Instructor report: week/date/course controls, contextual recurrence and later achievement, next-flight goals, custom/history answers, optional identity, exact preview, document/rich-text/print exports; 39 regression checks and A4 rendering.
+- [x] Three original local aviation images across overview screens, with mobile crops and theme treatment; about 300 KB total, covered by the offline manifest. Prompts and provenance recorded in `assets/ARTWORK.md`.
 - [x] All answer-history questions, retained first-run dismissal, optional brief sections, separated destructive settings, touch/focus improvements and truthful Hebrew privacy/save copy.
 - [x] Verified network-first release manifest, complete-install requirement, previous/unrelated cache retention, HTTP-error/mixed-version fallback and safe update coordination during editing.
 - [x] Feedback UI with retained/offline draft, optional disclosed diagnostics, disabled duplicate clicks and honest uncertain-delivery state; automated checks use loopback mocks. Real Formspree submission and owner-confirmed email receipt verified on 2026-09-26.
@@ -25,7 +27,7 @@ Updated 2026-09-26. Branch `release/next-update`, baseline `005e762`, local buil
 
 ## Evidence
 
-`node tools/build-release.cjs` and `node tools/test.cjs` passed **412 checks across 15 suites**, plus manifest/script/string/access-mapping validation (22 shell files).
+`node tools/build-release.cjs` and `node tools/test.cjs` passed **456 checks across 16 suites**, plus manifest/script/string/access-mapping validation (27 shell files).
 
 | Suite | Checks |
 |---|---:|
@@ -35,7 +37,7 @@ Updated 2026-09-26. Branch `release/next-update`, baseline `005e762`, local buil
 | מתקדם internal catalogue verifier | 59 |
 | Preservation / backup / conflicts / journal | 27 |
 | Storage abort, deadline, failed quarantine | 3 |
-| Worker asset/fallback/ownership fault cases | 32 |
+| Worker asset/fallback/ownership fault cases | 37 |
 | Private access tool | 4 |
 | Real Chrome v22 upgrade and rollback | 11 |
 | Browser screen and data flows | 26 |
@@ -44,8 +46,9 @@ Updated 2026-09-26. Branch `release/next-update`, baseline `005e762`, local buil
 | Buffers, storage failure, conflicts, filters, 360px enlarged text | 22 |
 | Notebook sidebar, preservation, 320-412px, themes and enlarged text | 40 |
 | Profile preservation/failure, 16-screen theme/size matrix, filters, sections, access screens and sharing | 37 |
+| Instructor report aggregation, history/custom answers, identity, scope, preview/export/print, preservation and mobile layout | 39 |
 
-Latest log: `C:\Dev\artifacts\sortie-v23\frontend-audit-tests.log` (previous full runs: `notebook-sidebar-tests.log`, `feedback-connected-tests.log`, `mobile-tests.log`, `final-tests.log`). Screenshots are in the same directory, including `frontend-*.png` and `mobile-notebook-*.png`. Actual loopback preview was inspected through the sidebar browser; one labeled live feedback test was received in Formspree and confirmed by Yish in Gmail. Automated suites block real Formspree submission URLs. Chrome runtime errors were checked by the browser suites; screenshot and short viewport inspection are not real-phone/keyboard acceptance.
+Latest log: `C:\Dev\artifacts\sortie-v23\instructor-report-tests.log` (previous full runs: `frontend-audit-tests.log`, `notebook-sidebar-tests.log`, `feedback-connected-tests.log`, `mobile-tests.log`, `final-tests.log`). Screenshots are in the same directory, including `frontend-*.png`, `report-*.png` and `mobile-notebook-*.png`. Actual loopback preview was inspected through the sidebar browser; one labeled live feedback test was received in Formspree and confirmed by Yish in Gmail. Automated suites block real Formspree submission URLs. Chrome runtime errors were checked by the browser suites; screenshot and short viewport inspection are not real-phone/keyboard acceptance. A4 output was rendered through headless Chrome; the real native print dialog and Google Docs conversion remain device acceptance items.
 
 The 12 private legacy suites were rerun too. The retained store suite has four intentional expectation changes: migration number (now MIG 5); explicitly carry/achieve a goal before expecting settlement (two assertions); retain orphan drafts. Its tracked replacement passes all 64 checks. The other legacy suites passed, including the 31-check pre-course upgrade and 20-check older upgrade, both rerun after MIG 5. Original logs remain available; the catalogue verifiers retain 3/7 source-content notes.
 
