@@ -160,8 +160,16 @@
     courses: function () { return Object.keys(CATALOGUES); },
     all: function (courseId) { return CATALOGUES[courseId || current] || []; },
     count: function (courseId) { return (CATALOGUES[courseId || current] || []).length; },
-    lookup: lookup,
-    candidates: candidates,
+    lookup: function (subject, courseId) {
+      if (!courseId || courseId === current) return lookup(subject);
+      var previous = current; g.SyllabusRef.setCourse(courseId);
+      try { return lookup(subject); } finally { g.SyllabusRef.setCourse(previous); }
+    },
+    candidates: function (subject, courseId) {
+      if (!courseId || courseId === current) return candidates(subject);
+      var previous = current; g.SyllabusRef.setCourse(courseId);
+      try { return candidates(subject); } finally { g.SyllabusRef.setCourse(previous); }
+    },
     norm: norm,
     /** Replace the active catalogue wholesale. Kept for the older data file. */
     load: function (entries) { return g.SyllabusRef.register(current || 'rishoni', entries); }

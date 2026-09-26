@@ -24,6 +24,69 @@
   var LS_DRAFT_OLD = 'sortie:draft', DRAFT_PREFIX = 'sortie:draft:';
   var DRAFT_TTL = 30 * 86400000;
   var SCHEMA = 4;
+  var LS_RECOVERY = 'sortie:recovery', LS_TRASH = 'sortie:trash';
+  var storageIssue = false;
+
+  function writeLocal(key, value) {
+    try { localStorage.setItem(key, value); return true; }
+    catch (e) {
+      storageIssue = true;
+      if (global.dispatchEvent && global.CustomEvent) global.dispatchEvent(new CustomEvent('sortie:storage-error'));
+      return false;
+    }
+  }
+  function readJSON(key, fallback) {
+    try { var value = JSON.parse(localStorage.getItem(key)); return value == null ? fallback : value; }
+    catch (e) { return fallback; }
+  }
+  function failure(code) { var e = new Error(code); e.code = code; return e; }
+  var LS_TRANSACTION = 'sortie:transaction';
+  function replayLocal(values) {
+    return Object.keys(values).every(function (key) {
+      if (values[key] !== null) return writeLocal(key, values[key]);
+      try { localStorage.removeItem(key); return true; } catch (e) { return false; }
+    });
+  }
+  // A durable intent allows a launch interrupted between localStorage writes
+  // to finish the operation. The previous full state remains in recovery.
+  function commitLocal(values) {
+    var before = {};
+    Object.keys(values).forEach(function (key) { before[key] = localStorage.getItem(key); });
+    var journal = { state: 'apply', before: before, after: values };
+    if (!writeLocal(LS_TRANSACTION, JSON.stringify(journal))) return false;
+    if (replayLocal(values)) { localStorage.removeItem(LS_TRANSACTION); return true; }
+    journal.state = 'rollback';
+    if (writeLocal(LS_TRANSACTION, JSON.stringify(journal)) && replayLocal(before)) localStorage.removeItem(LS_TRANSACTION);
+    return false;
+  }
+  function recoverTransaction() {
+    var raw = localStorage.getItem(LS_TRANSACTION);
+    if (!raw) return;
+    var pending;
+    try { pending = JSON.parse(raw); } catch (e) { throw failure('RECOVERY_REQUIRED'); }
+    if (!pending || !pending.before || !pending.after || !replayLocal(pending.state === 'rollback' ? pending.before : pending.after)) throw failure('RECOVERY_REQUIRED');
+    localStorage.removeItem(LS_TRANSACTION);
+  }
+  function readArray(key) {
+    var value = readJSON(key, []);
+    if (Array.isArray(value)) return value.filter(function (x) { return x && typeof x === 'object'; });
+    storageIssue = true;
+    if (!writeLocal(key + ':damaged', localStorage.getItem(key))) throw failure('RECOVERY_REQUIRED');
+    return [];
+  }
+  function draftEntries() {
+    var out = {};
+    try { for (var i = 0; i < localStorage.length; i++) {
+      var key = localStorage.key(i);
+      if (key === LS_DRAFT_OLD || key.indexOf(DRAFT_PREFIX) === 0) out[key] = localStorage.getItem(key);
+    } } catch (e) {}
+    return out;
+  }
+  function recoverySnapshot(reason) {
+    var snapshot = { at: Date.now(), reason: reason, flights: clone(cache), settings: clone(settings),
+      drafts: draftEntries(), workspace: readJSON('sortie:workspace', null), feedbackDraft: readJSON('sortie:feedback-draft', null), trash: readArray(LS_TRASH) };
+    return writeLocal(LS_RECOVERY, JSON.stringify(snapshot));
+  }
 
   var db = null, dbHealthy = false, cache = [], settings = null;
 
@@ -119,9 +182,11 @@
       if (!db) return resolve(false);
       try {
         var tx = db.transaction(STORE, 'readwrite');
+        var timer = setTimeout(function () { try { tx.abort(); } catch (e) {} resolve(false); }, 5000);
+        function finish(ok) { clearTimeout(timer); resolve(ok); }
+        tx.oncomplete = function () { finish(true); };
+        tx.onerror = tx.onabort = function () { finish(false); };
         fn(tx.objectStore(STORE));
-        tx.oncomplete = function () { resolve(true); };
-        tx.onerror = function () { resolve(false); };
       } catch (e) { resolve(false); }
     });
   }
@@ -129,9 +194,14 @@
   var idbDelete = function (id) { return idbWrite(function (os) { os.delete(id); }); };
   var idbClear = function () { return idbWrite(function (os) { os.clear(); }); };
 
-  function mirror() { try { localStorage.setItem(LS_MIRROR, JSON.stringify(cache)); } catch (e) {} }
+  function mirror() { return writeLocal(LS_MIRROR, JSON.stringify(cache)); }
   function readMirror() {
-    try { return JSON.parse(localStorage.getItem(LS_MIRROR) || '[]'); } catch (e) { return []; }
+    var raw;
+    try { raw = JSON.parse(localStorage.getItem(LS_MIRROR) || '[]'); } catch (e) { raw = null; }
+    if (Array.isArray(raw)) return raw;
+    storageIssue = true;
+    if (!writeLocal('sortie:damaged-mirror', localStorage.getItem(LS_MIRROR) || '')) throw failure('RECOVERY_REQUIRED');
+    return [];
   }
 
   /* --------------------------------------------------------------- drafts */
@@ -148,25 +218,8 @@
   /** Drop drafts for flights that no longer exist and drafts nobody came back
    *  to. Without this every abandoned form stays in localStorage for good. */
   function pruneDrafts() {
-    var live = {};
-    cache.forEach(function (r) { live[r.id] = 1; });
-    var kill = [];
-    try {
-      for (var i = 0; i < localStorage.length; i++) {
-        var k = localStorage.key(i);
-        if (!k || k.indexOf(DRAFT_PREFIX) !== 0) continue;
-        var rest = k.slice(DRAFT_PREFIX.length);
-        if (rest !== 'new') {
-          var id = rest.slice(2);                 // strip the "b:" / "d:"
-          if (!live[id]) { kill.push(k); continue; }
-        }
-        var raw = null;
-        try { raw = JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) {}
-        if (!raw || (raw.at && Date.now() - raw.at > DRAFT_TTL)) kill.push(k);
-      }
-      kill.forEach(function (k) { localStorage.removeItem(k); });
-    } catch (e) {}
-    return kill.length;
+    // Drafts are user work. Old/orphaned drafts remain available in recovery.
+    return 0;
   }
 
   /* ------------------------------------------------------------- settings */
@@ -179,7 +232,8 @@
       /* Which course's syllabus and categories are in force. null means it has
          never been chosen, which is what makes the picker appear once. */
       course: null,
-      pin: null, lastExport: 0, installDismissed: false
+      pin: null, lastExport: 0, lastBackup: 0, installDismissed: false, startDismissed: false,
+      releaseSeen: null
     };
   }
 
@@ -197,7 +251,7 @@
   /* Targeted migrations. Bumping SCHEMA rebuilds the whole question list from
      the defaults, which throws away anything he renamed or added; these change
      one field and leave the rest of his setup alone. */
-  var MIG = 3;
+  var MIG = 4;
   function migrate(base) {
     var m = +base.mig || 0;
     function byId(id) {
@@ -223,6 +277,11 @@
       var qpt = byId('q_points');
       if (qpt && !qpt.role) qpt.role = 'points';
       m = 3;
+    }
+    if (m < 4) {
+      // Additive only. A previous CSV export does not establish a recovery backup.
+      base.lastBackup = +base.lastBackup || 0;
+      base.startDismissed = !!base.startDismissed;
     }
     base.mig = MIG;
   }
@@ -259,9 +318,19 @@
   function loadSettings() {
     var s;
     try { s = JSON.parse(localStorage.getItem(LS_SETTINGS) || 'null'); } catch (e) { s = null; }
+    if (!s && localStorage.getItem(LS_SETTINGS)) {
+      if (!writeLocal('sortie:damaged-settings', localStorage.getItem(LS_SETTINGS))) throw failure('RECOVERY_REQUIRED');
+      s = readJSON('sortie:settings:last-good', null);
+      storageIssue = true;
+    }
+    if (s && (+s.mig || 0) < 4 && !localStorage.getItem('sortie:pre-v23')) {
+      if (!writeLocal('sortie:pre-v23', JSON.stringify({ settings: s, mirror: localStorage.getItem(LS_MIRROR), drafts: draftEntries() }))) throw failure('RECOVERY_REQUIRED');
+    }
     var base = defaultSettings();
     if (s && typeof s === 'object') {
-      Object.keys(base).forEach(function (k) { if (s[k] !== undefined) base[k] = s[k]; });
+      Object.keys(s).forEach(function (k) {
+        if (k !== '__proto__' && k !== 'constructor' && k !== 'prototype') base[k] = s[k];
+      });
       // anything older than v3 predates the brief/debrief split
       if (!Array.isArray(s.questions) || !s.questions.length || (s.schema || 0) < SCHEMA) {
         base.questions = defaultQuestions();
@@ -285,8 +354,13 @@
     base.schema = SCHEMA;
     return base;
   }
+  var settingsMutation = false;
   function saveSettings() {
-    try { localStorage.setItem(LS_SETTINGS, JSON.stringify(settings)); } catch (e) {}
+    var old = localStorage.getItem(LS_SETTINGS);
+    if (old) { try { JSON.parse(old); writeLocal('sortie:settings:last-good', old); } catch (e) {} }
+    var ok = writeLocal(LS_SETTINGS, JSON.stringify(settings));
+    if (!ok && settingsMutation) throw failure('STORAGE_FULL');
+    return ok;
   }
 
   /** A goal. `cats` is which flight categories it is waiting on: a goal missed
@@ -298,6 +372,7 @@
    *  flight replaces only that flight's own contribution instead of rebuilding
    *  the whole shelf from one record — see the carry in save(). */
   function normalizeGoal(g) {
+    g = g || {};
     if (typeof g === 'string') g = { text: g };
     return {
       id: g.id || uid('g'),
@@ -306,17 +381,24 @@
       cats: Array.isArray(g.cats)
         ? g.cats.map(String).filter(function (c) { return c.trim(); })
         : [],
-      from: g.from ? String(g.from) : null
+      from: g.from ? String(g.from) : null,
+      course: g.course || null,
+      carryOf: g.carryOf || null,
+      sourceId: g.sourceId || null,
+      suggested: g.suggested || null,
+      originalText: g.originalText == null ? null : String(g.originalText)
     };
   }
   /** One line of an itemized answer, e.g. a נקודות עיקריות bullet. */
   function normalizeItem(x) {
+    x = x || {};
     if (typeof x === 'string') x = { text: x };
     return { id: x.id || uid('i'), text: String(x.text == null ? '' : x.text) };
   }
   /** A syllabus row. `focus` is the דגש written at the תדריך, `notes` is what
    *  actually happened, written at the תחקיר. */
   function normalizeEx(x) {
+    x = x || {};
     if (typeof x === 'string') x = { text: x };
     return {
       id: x.id || uid('x'),
@@ -334,7 +416,8 @@
   }
 
   function normalize(r) {
-    var out = {
+    if (!r || typeof r !== 'object' || Array.isArray(r)) throw failure('INVALID_RECORD');
+    var out = Object.assign({}, r, {
       id: r.id || uid('f'),
       flownAt: r.flownAt || todayISO(),
       stage: r.stage === 'done' ? 'done' : 'brief',   // brief = flown not yet debriefed
@@ -347,9 +430,9 @@
          which is true and harmless. */
       course: r.course || null,
       answers: {},
-      createdAt: r.createdAt || Date.now(),
-      updatedAt: r.updatedAt || r.createdAt || Date.now()
-    };
+      createdAt: r.createdAt == null ? 0 : r.createdAt,
+      updatedAt: r.updatedAt == null ? (r.createdAt == null ? 0 : r.createdAt) : r.updatedAt
+    });
     var src = (r.answers && typeof r.answers === 'object') ? r.answers : {};
     Object.keys(src).forEach(function (k) { out.answers[k] = src[k]; });
 
@@ -382,15 +465,15 @@
      either ״ or a straight quote. */
   function normCat(s) {
     return String(s == null ? '' : s).toLowerCase()
-      .replace(/[״׳"']/g, '"').replace(/\s+/g, ' ');
+      .replace(/[״׳"']/g, '"').replace(/([a-zא-ת])(\d)/gi, '$1 $2').replace(/\s+/g, ' ').trim();
   }
 
   /* The categories come from the COURSE, not from the stored question. The two
      courses have different series, so options saved on the question would be
      the previous course's the moment anybody switched — and a category that is
      not in the vocabulary silently drops its flights out of the goal loop. */
-  function categoryVocab() {
-    var c = course();
+  function categoryVocab(id) {
+    var c = id && global.Courses ? Courses.get(id) : course();
     if (c && c.categories && c.categories.length) return c.categories.slice();
     var q = subjectQuestion();
     if (q && q.options && q.options.length) return q.options.slice();
@@ -417,33 +500,54 @@
 
   /** Which of the known categories appear in a נושא טיסה, e.g. "AW 7 לילה"
    *  is both AW and לילה. The flight number is ignored on purpose. */
-  function categoriesInText(text) {
+  function categoriesInText(text, id) {
     var hay = normCat(text);
     if (!hay) return [];
-    var vocab = categoryVocab();
-    var out = vocab.filter(function (c) { return hay.indexOf(normCat(c)) !== -1; });
-    var aliases = catAliases();
-    Object.keys(aliases).forEach(function (alias) {
-      var c = aliases[alias];
-      if (hay.indexOf(normCat(alias)) === -1) return;
-      if (vocab.indexOf(c) === -1 || out.indexOf(c) !== -1) return;
-      out.push(c);
+    var vocab = categoryVocab(id), c = id && global.Courses ? Courses.get(id) : course();
+    var aliases = (c && c.aliases) || {}, matches = [];
+    vocab.map(function (v) { return [v, v]; }).concat(Object.keys(aliases).map(function (a) {
+      return [a, aliases[a]];
+    })).forEach(function (pair) {
+      var phrase = normCat(pair[0]), start = -1;
+      while ((start = hay.indexOf(phrase, start + 1)) !== -1) {
+        var end = start + phrase.length;
+        if ((start && /[a-zא-ת]/i.test(hay[start - 1])) || (end < hay.length && /[a-zא-ת]/i.test(hay[end]))) continue;
+        matches.push({ start: start, end: end, category: pair[1] });
+      }
     });
-    return out;
+    matches.sort(function (a, b) { return (b.end - b.start) - (a.end - a.start); });
+    var occupied = [], out = [];
+    matches.forEach(function (m) {
+      if (c && c.id !== 'rishoni' && occupied.some(function (x) { return m.start < x.end && m.end > x.start; })) return;
+      occupied.push(m);
+      if (out.indexOf(m.category) === -1) out.push(m.category);
+    });
+    return vocab.filter(function (v) { return out.indexOf(v) !== -1; });
   }
 
   /** Which of the known categories appear in this flight's נושא טיסה. */
   function categoriesOf(rec) {
-    var q = subjectQuestion();
-    return q ? categoriesInText(rec.answers[q.id]) : [];
+    var q = questionFor(rec, 'subject') || Store.question('q_subject');
+    // Text tags for unassigned history use both vocabularies, independent of
+    // Settings. They never assign a course or syllabus credit.
+    if (!rec.course) {
+      var tags = [];
+      (global.Courses ? Courses.all() : []).forEach(function (c) { categoriesInText(q && rec.answers[q.id], c.id).forEach(function (cat) { if (tags.indexOf(cat) === -1) tags.push(cat); }); });
+      return tags;
+    }
+    return q ? categoriesInText(rec.answers[q.id], rec.course) : [];
   }
 
   /** The goals waiting on a flight of these categories: the ones missed or set
    *  for next time on the last flight that shared a category, plus anything
    *  untagged. This is what a תדריך pulls in once he types the נושא טיסה. */
-  function pendingGoalsFor(cats) {
+  function pendingGoalsFor(cats, id) {
     cats = cats || [];
+    id = id || courseId();
     return settings.nextGoals.filter(function (g) {
+      var origin = g.from && Store.get(g.from);
+      var gc = g.course || (origin && origin.course);
+      if (gc && gc !== id) return false;
       if (!g.cats.length) return true;
       return g.cats.some(function (c) { return cats.indexOf(c) !== -1; });
     });
@@ -452,11 +556,16 @@
   function roleQuestion(role) {
     return settings.questions.filter(function (q) { return q.role === role && !q.archived; })[0] || null;
   }
+  function questionFor(rec, role) {
+    var active = roleQuestion(role);
+    if (active && rec.answers[active.id] !== undefined) return active;
+    return settings.questions.filter(function (q) { return q.role === role && rec.answers[q.id] !== undefined; })[0] || active;
+  }
 
   /** What a debriefed flight leaves outstanding: the goals it set for next time
    *  plus the ones it marked ✗. Trimmed text, de-duplicated, order kept. */
   function carriedBy(rec) {
-    var qThis = roleQuestion('goals'), qNext = roleQuestion('goalsNext');
+    var qThis = questionFor(rec, 'goals'), qNext = questionFor(rec, 'goalsNext');
     var out = [], seen = {};
     function push(t) {
       t = String(t == null ? '' : t).trim();
@@ -482,6 +591,9 @@
     var t = String(text).trim();
     return cache.some(function (r) {
       if (r.id === rec.id || r.stage !== 'done') return false;
+      if (r.course !== rec.course) return false;
+      var cats = categoriesOf(rec), laterCats = categoriesOf(r);
+      if (cats.length && !cats.some(function (c) { return laterCats.indexOf(c) !== -1; })) return false;
       if (r.flownAt < rec.flownAt) return false;
       if (r.flownAt === rec.flownAt && (r.createdAt || 0) <= (rec.createdAt || 0)) return false;
       return (r.answers[qThis.id] || []).some(function (g) {
@@ -551,7 +663,7 @@
   }
 
   function toCSV() {
-    var qs = Store.questions().slice();
+    var qs = Store.questions(true).slice();
     var head = ['תאריך'].concat(qs.map(function (q) { return q.label + (q.stage === 'brief' ? ' (תדריך)' : ''); }));
     var rows = cache.slice().reverse().map(function (r) {
       return [r.flownAt].concat(qs.map(function (q) {
@@ -563,42 +675,135 @@
 
   function toJSON() {
     return JSON.stringify({
-      app: 'tahkir', schema: SCHEMA, exportedAt: new Date().toISOString(),
-      questions: settings.questions, nextGoals: settings.nextGoals, flights: cache
+      app: 'tahkir', schema: SCHEMA, backupVersion: 1, exportedAt: new Date().toISOString(),
+      questions: settings.questions, nextGoals: settings.nextGoals, flights: cache,
+      preferences: { course: settings.course, theme: settings.theme, startDismissed: settings.startDismissed,
+        installDismissed: settings.installDismissed, releaseSeen: settings.releaseSeen },
+      drafts: draftEntries(), workspace: readJSON('sortie:workspace', null), feedbackDraft: readJSON('sortie:feedback-draft', null), trash: readArray(LS_TRASH)
     }, null, 2);
   }
 
-  function importJSON(text) {
-    var data = JSON.parse(text);
+  function inspectImport(text) {
+    var data = JSON.parse(text, function (k, v) {
+      if (k === '__proto__' || k === 'prototype' || k === 'constructor') throw failure('INVALID_BACKUP');
+      return v;
+    });
+    if (!data || typeof data !== 'object') throw failure('INVALID_BACKUP');
     var list = Array.isArray(data) ? data : (data.flights || data.debriefs || data.sorties);
-    if (!Array.isArray(list)) throw new Error('no flights');
+    if (!Array.isArray(list)) throw failure('INVALID_BACKUP');
+    list.forEach(function (r) {
+      if (!r || typeof r !== 'object' || Array.isArray(r) || (r.id != null && typeof r.id !== 'string') ||
+          (r.answers != null && (typeof r.answers !== 'object' || Array.isArray(r.answers))) ||
+          (r.flownAt && !/^\d{4}-\d{2}-\d{2}$/.test(r.flownAt))) throw failure('INVALID_RECORD');
+      normalize(r);
+    });
+    if (data.questions != null) {
+      if (!Array.isArray(data.questions)) throw failure('INVALID_BACKUP');
+      var questionIds = {};
+      data.questions.forEach(function (q) {
+        if (!q || typeof q !== 'object' || !q.id || typeof q.id !== 'string' || questionIds[q.id] || (q.type && TYPES.indexOf(q.type) === -1) || (q.options && !Array.isArray(q.options))) throw failure('INVALID_BACKUP');
+        questionIds[q.id] = true;
+      });
+    }
+    if (data.nextGoals != null && !Array.isArray(data.nextGoals)) throw failure('INVALID_BACKUP');
+    Object.keys(data.drafts || {}).forEach(function (key) {
+      if (key !== LS_DRAFT_OLD && key.indexOf(DRAFT_PREFIX) !== 0) throw failure('INVALID_BACKUP');
+      var d = JSON.parse(data.drafts[key]);
+      if (!d || typeof d !== 'object') throw failure('INVALID_BACKUP');
+    });
+    if (data.workspace) {
+      if (data.workspace.schema !== 1 || !Array.isArray(data.workspace.notes) || !Array.isArray(data.workspace.folders) || !Array.isArray(data.workspace.milestones)) throw failure('INVALID_BACKUP');
+      ['notes', 'folders', 'milestones'].forEach(function (kind) { data.workspace[kind].forEach(function (r) {
+        if (!r || typeof r !== 'object' || typeof r.id !== 'string' || !r.id) throw failure('INVALID_BACKUP');
+      }); });
+    }
+    if (data.trash && !Array.isArray(data.trash)) throw failure('INVALID_BACKUP');
+    var added = 0, updated = 0;
+    list.forEach(function (r) { var have = r.id && Store.get(r.id); if (!have) added++; else if ((r.updatedAt || 0) > (have.updatedAt || 0)) updated++; });
+    return { data: data, list: list, added: added, updated: updated,
+      drafts: Object.keys(data.drafts || {}).length, notes: data.workspace ? data.workspace.notes.length : 0,
+      questions: (data.questions || []).length, goals: (data.nextGoals || []).length };
+  }
 
+  function importJSON(text, options) {
+    var plan = inspectImport(text), data = plan.data, list = plan.list;
+    options = options || {};
+    // Never merge over damaged notebook data or mutate settings before checking it.
+    if (global.Workspace) Workspace.all();
+    var restore = options.restorePreferences === true || cache.length === 0;
+    if (!recoverySnapshot('before-import')) return Promise.reject(failure('STORAGE_FULL'));
+    var original = { settings: clone(settings), cache: clone(cache) }, remap = {};
     if (Array.isArray(data.questions) && data.questions.length) {
       var byId = {};
       settings.questions.forEach(function (q) { byId[q.id] = q; });
       data.questions.map(normalizeQuestion).forEach(function (q) {
-        if (!byId[q.id]) settings.questions.push(q);
+        if (byId[q.id] && byId[q.id].type !== q.type && cache.length) {
+          var originalId = q.id;
+          q.id += '_import_' + q.type;
+          remap[originalId] = q.id;
+          if (restore) byId[originalId].archived = true;
+          else q.archived = true;
+        }
+        if (!byId[q.id]) { settings.questions.push(q); byId[q.id] = q; }
+        else if (restore) Object.assign(byId[q.id], q);
       });
       ensureRoles(settings.questions);
-      saveSettings();
     }
-
+    if (restore && data.preferences) ['course', 'theme', 'startDismissed', 'installDismissed', 'releaseSeen'].forEach(function (k) {
+      if (data.preferences[k] !== undefined) settings[k] = data.preferences[k];
+    });
+    if (Array.isArray(data.nextGoals)) {
+      var shelf = cache.length ? settings.nextGoals.slice() : [], seenGoals = {};
+      shelf.forEach(function (g) { seenGoals[g.id] = true; });
+      data.nextGoals.map(normalizeGoal).forEach(function (g) { if (!seenGoals[g.id]) { shelf.push(g); seenGoals[g.id] = true; } });
+      settings.nextGoals = shelf;
+    }
     var have = {};
     cache.forEach(function (r) { have[r.id] = r; });
-    var added = 0, updated = 0, writes = [];
+    var added = 0, updated = 0;
+    function remapAnswers(raw) {
+      raw = clone(raw);
+      Object.keys(remap).forEach(function (old) {
+        if (raw.answers && raw.answers[old] !== undefined) { raw.answers[remap[old]] = raw.answers[old]; delete raw.answers[old]; }
+      });
+      return raw;
+    }
     list.forEach(function (raw) {
-      var rec = normalize(raw);
+      var rec = normalize(remapAnswers(raw));
       if (have[rec.id]) {
         if ((rec.updatedAt || 0) <= (have[rec.id].updatedAt || 0)) return;
         Object.assign(have[rec.id], rec); updated++;
-        writes.push(idbPut(clone(have[rec.id])));
       } else {
         cache.push(rec); have[rec.id] = rec; added++;
-        writes.push(idbPut(clone(rec)));
       }
     });
-    resort(); mirror();
-    return Promise.all(writes).then(function () { return { added: added, updated: updated }; });
+    resort();
+    var values = {}; values[LS_SETTINGS] = JSON.stringify(settings); values[LS_MIRROR] = JSON.stringify(cache);
+    Object.keys(data.drafts || {}).forEach(function (key) {
+      var old = readJSON(key, null), incoming = JSON.parse(data.drafts[key]);
+      if (incoming.rec) incoming.rec = remapAnswers(incoming.rec); else incoming = remapAnswers(incoming);
+      if (!old || (+incoming.at || 0) > (+old.at || 0)) values[key] = JSON.stringify(incoming);
+    });
+    function mergeRows(a, b) {
+      var map = Object.create(null);
+      (a || []).concat(b || []).forEach(function (r) { if (!r || !r.id) return; if (!map[r.id] || (+r.updatedAt || 0) >= (+map[r.id].updatedAt || 0)) map[r.id] = r; });
+      return Object.keys(map).map(function (id) { return map[id]; });
+    }
+    if (data.workspace) {
+      var workspace = readJSON('sortie:workspace', { schema: 1, notes: [], folders: [], milestones: [] });
+      ['notes', 'folders', 'milestones'].forEach(function (k) { workspace[k] = mergeRows(workspace[k], data.workspace[k]); });
+      values['sortie:workspace'] = JSON.stringify(workspace);
+    }
+    if (data.trash) values[LS_TRASH] = JSON.stringify(mergeRows(readArray(LS_TRASH), data.trash));
+    if (data.feedbackDraft && !localStorage.getItem('sortie:feedback-draft')) values['sortie:feedback-draft'] = JSON.stringify(data.feedbackDraft);
+    if (!commitLocal(values)) { settings = original.settings; cache = original.cache; return Promise.reject(failure('IMPORT_NOT_SAVED')); }
+    return idbWrite(function (os) { cache.forEach(function (r) { os.put(clone(r)); }); }).then(function (ok) {
+      // The complete mirror is durable even where IndexedDB is unavailable.
+      if (db && !ok) storageIssue = true;
+      Store.applyCourse();
+      if (global.Workspace) Workspace.reload();
+      return { added: added, updated: updated };
+    });
   }
 
   /* ------------------------------------------------------------------ api */
@@ -610,18 +815,23 @@
     linesOf: linesOf,
 
     init: function () {
-      settings = loadSettings();
+      try { recoverTransaction(); settings = loadSettings(); }
+      catch (e) { return Promise.reject(e); }
       return withTimeout(openDB(), 2000, null).then(function (d) {
         db = d;
         return withTimeout(idbAll(), 2000, null);
       }).then(function (rows) {
         dbHealthy = rows !== null;
+        if (db && !dbHealthy) storageIssue = true;
         var byId = {};
-        readMirror().forEach(function (raw) { var r = normalize(raw); byId[r.id] = r; });
+        readMirror().forEach(function (raw) { try { var r = normalize(raw); byId[r.id] = r; } catch (e) { storageIssue = true; } });
         (rows || []).forEach(function (raw) {
+          if (!raw || typeof raw !== 'object') { storageIssue = true; return; }
           var r = normalize(raw), have = byId[r.id];
           if (!have || (r.updatedAt || 0) >= (have.updatedAt || 0)) byId[r.id] = r;
         });
+        var deleted = readJSON(LS_TRASH, []).filter(function (r) { return r.kind === 'flight'; });
+        deleted.forEach(function (r) { if (byId[r.id] && (+r.updatedAt || 0) >= (+byId[r.id].updatedAt || 0)) delete byId[r.id]; });
         cache = Object.keys(byId).map(function (k) { return byId[k]; });
         resort(); mirror(); saveSettings();
         if (db && dbHealthy) {
@@ -652,6 +862,7 @@
       return settings.questions.filter(function (q) { return q.id === id; })[0] || null;
     },
     roleQuestion: roleQuestion,
+    questionFor: questionFor,
     isProtected: isProtected,
 
     /* --- course --- */
@@ -688,6 +899,11 @@
     updateQuestion: function (id, patch) {
       var q = Store.question(id);
       if (!q) return null;
+      if (patch.type && patch.type !== q.type && !isProtected(q) && TYPES.indexOf(patch.type) !== -1 &&
+          cache.some(function (r) { return r.answers[id] !== undefined; })) {
+        var next = clone(q); next.id = uid('q'); next.archived = false;
+        q.archived = true; settings.questions.push(next); q = next;
+      }
       if (patch.label !== undefined) q.label = String(patch.label).trim() || q.label;
       if (patch.hint !== undefined) q.hint = patch.hint;
       if (patch.stage !== undefined && !isProtected(q) && STAGES.indexOf(patch.stage) !== -1) {
@@ -717,7 +933,16 @@
       saveSettings();
       return true;
     },
-    resetQuestions: function () { settings.questions = defaultQuestions(); saveSettings(); },
+    resetQuestions: function () {
+      if (!recoverySnapshot('before-template-reset')) throw failure('STORAGE_FULL');
+      var defaults = defaultQuestions(), ids = {};
+      defaults.forEach(function (q) { ids[q.id] = true; });
+      var historical = settings.questions.filter(function (q) { return !ids[q.id]; });
+      historical.forEach(function (q) { q.archived = true; });
+      // Keep the stored type for an existing definition: changing the template must not reinterpret answers.
+      defaults.forEach(function (q) { var old = Store.question(q.id); if (old) q.type = old.type; });
+      settings.questions = defaults.concat(historical); saveSettings();
+    },
 
     /** Previously used answers for a question, newest first, for suggestions. */
     suggestions: function (qid) {
@@ -735,7 +960,7 @@
     /* --- goals for the next flight --- */
     nextGoals: function () { return settings.nextGoals; },
     addNextGoal: function (text) {
-      var g = normalizeGoal({ text: text });
+      var g = normalizeGoal({ text: text, course: courseId() });
       settings.nextGoals.push(g); saveSettings();
       return g;
     },
@@ -775,11 +1000,11 @@
      *  category cannot be known until he types the נושא טיסה, so the form pulls
      *  those in as he does. */
     newBrief: function () {
-      var rec = { id: '', flownAt: todayISO(), stage: 'brief', answers: {} };
+      var rec = { id: '', flownAt: todayISO(), stage: 'brief', course: courseId(), answers: {} };
       var qg = roleQuestion('goals');
       if (qg) {
         rec.answers[qg.id] = pendingGoalsFor([]).map(function (g) {
-          return { id: g.id, text: g.text, status: 'open' };
+          return Object.assign({}, g, { status: 'open', sourceId: g.sourceId || g.id });
         });
       }
       return rec;
@@ -790,7 +1015,15 @@
     carriedBy: carriedBy,
 
     save: function (rec) {
+      // Other tabs can save between form-open and Save. Merge their durable mirror first.
+      var merged = {};
+      cache.concat(readMirror()).forEach(function (r) { if (r && r.id && (!merged[r.id] || (+r.updatedAt || 0) > (+merged[r.id].updatedAt || 0))) merged[r.id] = r; });
+      cache = Object.keys(merged).map(function (id) { return merged[id]; });
+      var diskSettings = readJSON(LS_SETTINGS, null);
+      if (diskSettings && Array.isArray(diskSettings.nextGoals)) settings.nextGoals = diskSettings.nextGoals.map(normalizeGoal);
       var existing = rec.id ? Store.get(rec.id) : null;
+      if (existing && rec.baseUpdatedAt != null && +rec.baseUpdatedAt !== +existing.updatedAt) return Promise.reject(failure('EDIT_CONFLICT'));
+      var oldCache = clone(cache), oldSettings = clone(settings);
       // snapshot BEFORE the merge — the goal delta below compares against it,
       // and Object.assign(existing, …) would otherwise overwrite it in place
       var wasDone = !!(existing && existing.stage === 'done');
@@ -798,15 +1031,17 @@
 
       var out;
       if (existing) {
-        out = normalize(Object.assign({}, existing, rec));
+        out = normalize(Object.assign({}, existing, rec, { course: existing.course }));
         Object.assign(existing, out); out = existing;
       } else {
         out = normalize(rec);
+        if (!out.createdAt) out.createdAt = Date.now();
         // a brand-new flight is the only thing that knows its own course
         if (!out.course) out.course = courseId();
         cache.push(out);
       }
-      out.updatedAt = Date.now();
+      out.updatedAt = Math.max(Date.now(), (existing && +existing.updatedAt || 0) + 1);
+      delete out.baseUpdatedAt; delete out.buffers; delete out.draftNew;
 
       // Roll the goal loop forward once the flight is debriefed: goals set for
       // next time, plus anything missed today, go back on the shelf TAGGED with
@@ -821,19 +1056,29 @@
              pulled in is settled: the goals sharing a category with it, and the
              untagged ones every flight gets. Whatever it did not settle keeps
              waiting for its own category. */
+          var qg = questionFor(out, 'goals');
+          var received = qg ? (out.answers[qg.id] || []) : [];
           var keep = settings.nextGoals.filter(function (g) {
-            if (!g.cats.length) return false;
-            return !g.cats.some(function (c) { return cats.indexOf(c) !== -1; });
+            return !received.some(function (taken) {
+              if (taken.status === 'open') return false;
+              if (taken.id === g.id || taken.sourceId === g.id) return true;
+              // Old forms did not persist origin fields; match wording only within the same origin/course.
+              var origin = g.from && Store.get(g.from);
+              var older = !origin || origin.flownAt < out.flownAt || (origin.flownAt === out.flownAt && origin.createdAt <= out.createdAt);
+              return older && taken.text.trim() === g.text.trim() && (!g.course || g.course === out.course) &&
+                (!g.cats.length || g.cats.some(function (c) { return cats.indexOf(c) !== -1; }));
+            });
           });
           // keyed on the categories too, so the same wording waiting on ניווט
           // does not swallow the copy this AW flight just missed
           var seen = {};
-          keep.forEach(function (g) { seen[gkey(g.text.trim(), g.cats)] = 1; });
+          keep.forEach(function (g) { seen[(g.course || '') + ':' + gkey(g.text.trim(), g.cats)] = 1; });
           now.forEach(function (t) {
-            var k = gkey(t, cats);
+            var k = (out.course || '') + ':' + gkey(t, cats);
             if (seen[k]) return;
+            if (settledAfter(out, t)) return;
             seen[k] = 1;
-            keep.push(normalizeGoal({ text: t, cats: cats, from: out.id }));
+            keep.push(normalizeGoal({ text: t, cats: cats, from: out.id, course: out.course }));
           });
           settings.nextGoals = keep;
         } else {
@@ -855,21 +1100,34 @@
             return !(g.from === out.id && had[g.text.trim()] && !has[g.text.trim()]);
           });
           var onShelf = {};
-          settings.nextGoals.forEach(function (g) { onShelf[g.text.trim()] = 1; });
+          settings.nextGoals.forEach(function (g) { onShelf[(g.course || '') + ':' + gkey(g.text.trim(), g.cats)] = 1; });
           now.forEach(function (t) {
-            if (had[t] || onShelf[t]) return;      // unchanged, or already there
+            var key = (out.course || '') + ':' + gkey(t, cats);
+            if (had[t] || onShelf[key]) return;
             // and never contradict a later flight: marking something ✗ on an old
             // sortie must not undo a ✓ that a flight after it already recorded
             if (settledAfter(out, t)) return;
-            onShelf[t] = 1;
-            settings.nextGoals.push(normalizeGoal({ text: t, cats: cats, from: out.id }));
+            onShelf[key] = 1;
+            settings.nextGoals.push(normalizeGoal({ text: t, cats: cats, from: out.id, course: out.course }));
           });
         }
-        saveSettings();
       }
 
-      resort(); mirror();
-      return idbPut(clone(out)).then(function () { return out; });
+      resort();
+      var values = {}; values[LS_MIRROR] = JSON.stringify(cache); values[LS_SETTINGS] = JSON.stringify(settings);
+      var settingsOK = out.stage !== 'done' || commitLocal(values);
+      var mirrorOK = out.stage === 'done' ? settingsOK : mirror();
+      if (!settingsOK) {
+        cache = oldCache; settings = oldSettings; saveSettings(); mirror();
+        return Promise.reject(failure('STORAGE_FULL'));
+      }
+      return idbPut(clone(out)).then(function (idbOK) {
+        if (!idbOK && !mirrorOK) {
+          cache = oldCache; settings = oldSettings; saveSettings();
+          throw failure('STORAGE_FULL');
+        }
+        return out;
+      });
     },
 
     /** Resolves with the record that was removed, so the caller can offer to
@@ -878,6 +1136,11 @@
     remove: function (id) {
       var gone = Store.get(id);
       var copy = gone ? clone(gone) : null;
+      if (!copy) return Promise.resolve(null);
+      var trash = readJSON(LS_TRASH, []).filter(function (r) { return r.id !== id; });
+      trash.push({ id: id, kind: 'flight', updatedAt: Date.now(), record: copy,
+        drafts: [Store.readDraft(id, 'brief'), Store.readDraft(id, 'debrief')] });
+      if (!writeLocal(LS_TRASH, JSON.stringify(trash))) return Promise.reject(failure('STORAGE_FULL'));
       cache = cache.filter(function (r) { return r.id !== id; });
       mirror();
       Store.clearDraft(id, 'brief'); Store.clearDraft(id, 'debrief');
@@ -887,14 +1150,25 @@
     restore: function (rec) {
       if (!rec) return Promise.resolve(null);
       var out = normalize(rec);
-      out.updatedAt = rec.updatedAt || Date.now();
+      out.updatedAt = Math.max(Date.now(), (+rec.updatedAt || 0) + 1);
+      var trash = readArray(LS_TRASH), deleted = trash.filter(function (r) { return r.id === out.id; })[0];
+      var old = clone(cache), values = {};
       if (!Store.get(out.id)) cache.push(out);
-      resort(); mirror();
+      resort();
+      values[LS_MIRROR] = JSON.stringify(cache);
+      values[LS_TRASH] = JSON.stringify(trash.filter(function (r) { return r.id !== out.id; }));
+      if (deleted && deleted.drafts) deleted.drafts.forEach(function (d, i) { if (d) values[draftKey(out.id, i ? 'debrief' : 'brief')] = JSON.stringify({ at: Date.now(), rec: d }); });
+      if (!commitLocal(values)) { cache = old; return Promise.reject(failure('STORAGE_FULL')); }
       return idbPut(clone(out)).then(function () { return out; });
     },
     clearAll: function () {
+      if (!recoverySnapshot('before-clear-all')) return Promise.reject(failure('STORAGE_FULL'));
+      var trash = readArray(LS_TRASH), oldCache = clone(cache), oldSettings = clone(settings), values = {};
+      cache.forEach(function (r) { trash.push({ id: r.id, kind: 'flight', updatedAt: Date.now(), record: clone(r) }); });
       cache = []; settings.nextGoals = [];
-      saveSettings(); mirror(); Store.clearDraft();
+      values[LS_TRASH] = JSON.stringify(trash); values[LS_MIRROR] = '[]'; values[LS_SETTINGS] = JSON.stringify(settings);
+      if (!commitLocal(values)) { cache = oldCache; settings = oldSettings; return Promise.reject(failure('STORAGE_FULL')); }
+      // Drafts and personal notes remain recoverable after clearing flights.
       return idbClear();
     },
 
@@ -941,15 +1215,14 @@
 
     /* --- settings --- */
     settings: function () { return settings; },
-    set: function (k, v) { settings[k] = v; saveSettings(); },
+    set: function (k, v) { var old = settings[k]; settings[k] = v; if (!saveSettings()) { settings[k] = old; return false; } return true; },
     storageMode: function () { return dbHealthy ? 'indexeddb' : 'local'; },
 
     setPin: function (pin) {
       if (!cryptoReady()) return Promise.resolve(false);
       var salt = crypto.getRandomValues(new Uint8Array(16));
       return derive(pin, salt).then(function (bits) {
-        settings.pin = { salt: bufToB64(salt), hash: bufToB64(bits) };
-        saveSettings(); return true;
+        return Store.set('pin', { salt: bufToB64(salt), hash: bufToB64(bits) });
       });
     },
     checkPin: function (pin) {
@@ -961,19 +1234,38 @@
     clearPin: function () { settings.pin = null; saveSettings(); },
     cryptoReady: cryptoReady,
 
-    toCSV: toCSV, toJSON: toJSON, importJSON: importJSON, answerToText: answerToText,
-    markExported: function () { settings.lastExport = Date.now(); saveSettings(); },
+    toCSV: toCSV, toJSON: toJSON, importJSON: importJSON, inspectImport: inspectImport, answerToText: answerToText,
+    markExported: function (kind) { settings.lastExport = Date.now(); if (kind === 'backup') settings.lastBackup = Date.now(); saveSettings(); },
+    storageIssue: function () { return storageIssue; },
+    emergencyJSON: function () {
+      var raw = {};
+      for (var i = 0; i < localStorage.length; i++) {
+        var key = localStorage.key(i);
+        if (/^sortie:(mirror|settings|draft|workspace|feedback-draft|trash|recovery|transaction|pre-v23|damaged)/.test(key)) raw[key] = localStorage.getItem(key);
+      }
+      return JSON.stringify({ app: 'sortie-raw-recovery', exportedAt: new Date().toISOString(), raw: raw }, null, 2);
+    },
+    recoverySnapshot: recoverySnapshot,
+    recovery: function () { return readJSON(LS_RECOVERY, null); },
+    drafts: draftEntries,
+    trash: function () { return readArray(LS_TRASH); },
+    writeLocal: writeLocal,
 
     /* --- drafts ---
        One slot per form: 'new' for a תדריך that has no record yet, otherwise
        the stage and the record id. A single shared slot could only ever hold
        one form, which is why the תחקיר had no autosave at all. */
     draftKey: draftKey,
+    promoteDraft: function (record) {
+      var values = {}, current = localStorage.getItem(draftKey(null));
+      // Opening an orphan as a new brief must not overwrite another new brief.
+      if (current) values[DRAFT_PREFIX + 'recovered:' + uid('draft')] = current;
+      var next = clone(record); next.id = uid('f'); next.draftNew = true;
+      values[draftKey(null)] = JSON.stringify({ at: Date.now(), rec: next });
+      return commitLocal(values);
+    },
     saveDraft: function (d, stage) {
-      try {
-        localStorage.setItem(draftKey(d && d.id, stage),
-          JSON.stringify({ at: Date.now(), rec: d }));
-      } catch (e) {}
+      return writeLocal(draftKey(d && d.draftNew ? null : d && d.id, stage), JSON.stringify({ at: Date.now(), rec: d }));
     },
     readDraft: function (id, stage) {
       var raw = null;
@@ -985,7 +1277,7 @@
       if (!raw) return null;
       var rec = raw && raw.rec ? raw.rec : raw;          // bare record = old shape
       var at = +(raw && raw.at) || 0;
-      if (at && Date.now() - at > DRAFT_TTL) return null;
+      // Old work stays recoverable; age is displayed instead of deleting it.
       return rec && typeof rec === 'object' ? rec : null;
     },
     draftAge: function (id, stage) {
@@ -1003,5 +1295,16 @@
     pruneDrafts: pruneDrafts
   };
 
+  // Preference actions either persist or retain their previous value.
+  ['setCourse', 'addQuestion', 'updateQuestion', 'removeQuestion', 'moveQuestion', 'resetQuestions',
+    'addNextGoal', 'removeNextGoal', 'setNextGoals', 'clearPin'].forEach(function (name) {
+    var action = Store[name];
+    Store[name] = function () {
+      var before = clone(settings); settingsMutation = true;
+      try { return action.apply(Store, arguments); }
+      catch (e) { settings = before; throw e; }
+      finally { settingsMutation = false; }
+    };
+  });
   global.Store = Store;
 })(window);

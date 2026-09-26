@@ -1,116 +1,88 @@
-# Sortie
+# Sortie / תחקיר
 
-A daily flight debrief app for iPhone. Replaces the "Daily Flight Debrief" Google
-Form with something that closes the loop: the goals you set at the end of one
-sortie are the first thing you see before the next one.
+Hebrew, right-to-left flight briefing and debriefing PWA for two training courses: ראשוני and מתקדם. Plain HTML, CSS and JavaScript, with on-device storage. Works in Android Chrome and iOS Safari; it can be installed to the home screen.
 
-Built for Yish's brother. Hebrew flight categories stay in Hebrew.
+The current development branch is `release/next-update`, build `v23-preview`. This is a local release candidate, not a deployed update.
 
-## What it does
+## Daily use
 
-Same seven questions as the form, grouped into the three phases of a debrief:
+- Prepare a brief, find a flight in the active course's syllabus, set goals and write exercise focus points.
+- Debrief the same flight: enter minutes, assess goals, write exercise notes and set next-flight goals.
+- Goals carry forward within their course/category context. Editing an older debrief preserves newer work.
+- Search/filter flights; review trends, goal history and short/full summaries; export a document or copy text.
+- Open the notebook from the top bar, organize pages into folders, set priorities, pin important pages and search.
+- See recorded syllabus coverage by course/section, add personal milestones, and preview an image before sharing it.
+- Customize questions while retaining definitions needed to read historical answers.
+- Recover deleted flights/pages, revisit retained drafts, and export/restore a full JSON backup.
 
-| Phase | Fields |
+Syllabus coverage counts distinct, identified catalogue entries from completed debriefs in the active course. It is not official course completion or an instructor's qualification decision. Unassigned historical flights do not receive guessed course credit. Dates and additional course events must come from the cadet; none are invented.
+
+## Data and privacy
+
+Google sign-in is an access gate. It does not synchronize or back up flights. The public static repository and syllabus remain readable; the gate is not a security boundary for those files. The optional PIN is a screen lock, not encryption.
+
+Flights use IndexedDB (`sortie`, `sorties`) and a localStorage mirror, merged by ID and timestamp at startup. Settings, drafts and the notebook use localStorage. Coordinated local writes retain a transaction intent so an interrupted operation can be recovered at launch. A failed durable save keeps the form available and offers recovery export.
+
+Full JSON backup includes flights, question definitions/order/archive state, waiting goals, drafts and pending input buffers, course/theme preferences, notebook folders/pages, milestones, unsent feedback and recently deleted items. Standard backups exclude Google sessions and the PIN. CSV and summary exports do not count as recovery backups. A raw recovery download is also available for inspection of damaged storage; it is not an ordinary import file and can contain local PIN hash metadata. Keep it private.
+
+Local recovery copies share the device's storage risks. Export a JSON backup to a separate location regularly and before reinstalling. Reinstalling an iOS home-screen app can remove its data. Ordinary updates do not require reinstalling.
+
+Feedback is separate from flight storage. The form sends only the written message, category, optional contact address and explicitly selected diagnostics. **Delivery is not connected in this preview:** `js/feedback-config.js` has an empty endpoint. The screen saves a draft and says that delivery is unavailable. A verified Formspree account/form and an authorized delivery test are required before release. No provider credentials belong in this repository.
+
+## Local preview
+
+Requires Node.js. From this directory:
+
+```powershell
+node tools/preview.cjs
+```
+
+Open `http://127.0.0.1:8980/`. The server binds to loopback, overrides authentication only in its HTTP response, and disables the service worker for predictable preview refreshes. It does not edit production auth configuration. Its browser storage is separate from the deployed site. To test a production-style worker, use the isolated automated update suite below.
+
+## Checking a change
+
+```powershell
+node tools/build-release.cjs
+node tools/test.cjs
+```
+
+The full suite uses Node's built-in WebSocket and headless Chrome at `C:\Program Files\Google\Chrome\Application\chrome.exe`. Use a recent Node version with built-in WebSocket support. Tests create disposable Chrome profiles and loopback origins. They do not use cadet accounts or send feedback externally. `node tools/test.cjs --unit` runs the non-browser suites. Upgrade tests need git history including commit `005e762`.
+
+The release manifest hashes the deployable shell. `node tools/build-release.cjs --check` fails when it is stale, versions disagree, a script is invalid, a referenced Hebrew string is missing, or access mappings are inconsistent. Regenerate it after any shell edit. There is still no framework/bundler build step.
+
+The tracked tests are Node programs, not browser-accessible seed pages. Never publish the private `dev/` directory or its destructive seed/preview HTML. It contains private roster data and legacy test/parser tools.
+
+## Files
+
+| File | Purpose |
 |---|---|
-| — | Sortie #, Date flown, Flight Category |
-| **Diagnose** | Observed Deficit, Root Cause, Match Point, Tags *(new, optional)* |
-| **Extract** | Top 3 |
-| **Commit** | Target Goals For Next Sortie |
+| `js/strings.js` | Hebrew UI copy |
+| `js/auth-config.js`, `js/auth.js` | Google redirect gate and hashed allowlist |
+| `js/courses.js` | Single course registry and category aliases |
+| `js/syllabus*.js` | Matching and two syllabus catalogues |
+| `js/store.js` | Flights, settings, goal reconciliation, backup and recovery |
+| `js/workspace.js` | Local notebook, folders, milestones and feedback draft |
+| `js/features.js` | Notebook, progress/share, feedback, release notes and recovery screens |
+| `js/app.js` | Router, original screens, forms and update coordination |
+| `css/app.css`, `css/features.css` | Cockpit design and notebook/progress styling |
+| `sw.js`, `release-manifest.json` | Verified network-first offline shell |
+| `tools/`, `tests/` | Local maintenance and reproducible checks |
 
-Flight categories ship as `הקפות · AW · מבנה · ניווט · BFM · שילוב`, plus "Other"
-and a category editor in Settings. Every one of them is editable, in Hebrew or
-English.
+## Access maintenance
 
-On top of the form:
+The optional local helper previews a change before writing it:
 
-- **Goals carry forward.** Last sortie's Target Goals appear on the home screen
-  as a checklist for the flight you are about to brief. Tap one when you hit it.
-- **Sortie log** with full-text search across every answer, in both languages,
-  and category filter chips.
-- **Patterns** — sorties per week, category mix, goal follow-through rate, the
-  tags that keep repeating, and one answer read across every sortie in a row
-  (the fastest way to spot a recurring root cause).
-- **Auto sortie numbering**, drafts that survive a phone call mid-entry.
-- **Export** to CSV (opens in Sheets/Excel with the Hebrew intact) or a JSON
-  backup that restores everything.
-- **Screen code** — optional 4-digit lock.
-- **Works with no signal.** Installed to the home screen it opens full screen.
-
-## Privacy
-
-There is no server, no account, and no analytics. Nothing typed into the app
-leaves the phone. The only way data moves is when you explicitly export a file
-and choose where it goes.
-
-The screen code deters someone picking up the phone; it is not encryption.
-
-## Stack
-
-Plain HTML, CSS and JavaScript. No build step, no dependencies, no framework.
-A PWA, so it installs to the iPhone home screen from Safari.
-
-```
-index.html              app shell
-css/app.css             design tokens + every component
-js/store.js             data layer (IndexedDB + localStorage mirror)
-js/app.js               router + screens
-js/icons.js             inline SVG icon set
-sw.js                   service worker (offline)
-manifest.webmanifest    home-screen install
-icons/                  app icons + make-icons.ps1 to regenerate them
+```powershell
+node tools/access.cjs --add EMAIL --name FIRST_NAME --course rishoni
+node tools/access.cjs --remove EMAIL
 ```
 
-### Storage
+Add `--apply` after reviewing its result. It requires the private `dev/roster.json`, stores a private recovery copy, writes hashes/first names to the public config, and never commits or pushes. An access-only change does not bump the app version. Validate the live config using the private `dev/check-access.js` after a separately authorized deployment.
 
-IndexedDB is the store of record with a localStorage mirror alongside it. On
-boot the two are **merged by id, newest wins** — neither is trusted to be
-complete, because IndexedDB can hold a half-committed write if the app was
-killed mid-save and the mirror can be capped by quota. Every IndexedDB call has
-a 2 second deadline; if it misses, the app still boots off the mirror rather
-than hanging on a blank screen.
+## Release
 
-iOS can evict site data for web apps that go unused. Installing to the home
-screen and running `navigator.storage.persist()` (the app asks on every boot)
-makes that unlikely, but **the export in Settings is the real backup** — the app
-nags if it has been more than 14 days.
+GitHub Pages serves `main` at `https://yzgershon.github.io/sortie/`. **Pushing to main is a production deployment.** Keep the candidate local until Yish approves it.
 
-## Running it locally
+Before a behavior-changing release, set matching stable `BUILD` and worker `VERSION`, regenerate the manifest, run the full checks, and complete [RELEASE-CHECKLIST.md](RELEASE-CHECKLIST.md). A stable release shows its Hebrew announcement once after authentication/PIN at Home. Preview acknowledgments do not consume the real release notice.
 
-```bash
-cd C:\Dev\sortie
-python -m http.server 8899 --bind 127.0.0.1
-```
-
-Then open `http://127.0.0.1:8899/`.
-
-There is a local review harness at `dev/preview.html` that renders the app in a
-390x844 phone frame with buttons to jump between screens, switch themes, and
-load sample debriefs.
-
-**`dev/` is deliberately not in this repo** (see `.gitignore`). It is a local
-tool only. Publishing it would put `dev/seed.html` on the live site, and that
-page overwrites stored debriefs with sample data — a live URL that quietly
-destroys real ones. Keep it local.
-
-## Deploying
-
-Static files, so anything with HTTPS works. HTTPS is required: without it iOS
-will not install to the home screen and the screen code cannot hash.
-
-Currently on **GitHub Pages**, served from `main` at the repo root:
-`https://yzgershon.github.io/sortie/`. Pushing to `main` redeploys.
-
-**Bump `VERSION` in `sw.js` on every deploy** or phones keep serving the old
-cached build. GitHub Pages sends `max-age=600` on assets, so a bumped service
-worker reaches phones within about ten minutes of a push.
-
-The repo is public because GitHub Pages will not serve a private repo on a free
-plan. Nothing here is secret and no user data is in the repo, but if that
-changes, the free ways to host a private copy are Cloudflare Pages or Firebase
-Hosting. Note that Cloudflare's CLI cannot be installed on a Windows ARM64
-machine, so that route means the dashboard.
-
-## Installing on the iPhone
-
-Open the URL in **Safari** (not Chrome), then Share → **Add to Home Screen**.
-It then opens full screen with its own icon and works offline.
+The worker validates a complete release before installation, retains the previous shell, falls back on server errors or mismatched assets, and defers activation during editing. Access configuration remains a deliberate network-first exception so access-only changes can arrive without a version bump.

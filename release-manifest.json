@@ -1,0 +1,26 @@
+{
+  "version": "sortie-v23-preview",
+  "files": {
+    "./assets/cockpit.jpg": "34da089290b8117949e3b798173f9a97c08db6eacbcaec11144c11e94b6408c8",
+    "./css/app.css": "e01ca1f1b20764c581df2f4fb76ce9df0f3d325601ad283e5f437ca09cbcbb23",
+    "./css/features.css": "e7d5de10fa42347c90260047c24e55656af86dcb5604d468fdb95d3d27d9bc1f",
+    "./icons/apple-touch-icon.png": "6b6ce777f908bc6d2345a47c65e3f35d4deb842d5040e863ebd581c0f2e94381",
+    "./icons/icon-192.png": "6ab1cd5ffef9f8d8b8ac4b232350dc617f19546a7f19da55d6ce74d584fe4818",
+    "./icons/icon-512.png": "4279f7124492f1698af374ea050cc519173651841c9f0a3db03038d205448295",
+    "./index.html": "357a852d98d71cb330a83bd8ba7d0adfbc41b5c53346301dfdf985b96af7c73a",
+    "./js/app.js": "1d0e73e1e437582265a2358b87503ff8fe912c2b01159826f3a473e2c1a14b32",
+    "./js/auth-config.js": "7c9585fc47405e1e97529c579bfa1c577df74a10e6b37bb679c1f452770e8121",
+    "./js/auth.js": "19c2e71fe0e0e2d6cd84c834ad3892e929a5f147084478a5759f65ebc16f587a",
+    "./js/courses.js": "d33311436d9c84f0b745b16620c88913ccdd1f117c22eec7492a81e63ef688ad",
+    "./js/features.js": "18b2eb48dde4cc805be3572271612d166c0a2f3baa6ca99a1f1a965f3eeaedc8",
+    "./js/feedback-config.js": "cb7cce4dfcacf6ea6adbf0486b3bd11ce41c098307e61226300ff2f1c169687c",
+    "./js/icons.js": "c4affb78febbb1a73e9256c99a6b4ec384c04a17fd3cf6b383d88ecf51aa9c90",
+    "./js/store.js": "5696cbe4f7dcc5aabcc3cef0af6983d2bb51a1fe72d4864b8d1651cb7cbbf7e2",
+    "./js/strings.js": "22db0a4095556c6afb0a31bfc25e1f4db5e9b97b9a4671044f6ab2740c33a322",
+    "./js/syllabus-data.js": "9f1c4658b40bf0a0391099040a129408f7f4f0607408c12f289a7b6320725ce3",
+    "./js/syllabus-mitkadem.js": "5d070ba626f4df9b188af99a6e39f4c29d6d26efa504d2afa45839b33ad40cc6",
+    "./js/syllabus.js": "a26dc7a09105c9e95652bda17cba5a44547de45e60cfc7d95f9046c67a416f5b",
+    "./js/workspace.js": "e19d5da7fe1be220c80aaf1caa6496c8e1eda7abafc1846f27bb40b397d3b6eb",
+    "./manifest.webmanifest": "d9e9dd7a8533c7c06b6124c5da3cb45def9079fe4a0622f67b63276591d0fa27"
+  }
+}

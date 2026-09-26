@@ -6,7 +6,7 @@
 (function (global) {
   'use strict';
 
-  var BUILD = 'v22';   // keep in step with VERSION in sw.js
+  var BUILD = 'v23-preview';   // keep in step with VERSION in sw.js
 
   var appEl, viewEl, topbarEl, tabbarEl, toasterEl, sheetEl, lockEl;
   var route = { name: 'home', param: null };
@@ -21,6 +21,14 @@
      One indirection so the pagehide / visibilitychange listeners are registered
      once at boot instead of once per render. */
   var formFlush = null;
+  var pendingWorker = null;
+  var pendingReload = false, updateApproved = false, releasePrompted = false, summaryCompact = false;
+
+  function activateUpdate() {
+    if (!pendingWorker) return;
+    if (formFlush && formFlush() === false) { toast(T.saveFailedBody, 'alert'); return; }
+    updateApproved = true; pendingWorker.postMessage({ type: 'ACTIVATE' }); pendingWorker = null;
+  }
 
   /* ============================================================== helpers */
 
@@ -30,7 +38,14 @@
   }
   function $(s, r) { return (r || document).querySelector(s); }
   function $$(s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); }
-  function on(root, sel, ev, fn) { $$(sel, root).forEach(function (n) { n.addEventListener(ev, fn); }); }
+  function reportActionError(e) {
+    if (/STORAGE|SAVED|RECOVERY/.test(e.code || e.message || '')) toast(T.saveFailedBody, 'alert');
+    else { console.error(e); toast(T.actionFailed, 'alert'); }
+  }
+  function on(root, sel, ev, fn) { $$(sel, root).forEach(function (n) { n.addEventListener(ev, function (e) {
+    try { var result = fn(e); if (result && result.catch) result.catch(reportActionError); }
+    catch (err) { reportActionError(err); }
+  }); }); }
 
   function parseISO(iso) {
     var p = String(iso || '').split('-');
@@ -140,14 +155,14 @@
     document.documentElement.setAttribute('data-theme', m);
   }
 
-  function saveFile(name, text, mime) {
+  function saveFile(name, text, mime, kind) {
     var blob = new Blob([text], { type: mime + ';charset=utf-8' });
     if (navigator.canShare && navigator.share) {
       try {
         var f = new File([blob], name, { type: mime });
         if (navigator.canShare({ files: [f] })) {
           navigator.share({ files: [f], title: name })
-            .then(function () { Store.markExported(); }).catch(function () {});
+            .then(function () { Store.markExported(kind); }).catch(function () {});
           return;
         }
       } catch (e) {}
@@ -156,7 +171,7 @@
     a.href = url; a.download = name;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
-    Store.markExported();
+    Store.markExported(kind);
   }
   function stamp() {
     var d = new Date();
@@ -167,11 +182,18 @@
 
   function go(p) { location.hash = '#/' + p; }
 
-  var ROUTES = ['home', 'brief', 'debrief', 'log', 'flight', 'trends', 'settings', 'summary', 'syllabus'];
+  var ROUTES = ['home', 'brief', 'debrief', 'log', 'flight', 'trends', 'settings', 'summary', 'syllabus',
+    'notebook', 'progress', 'feedback', 'whatsnew', 'recovery'];
 
   function navigate() {
     // leaving a form saves what is in it, including via the back button
-    if (formFlush) { try { formFlush(); } catch (e) {} }
+    if (formFlush) {
+      var flushed = false; try { flushed = formFlush() !== false; } catch (e) {}
+      if (!flushed) {
+        history.replaceState(null, '', '#/' + route.name + (route.param ? '/' + encodeURIComponent(route.param) : ''));
+        toast(T.saveFailedBody, 'alert'); return;
+      }
+    }
     var h = (location.hash || '#/').replace(/^#\/?/, '').split('/');
     var n = h[0] || 'home';
     if (ROUTES.indexOf(n) === -1) n = 'home';
@@ -180,6 +202,7 @@
     render();
     global.scrollTo(0, 0);
     viewEl.focus({ preventScroll: true });
+    if (pendingWorker && !formFlush) activateUpdate();
   }
 
   var TABS = [
@@ -202,6 +225,7 @@
     topbarEl.innerHTML =
       (c.back ? '<button class="iconbtn iconbtn--flip" data-back aria-label="חזרה">' + icon('chevLeft') + '</button>' : '') +
       '<div class="topbar__title">' + esc(c.title || '') + '</div>' +
+      (route.name !== 'notebook' ? '<a class="iconbtn notebook-shortcut" href="#/notebook" aria-label="' + esc(T.notebook) + '">' + icon('notebook') + '</a>' : '') +
       (c.sub ? '<span class="topbar__sub">' + esc(c.sub) + '</span>' : '') +
       (c.actions || []).map(function (a) {
         return '<button class="iconbtn' + (a.lit ? ' iconbtn--lit' : '') + '" data-topact="' + a.id +
@@ -224,10 +248,25 @@
     tabbarEl.hidden = formish;
     viewEl.classList.toggle('view--noTabs', formish);
     if (!formish) renderTabs();
-    ({ home: screenHome, brief: screenForm, debrief: screenForm, log: screenLog,
+    var screens = { home: screenHome, brief: screenForm, debrief: screenForm, log: screenLog,
        flight: screenDetail, trends: screenTrends, settings: screenSettings,
-       summary: screenSummary, syllabus: screenSyllabus })[route.name]();
+       summary: screenSummary, syllabus: screenSyllabus };
+    if (screens[route.name]) screens[route.name]();
+    else Features.render(route, { view: viewEl, topbar: renderTopbar, toast: toast, sheet: openSheet, confirm: confirmSheet,
+      go: go, build: BUILD, progress: syllabusProgress, saveFile: saveFile, setFlush: function (fn) { formFlush = fn; } });
     autosizeAll();
+    if (pendingReload && !formFlush) { location.reload(); return; }
+    maybeRelease();
+  }
+
+  function maybeRelease() {
+    if (releasePrompted || /preview/.test(BUILD) || appEl.hidden || !lockEl.hidden || route.name !== 'home' || Store.settings().releaseSeen === BUILD) return;
+    releasePrompted = true;
+    openSheet({ title: T.whatsNew, text: T.releaseIntro,
+      body: '<ul class="release-highlights">' + T.releaseItems.map(function (item) { return '<li><b>' + esc(item[0]) + '</b><p>' + esc(item[1]) + '</p></li>'; }).join('') + '</ul>',
+      actions: [{ label: T.understood, cls: 'btn--lit', keepOpen: true, run: function (sh) { if (Store.set('releaseSeen', BUILD)) sh.close(); else toast(T.saveFailedBody, 'alert'); } },
+        { label: T.releaseDetails, run: function () { go('whatsnew'); } }]
+    });
   }
 
   function empty(ic, t, p) {
@@ -293,8 +332,12 @@
         ' · ' + esc(new Date().toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' })) + '</div>' +
       '<h1 class="hero__h">' + esc(new Date().toLocaleDateString('he-IL', { weekday: 'long' })) + '</h1>' +
       '<div class="hero__date">' + esc(new Date().toLocaleDateString('he-IL',
-        { day: 'numeric', month: 'long', year: 'numeric' })) + '</div>' +
+        { day: 'numeric', month: 'long', year: 'numeric' })) + '</div><div class="course-label">' + esc(Store.course().label) + '</div>' +
     '</div>';
+
+    h += '<div class="feature-links"><a class="feature-link" href="#/progress">' + icon('trending') + '<span><b>' + esc(T.courseProgress) + '</b><small>' + esc(Store.course().label) + '</small></span></a>' +
+      '<a class="feature-link" href="#/notebook">' + icon('notebook') + '<span><b>' + esc(T.notebookTitle) + '</b><small>' + esc(T.noteNew) + '</small></span></a></div>' +
+      (Store.readDraft() ? '<a class="btn btn--block" href="#/brief">' + icon('pencil') + esc(T.resumeDraft) + '</a>' : '');
 
     h += '<div class="readouts">' +
       readout('cyan', 'clock', T.rHours, T.capHours, hours, mins + ' ' + T.rMinutes) +
@@ -393,7 +436,7 @@
     /* Backup, where it can actually be seen. It used to be a note inside
        הגדרות, which is the one screen a pilot never opens; everything here
        exists on exactly one phone. */
-    var sinceExport = daysSince(s.lastExport);
+    var sinceExport = daysSince(s.lastBackup);
     if (all.length >= 3 && (sinceExport === null || sinceExport >= 10)) {
       h += '<div class="note note--warn">' + icon('alert') +
         '<div><b>' + esc(T.backupHomeTitle) + '</b><br>' + esc(T.backupHomeBody) +
@@ -420,7 +463,7 @@
     on(viewEl, '[data-startdone]', 'click', function () { Store.set('startDismissed', true); screenHome(); });
     on(viewEl, '[data-backupnow]', 'click', function () {
       if (!Store.count()) return toast(T.noFlights, 'alert');
-      saveFile('tahkir-backup-' + stamp() + '.json', Store.toJSON(), 'application/json');
+      saveFile('tahkir-backup-' + stamp() + '.json', Store.toJSON(), 'application/json', 'backup');
       setTimeout(screenHome, 500);
     });
     on(viewEl, '[data-installnow]', 'click', function () {
@@ -446,7 +489,7 @@
       var again = $('#newGoal'); if (again) again.focus();
     }
     on(viewEl, '[data-goaladd]', 'click', addGoal);
-    $('#newGoal').addEventListener('keydown', function (e) {
+    on(viewEl, '#newGoal', 'keydown', function (e) {
       if (e.key === 'Enter') { e.preventDefault(); addGoal(); }
     });
 
@@ -477,9 +520,9 @@
 
   function flightRow(r, selectable) {
     var dm = dayMon(r.flownAt);
-    var qs = Store.question('q_subject');
+      var qs = Store.questionFor(r, 'subject') || Store.question('q_subject');
     var subj = qs ? (r.answers[qs.id] || '') : '';
-    var qi = Store.question('q_instructor');
+    var qi = Store.questionFor(r, 'instructor');
     var inst = qi ? (r.answers[qi.id] || '') : '';
     var pending = r.stage !== 'done';
     var on = !!selected[r.id];
@@ -493,7 +536,7 @@
           (pending ? '<span class="tagline tagline--amber">' + esc(T.awaiting) + '</span>' : '') +
         '</span>' +
         '<span class="frow__s" dir="auto">' + esc(weekday(r.flownAt)) +
-          (inst ? ' · ' + esc(inst) : '') + '</span>' +
+          (inst ? ' · ' + esc(inst) : '') + ' · ' + esc(r.course ? Courses.label(r.course) : T.unknownCourse) + '</span>' +
       '</span>' +
       (selectable ? '' : icon('chevRight', { cls: 'frow__chev' })) + '</button>';
   }
@@ -515,13 +558,29 @@
       if (!rec) { go('log'); return; }
       rec = JSON.parse(JSON.stringify(rec));
       var draft = Store.readDraft(rec.id, stage);
-      if (draft && draft.answers) { rec = draft; restored = true; }
+      if (draft && draft.answers) {
+        var base = draft.baseUpdatedAt == null ? draft.updatedAt : draft.baseUpdatedAt;
+        if (base != null && +base !== +rec.updatedAt) {
+          viewEl.innerHTML = empty('alert', T.draftConflict, T.draftConflictBody);
+          openSheet({ title: T.draftConflict, text: T.draftConflictBody, actions: [
+            { label: T.useSaved, cls: 'btn--lit', run: function () { if (!Store.recoverySnapshot('draft-conflict')) return toast(T.saveFailedBody, 'alert'); Store.clearDraft(rec.id, stage); render(); } },
+            { label: T.useDraft, run: function () { if (!Store.recoverySnapshot('draft-conflict')) return toast(T.saveFailedBody, 'alert'); draft.baseUpdatedAt = rec.updatedAt; if (Store.saveDraft(draft, stage)) render(); } },
+            { label: T.cancel, run: function () { go('log'); } }
+          ] });
+          return;
+        }
+        rec = Object.assign({}, rec, draft); restored = true;
+      }
     } else if (isBrief) {
       var fresh = Store.readDraft();
       rec = fresh || Store.newBrief();
       if (!rec.answers) rec.answers = {};
       isNew = true; restored = !!fresh;
     } else { go('home'); return; }
+    var savedVersion = rec.id && Store.get(rec.id);
+    var baseUpdatedAt = savedVersion ? savedVersion.updatedAt : null;
+    if (!rec.id) rec.id = Store.uid('f');
+    if (isNew) rec.draftNew = true;
     var draftId = isNew ? '' : rec.id;
 
     var qs = Store.stageQuestions(stage);
@@ -531,7 +590,7 @@
     var qSyl = qs.filter(function (q) { return q.type === 'syllabus'; })[0];
     /* Goals he pulled back out after they were carried in. Without this the
        next keystroke in נושא טיסה puts them straight back. */
-    var dismissed = {};
+    var dismissed = rec.dismissed || {};
     /* The candidates currently on offer when a typed גיחה matches more than
        one entry, in the order they are drawn. */
     var pending = [];
@@ -588,8 +647,9 @@
     if (!folded.length) {
       h += datePanel;
       qs.forEach(function (q) {
-        h += '<div class="panel"><div class="panel__body">' +
-          fieldFor(q, rec.answers[q.id], false) + '</div></div>';
+        var optional = isBrief && !q.role && q.type !== 'syllabus';
+        h += optional ? '<details class="panel optional-field"' + (Store.answerToText(q, rec.answers[q.id]) ? ' open' : '') + '><summary>' + esc(q.label) + '</summary><div class="panel__body">' : '<div class="panel"><div class="panel__body">';
+        h += fieldFor(q, rec.answers[q.id], false) + (optional ? '</div></details>' : '</div></div>');
       });
     } else {
       h += '<section class="panel fold" id="briefFold">' +
@@ -632,6 +692,10 @@
 
     viewEl.innerHTML = '<div id="formRoot">' + h + '</div>';
     var root = $('#formRoot');
+    Object.keys(rec.buffers || {}).forEach(function (key) {
+      var parts = key.split(':'), el = $('[data-' + parts[0] + '="' + parts.slice(1).join(':') + '"]', root);
+      if (el) el.value = rec.buffers[key];
+    });
 
     on(root, '[data-foldtoggle]', 'click', function (e) {
       var sec = $('#briefFold'), body = $('.fold__body', sec), sum = $('.fold__sum', sec);
@@ -700,7 +764,7 @@
            switched — which would quietly file every flight under no category
            at all and take the goal loop down with it. */
         var cats = (q.role === 'subject')
-          ? Store.categoryVocab()
+          ? Store.categoryVocab(rec.course || Store.courseId())
           : ((q.options && q.options.length) ? q.options : []);
         var prev = q.suggest ? Store.suggestions(q.id).filter(function (o) {
           return cats.indexOf(o) === -1;
@@ -714,7 +778,7 @@
           (prev.length ? '<div class="sugg">' + prev.map(function (o) {
             return '<button type="button" data-fill="' + esc(q.id) + '" data-val="' + esc(o) + '" dir="auto">' +
               esc(o) + '</button>';
-          }).join('') + '</div>' : '');
+          }).join('') + '</div>' : '') + (q.role === 'subject' ? '<button type="button" class="btn btn--quiet" data-flightpicker>' + icon('search') + esc(T.pickFlight) + '</button>' : '');
       }
       return '<div class="field">' + label(q, carried) +
         (q.hint ? '<span class="field__hint">' + esc(q.hint) + '</span>' : '') + body + '</div>';
@@ -737,11 +801,14 @@
        are the control. Without them he is writing the goal, so the text is an
        input he can fix a typo in and the ✗ deletes the row. */
     function goalRow(g, withStatus) {
-      var cls = 'goalrow' + (g.status === 'met' ? ' is-met' : g.status === 'missed' ? ' is-missed' : '');
+      var cls = 'goalrow' + (g.suggested ? ' is-suggested' : '') + (g.status === 'met' ? ' is-met' : g.status === 'missed' ? ' is-missed' : '');
       // the categories ride along so the chip survives a draft reload, which is
       // the whole explanation of why the goal is sitting there
       return '<div class="' + cls + '" data-goalid="' + esc(g.id) + '" data-gs="' + esc(g.status || 'open') +
-        '" data-cats="' + esc((g.cats || []).join('|')) + '">' +
+        '" data-cats="' + esc((g.cats || []).join('|')) + '" data-origin="' + esc(g.from || '') +
+        '" data-from="' + esc(g.carryOf || '') + '" data-source-id="' + esc(g.sourceId || '') +
+        '" data-course="' + esc(g.course || '') + '" data-suggested="' + esc(g.suggested || '') +
+        '" data-original-text="' + esc(g.originalText == null ? g.text : g.originalText) + '">' +
         catChip(g) +
         (withStatus
           ? '<span class="goalrow__t" data-goaltext dir="auto"><span>' + esc(g.text) + '</span></span>' +
@@ -786,11 +853,11 @@
     function exRow(x, i, withNotes) {
       var focus = String(x.focus || '');
       return '<div class="ex' + (x.notes && x.notes.trim() ? ' ex--done' : '') +
-        '" data-exid="' + esc(x.id) + '" data-focus="' + esc(focus) + '">' +
+        '" data-exid="' + esc(x.id) + '" data-focus="' + esc(focus) + '" data-notes="' + esc(x.notes || '') + '">' +
         '<div class="ex__top">' +
           '<span class="ex__n">' + (i + 1) + '</span>' +
           '<input class="ex__t" type="text" dir="auto" value="' + esc(x.text) + '" data-extext>' +
-          '<span class="ex__grip" data-grip role="button" aria-label="' + esc(T.reorder) + '">' +
+          '<span class="ex__grip" data-grip role="button" tabindex="0" aria-label="' + esc(T.reorderKeys) + '">' +
             icon('grip') + '</span>' +
           '<button type="button" class="rowx" data-rowx aria-label="' + esc(T.remove) + '">' + icon('x') + '</button>' +
         '</div>' +
@@ -830,17 +897,9 @@
 
     function minutesField(q, v) {
       var sel = parseInt(v, 10); if (isNaN(sel)) sel = 0;
-      var items = '';
-      for (var i = 0; i <= 99; i++) {
-        items += '<div class="wheel__i' + (i === sel ? ' is-sel' : '') + '" data-n="' + i + '">' +
-          String(i).padStart(2, '0') + '</div>';
-      }
       return '<div class="field">' + label(q, false) +
-        '<div class="wheel" data-wheel="' + esc(q.id) + '" data-val="' + sel + '">' +
-          '<div class="wheel__gate"></div>' +
-          '<span class="wheel__unit">' + esc(T.minutesUnit) + '</span>' +
-          '<div class="wheel__list">' + items + '</div>' +
-        '</div></div>';
+        '<div class="duration"><input class="input input--num" id="f_' + esc(q.id) + '" data-minutes="' + esc(q.id) +
+        '" type="number" min="0" step="1" inputmode="numeric" value="' + sel + '"><span>' + esc(T.minutesUnit) + '</span></div></div>';
     }
 
     /* ---------- syllabus lookup ----------
@@ -856,6 +915,7 @@
     }
 
     function fillSyllabus(entry, replace) {
+      rec.syllabusEntry = { course: rec.course || Store.courseId(), name: entry.name };
       var listEl = $('[data-ex="' + qSyl.id + '"]');
       if (!listEl) return 0;
       var wn = listEl.dataset.notes === '1';
@@ -885,14 +945,14 @@
          and filling the first would drop eight exercises into the form before
          he has said which flight this is. */
       if (isBareCategory(subject)) return { entry: null, options: [] };
-      var c = SyllabusRef.candidates(subject);
+      var c = SyllabusRef.candidates(subject, rec.course);
       return { entry: c.length ? bestOf(c) : null, options: c };
     }
 
     function isBareCategory(subject) {
       var s = SyllabusRef.norm(subject);
       if (!s) return true;
-      return Store.categoryVocab().some(function (cat) { return SyllabusRef.norm(cat) === s; });
+      return Store.categoryVocab(rec.course || Store.courseId()).some(function (cat) { return SyllabusRef.norm(cat) === s; });
     }
 
     /** An air sortie beats a simulator session of the same name: you fly more
@@ -1013,7 +1073,7 @@
         t = String(t).trim();
         if (!t || have[t]) return;
         have[t] = 1;
-        listEl.insertAdjacentHTML('beforeend', goalRow(Store.normalizeGoal({ text: t }), false));
+        listEl.insertAdjacentHTML('beforeend', goalRow(Store.normalizeGoal({ text: t, suggested: entry.name, originalText: t }), false));
         listEl.lastElementChild.classList.add('is-suggested');
         added++;
       });
@@ -1030,8 +1090,8 @@
       var listEl = $('[data-goals="' + qGoals.id + '"]');
       if (!listEl) return 0;
 
-      var cats = Store.categoriesInText(currentSubject());
-      var want = Store.pendingGoalsFor(cats).filter(function (g) {
+      var cats = Store.categoriesInText(currentSubject(), rec.course);
+      var want = Store.pendingGoalsFor(cats, rec.course).filter(function (g) {
         return g.cats.length && !dismissed[g.id];
       });
 
@@ -1069,13 +1129,17 @@
        loaded" and "2 goals added" at the same moment, and the pair covered the
        field being typed into. */
     function onSubjectChanged(announce) {
+      if (rec.syllabusEntry && qSubj) {
+        var currentSubject = $('[data-q="' + qSubj.id + '"]');
+        if (currentSubject && (isBareCategory(currentSubject.value) || !SyllabusRef.candidates(currentSubject.value, rec.course || Store.courseId()).some(function (e) { return e.name === rec.syllabusEntry.name; }))) rec.syllabusEntry = null;
+      }
       var ex = refreshSyllabusMatch(announce) || 0;
       var goals = refreshGoalCarry(announce) || 0;
       /* The chart's recommended goals go in only after the carry has run, so a
          goal he actually missed last time is never displaced by a suggestion
          with the same wording. */
       var sugg = 0;
-      if (announce && ex) sugg = fillSyllabusGoals(matchEntry().entry) || 0;
+      if (announce) sugg = fillSyllabusGoals(matchEntry().entry) || 0;
       if (!announce || (!ex && !goals && !sugg)) return;
       var bits = [];
       if (ex) bits.push(T.syllabusFilled(ex));
@@ -1085,6 +1149,22 @@
     }
 
     if (qSubj) {
+      on(root, '[data-flightpicker]', 'click', function () {
+        var entries = SyllabusRef.all(rec.course || Store.courseId());
+        openSheet({ title: T.pickFlight, body: '<input class="input" id="flightPickerSearch" type="search" dir="auto" aria-label="' + esc(T.searchSyllabus) + '" placeholder="' + esc(T.searchSyllabus) + '"><div id="flightPickerResults" class="flight-picker"></div>', actions: [{ label: T.cancel }], onOpen: function (sh) {
+          function paintPicker() {
+            var query = SyllabusRef.norm($('#flightPickerSearch', sh).value);
+            var visible = entries.filter(function (entry) { return !query || SyllabusRef.norm(entry.name + ' ' + entry.section).indexOf(query) !== -1; });
+            $('#flightPickerResults', sh).innerHTML = visible.map(function (entry, i) { return '<button class="item" type="button" data-catalogue="' + i + '"><span class="item__b"><b dir="auto">' + esc(entry.name) + '</b><small>' + esc(entry.section) + (entry.sim ? ' · ' + esc(T.simBadge) : '') + '</small></span></button>'; }).join('') || '<p>' + esc(T.noMatches) + '</p>';
+            on(sh, '[data-catalogue]', 'click', function (e) {
+              var entry = visible[+e.currentTarget.dataset.catalogue];
+              $('[data-q="' + qSubj.id + '"]', root).value = entry.name; sh.close(); onSubjectChanged(true);
+              rec.syllabusEntry = { course: rec.course || Store.courseId(), name: entry.name }; touched();
+            });
+          }
+          $('#flightPickerSearch', sh).oninput = paintPicker; paintPicker();
+        } });
+      });
       var subjEl = $('[data-q="' + qSubj.id + '"]');
       if (subjEl) {
         subjEl.addEventListener('input', function () {
@@ -1130,14 +1210,22 @@
     function collect() {
       var out = { id: rec.id, flownAt: $('#f_date').value || Store.todayISO(),
                   stage: isBrief ? (rec.stage === 'done' ? 'done' : 'brief') : 'done',
-                  answers: {}, createdAt: rec.createdAt };
+                  answers: {}, createdAt: rec.createdAt, course: rec.course,
+                  baseUpdatedAt: baseUpdatedAt, draftNew: isNew, buffers: {}, dismissed: dismissed,
+                  syllabusEntry: rec.syllabusEntry || null };
+      ['goalinput', 'iteminput', 'exinput'].forEach(function (kind) {
+        $$('[data-' + kind + ']', root).forEach(function (el) { if (el.value) out.buffers[kind + ':' + el.dataset[kind]] = el.value; });
+      });
       qs.forEach(function (q) {
         if (q.stage === 'brief' && !isBrief && q.inDebrief === 'readonly') return;
         if (q.type === 'goals') {
           out.answers[q.id] = $$('[data-goals="' + q.id + '"] .goalrow').map(function (row) {
             return { id: row.dataset.goalid, text: goalTextOf(row),
                      status: row.dataset.gs || 'open',
-                     cats: (row.dataset.cats || '').split('|').filter(Boolean) };
+                     cats: (row.dataset.cats || '').split('|').filter(Boolean), from: row.dataset.origin || null,
+                     carryOf: row.dataset.from || null, sourceId: row.dataset.sourceId || null,
+                     course: row.dataset.course || null, suggested: row.dataset.suggested || null,
+                     originalText: row.dataset.originalText };
           });
         } else if (q.type === 'list') {
           out.answers[q.id] = $$('[data-items="' + q.id + '"] .bullet').map(function (row) {
@@ -1151,12 +1239,12 @@
               text: $('[data-extext]', row).value,
               // the דגש is only editable at the תדריך; carry it through after
               focus: f ? f.value : (row.dataset.focus || ''),
-              notes: n ? n.value : ''
+              notes: n ? n.value : (row.dataset.notes || '')
             };
           });
         } else if (q.type === 'minutes') {
-          var w = $('[data-wheel="' + q.id + '"]');
-          out.answers[q.id] = w ? +w.dataset.val : 0;
+          var w = $('[data-minutes="' + q.id + '"]');
+          out.answers[q.id] = w ? Math.max(0, Math.round(+w.value || 0)) : rec.answers[q.id];
         } else if (q.type === 'choice') {
           var p = $('[data-choice="' + q.id + '"] .opt[aria-pressed="true"]');
           out.answers[q.id] = p ? p.dataset.opt : '';
@@ -1187,6 +1275,7 @@
 
     function touched() {
       progress();
+      var state = $('#saveState'); if (state) state.textContent = T.draftSaving;
       clearTimeout(draftTimer);
       draftTimer = setTimeout(writeDraft, 500);
     }
@@ -1194,12 +1283,12 @@
     function writeDraft() {
       clearTimeout(draftTimer);
       if (!viewEl.contains(root)) return;      // the screen is already gone
-      Store.saveDraft(collect(), stage);
+      var ok = Store.saveDraft(collect(), stage);
       var el = $('#saveState');
       if (el) {
-        el.textContent = T.draftSaved;
-        setTimeout(function () { if (el.isConnected) el.textContent = T.draftSaving; }, 1200);
+        el.textContent = ok ? T.draftSaved : T.saveFailed;
       }
+      return ok;
     }
 
     /* Flush on the way out rather than trusting the 500ms timer to have fired.
@@ -1210,6 +1299,13 @@
     root.addEventListener('input', function (e) {
       if (e.target.matches('.ta, .ex__notes')) autosize(e.target);
       touched();
+    });
+    root.addEventListener('keydown', function (e) {
+      if (!e.target.matches('[data-grip]') || ['ArrowUp', 'ArrowDown'].indexOf(e.key) === -1) return;
+      e.preventDefault(); var row = e.target.closest('.ex'), sibling = e.key === 'ArrowUp' ? row.previousElementSibling : row.nextElementSibling;
+      if (!sibling) return;
+      if (e.key === 'ArrowUp') row.parentElement.insertBefore(row, sibling); else row.parentElement.insertBefore(sibling, row);
+      renumberEx(row.parentElement); e.target.focus(); touched();
     });
 
     root.addEventListener('click', function (e) {
@@ -1225,7 +1321,7 @@
       var fill = e.target.closest('[data-fill]');
       if (fill) {
         var input = $('[data-q="' + fill.dataset.fill + '"]');
-        if (input) { input.value = fill.dataset.val; haptic(); touched(); }
+        if (input) { input.value = fill.dataset.val; haptic(); touched(); if (qSubj && fill.dataset.fill === qSubj.id) onSubjectChanged(true); }
         return;
       }
 
@@ -1287,7 +1383,8 @@
       if (pk) {
         var chosen = pending[+pk.dataset.pick];
         if (!chosen) return;
-        var untouched = autoSig !== null && exSignature() === autoSig;
+        var editedSuggested = $$('.goalrow.is-suggested').some(function (r) { return goalTextOf(r) !== r.dataset.originalText; });
+        var untouched = autoSig !== null && exSignature() === autoSig && !editedSuggested;
         var lst2 = $('[data-ex="' + qSyl.id + '"]');
         var empty2 = !lst2 || !$$('.ex', lst2).some(function (r) { return $('[data-extext]', r).value.trim(); });
 
@@ -1296,7 +1393,10 @@
           if (subjEl2) subjEl2.value = chosen.name;
           // the goals the last pick suggested go with it; his own stay
           var gl = qGoals && $('[data-goals="' + qGoals.id + '"]');
-          if (gl) $$('.goalrow.is-suggested', gl).forEach(function (r) { r.remove(); });
+          if (gl) $$('.goalrow.is-suggested', gl).forEach(function (r) {
+            if (goalTextOf(r) === r.dataset.originalText) r.remove();
+            else { r.classList.remove('is-suggested'); r.dataset.suggested = ''; }
+          });
           var n2 = fillSyllabus(chosen, true);
           var g2 = fillSyllabusGoals(chosen);
           autoSig = exSignature();
@@ -1309,7 +1409,7 @@
           touched();
         }
 
-        if (untouched || empty2) swap();
+        if (untouched || (empty2 && !editedSuggested)) swap();
         else confirmSheet({
           title: T.replaceSyllabus, text: T.replaceSyllabusBody,
           confirmLabel: T.confirm, onConfirm: swap
@@ -1319,7 +1419,7 @@
 
       var xl = e.target.closest('[data-exload]');
       if (xl) {
-        var entry = SyllabusRef.lookup(currentSubject());
+        var entry = SyllabusRef.lookup(currentSubject(), rec.course);
         if (!entry) return;
         var lst = $('[data-ex="' + xl.dataset.exload + '"]');
         var has = $$('.ex', lst).some(function (r) { return $('[data-extext]', r).value.trim(); });
@@ -1465,7 +1565,13 @@
       });
     });
 
-    on(viewEl, '[data-save]', 'click', function () {
+    var saving = false;
+    on(viewEl, '[data-save]', 'click', function (event) {
+      if (saving) return;
+      // A visible unfinished add-field is still user work; commit it on Save.
+      $$('[data-goalinput]', root).forEach(function (el) { if (el.value.trim()) pushGoal(el.dataset.goalinput); });
+      $$('[data-iteminput]', root).forEach(function (el) { if (el.value.trim()) pushItem(el.dataset.iteminput); });
+      $$('[data-exinput]', root).forEach(function (el) { if (el.value.trim()) pushEx(el.dataset.exinput); });
       var d = collect();
       var any = qs.some(function (q) {
         var v = d.answers[q.id];
@@ -1476,6 +1582,7 @@
         return String(v == null ? '' : v).trim();
       });
       if (!any) { toast(T.needSomething, 'alert'); return; }
+      saving = true; var saveButton = event.currentTarget; saveButton.disabled = true; saveButton.textContent = T.draftSaving;
       Store.save(d).then(function (saved) {
         // the draft has served its purpose; leaving it would reopen the form
         // with a copy of what is now saved
@@ -1485,6 +1592,12 @@
         haptic(16);
         toast(isBrief ? T.briefSavedToast : T.debriefSavedToast);
         go(isBrief ? '' : 'flight/' + saved.id);
+      }).catch(function (err) {
+        saving = false; saveButton.disabled = false; saveButton.textContent = isBrief ? T.saveBrief : T.saveDebrief;
+        writeDraft(); toast(err.code === 'EDIT_CONFLICT' ? T.draftConflictBody : T.saveFailedBody, 'alert', { label: T.exportJson, run: function () {
+          var backup = JSON.parse(Store.toJSON()); backup.drafts[Store.draftKey(isNew ? null : rec.id, stage)] = JSON.stringify({ at: Date.now(), rec: collect() });
+          saveFile('sortie-recovery-' + stamp() + '.json', JSON.stringify(backup, null, 2), 'application/json');
+        } });
       });
     });
 
@@ -1620,6 +1733,7 @@
   /* ================================================================== log */
 
   var logQuery = '', logCats = {}, logSelect = false;
+  var logFilters = { course: '', stage: '', from: '', to: '', instructor: '' };
 
   /* Kept in sessionStorage so a reload on the summary screen does not lose the
      selection. It is cleared when the app is closed, which is the right life. */
@@ -1645,7 +1759,8 @@
 
   function selectThisWeek() {
     var w = thisWeekRange();
-    Store.all().forEach(function (r) {
+    selected = {};
+    Store.done().forEach(function (r) {
       var t = parseISO(r.flownAt).getTime();
       if (t >= w.start.getTime() && t <= w.stop.getTime()) selected[r.id] = true;
     });
@@ -1679,7 +1794,7 @@
     var anyCat = Object.keys(logCats).some(function (k) { return logCats[k]; });
 
     var wk = thisWeekRange();
-    var weekN = Store.all().filter(function (r) {
+    var weekN = Store.done().filter(function (r) {
       var t = parseISO(r.flownAt).getTime();
       return t >= wk.start.getTime() && t <= wk.stop.getTime();
     }).length;
@@ -1711,7 +1826,13 @@
             (!!logCats[o]) + '">' + esc(o) +
             '<span class="opt__n mono">' + used[o] + '</span></button>';
         }).join('') + '</div>' : '') +
-      '<div id="logResults"></div></div>' +
+      '<details class="log-filter-details"><summary>' + esc(T.logFilters) + '</summary><div class="log-filter-grid">' +
+        '<label>' + esc(T.courseSection) + '<select class="input" data-logfilter="course"><option value="">' + esc(T.allCourses) + '</option>' + Courses.all().map(function (c) { return '<option value="' + c.id + '"' + (logFilters.course === c.id ? ' selected' : '') + '>' + esc(c.label) + '</option>'; }).join('') + '</select></label>' +
+        '<label>' + esc(T.allStages) + '<select class="input" data-logfilter="stage">' + [['', T.allStages], ['done', T.completedOnly], ['brief', T.pendingOnly]].map(function (x) { return '<option value="' + x[0] + '"' + (logFilters.stage === x[0] ? ' selected' : '') + '>' + esc(x[1]) + '</option>'; }).join('') + '</select></label>' +
+        '<label>' + esc(T.fromDate) + '<input class="input" type="date" data-logfilter="from" value="' + esc(logFilters.from) + '"></label>' +
+        '<label>' + esc(T.toDate) + '<input class="input" type="date" data-logfilter="to" value="' + esc(logFilters.to) + '"></label>' +
+        '<label>' + esc(T.instructorFilter) + '<input class="input" type="search" data-logfilter="instructor" value="' + esc(logFilters.instructor) + '"></label>' +
+      '</div></details><div id="logResults"></div></div>' +
       (logSelect
         ? '<div class="savebar"><div class="savebar__inner">' +
             '<span class="savestate" id="selCount">' + selCount() + ' SELECTED</span>' +
@@ -1725,6 +1846,12 @@
     function shownRows() {
       var picked = Object.keys(logCats).filter(function (k) { return logCats[k]; });
       return Store.search(logQuery).filter(function (r) {
+        if (logFilters.course && r.course !== logFilters.course) return false;
+        if (logFilters.stage && r.stage !== logFilters.stage) return false;
+        if (logFilters.from && r.flownAt < logFilters.from) return false;
+        if (logFilters.to && r.flownAt > logFilters.to) return false;
+        var qi = Store.questionFor(r, 'instructor');
+        if (logFilters.instructor && String(qi && r.answers[qi.id] || '').toLowerCase().indexOf(logFilters.instructor.toLowerCase()) === -1) return false;
         if (!picked.length) return true;
         var cats = Store.categoriesOf(r);
         // matching ANY selected category, so picking AW and ניווט shows both
@@ -1755,6 +1882,7 @@
       out += '</div></div>';
       $('#logResults').innerHTML = out;
     }
+    on(viewEl, '[data-logfilter]', 'input', function (e) { logFilters[e.currentTarget.dataset.logfilter] = e.currentTarget.value; paint(); });
     paint();
 
     if (!logSelect) {
@@ -1865,7 +1993,7 @@
         title: T.confirmDeleteFlight(fmtLong(r.flownAt)), text: T.confirmDeleteBody,
         confirmLabel: T.delete, danger: true, icon: 'trash',
         onConfirm: function () {
-          Store.remove(r.id).then(function (gone) {
+          return Store.remove(r.id).then(function (gone) {
             // a debrief is the only copy of that conversation there is, so the
             // confirm is backed by an actual way out
             toast(T.deletedToast, 'trash', {
@@ -1874,11 +2002,11 @@
                 Store.restore(gone).then(function () {
                   toast(T.restoredToast, 'checkCircle');
                   go('flight/' + gone.id);
-                });
+                }).catch(reportActionError);
               }
             });
             go('log');
-          });
+          }).catch(reportActionError);
         }
       });
     });
@@ -1952,12 +2080,14 @@
 
   /* =============================================================== trends */
 
-  var tlField = null;
+  var tlField = null, trendScope = { course: '', from: '', to: '' };
 
   function screenTrends() {
     renderTopbar({ title: T.navTrends, sub: T.capTrends });
-    var done = Store.done();
-    if (!done.length) { viewEl.innerHTML = empty('trending', T.trendsEmpty, T.trendsEmptyHint); return; }
+    var done = Store.done().filter(function (r) { return (!trendScope.course || r.course === trendScope.course) && (!trendScope.from || r.flownAt >= trendScope.from) && (!trendScope.to || r.flownAt <= trendScope.to); });
+    var filters = '<details class="log-filters"' + (trendScope.course || trendScope.from || trendScope.to ? ' open' : '') + '><summary>' + esc(T.logFilters) + '</summary><div class="log-filters__grid"><label>' + esc(T.courseLabel) + '<select class="input" data-trendscope="course"><option value="">' + esc(T.allCourses) + '</option>' + Courses.all().map(function (c) { return '<option value="' + c.id + '"' + (trendScope.course === c.id ? ' selected' : '') + '>' + esc(c.label) + '</option>'; }).join('') + '</select></label>' + ['from', 'to'].map(function (key) { return '<label>' + esc(key === 'from' ? T.fromDate : T.toDate) + '<input class="input" type="date" data-trendscope="' + key + '" value="' + esc(trendScope[key]) + '"></label>'; }).join('') + '</div></details>';
+    function bindFilters() { on(viewEl, '[data-trendscope]', 'change', function (e) { trendScope[e.currentTarget.dataset.trendscope] = e.currentTarget.value; screenTrends(); }); }
+    if (!done.length) { viewEl.innerHTML = filters + empty('trending', T.trendsEmpty, T.trendsEmptyHint); bindFilters(); return; }
 
     var qg = Store.roleQuestion('goals'), met = 0, tot = 0, miss = {};
     if (qg) done.forEach(function (r) {
@@ -1989,7 +2119,7 @@
     /* `list` belongs here too. When נקודות עיקריות became an itemized list it
        silently dropped out of this picker, so the one field worth reading
        across a whole term was the one you could not pick. */
-    var textQs = Store.questions().filter(function (q) {
+    var textQs = Store.questions(true).filter(function (q) {
       return q.type === 'textarea' || q.type === 'text' || q.type === 'list';
     });
     if (!tlField || !textQs.some(function (q) { return q.id === tlField; })) {
@@ -2001,7 +2131,7 @@
     // the readout used to show every goal missed even once under that label
     var recurringN = Object.keys(miss).filter(function (k) { return miss[k] > 1; }).length;
 
-    var h = '<div class="stack-4 stagger">' +
+    var h = '<div class="stack-4 stagger">' + filters +
       '<div class="readouts">' +
         ro('cyan', 'clock', T.totalMinutes, 'HOURS', (mins / 60).toFixed(1)) +
         ro('', 'layers', T.rFlights, 'FLIGHTS', String(done.length)) +
@@ -2040,14 +2170,14 @@
         (recurringN ? '<span class="panel__a">' + esc(T.recurringTag) + ' ' + recurringN + '</span>' : '') +
         '</div><div class="panel__body"><div class="bars">' +
         missRows.map(function (k, i) {
-          return bar(k, miss[k], missMax, done.length, i, true, miss[k] > 1);
+          return '<button type="button" class="goal-history" data-goalhistory="' + i + '">' + bar(k, miss[k], missMax, done.length, i, true, miss[k] > 1) + '</button>';
         }).join('') +
         '</div></div></section>';
     }
 
     if (tlField) {
       h += '<section class="stack"><h2 class="h-sect">' + esc(T.readAcross) + '</h2>' +
-        '<div class="seg">' + textQs.slice(0, 3).map(function (q) {
+        '<div class="seg seg--wrap">' + textQs.map(function (q) {
           return '<button data-tlf="' + esc(q.id) + '" aria-pressed="' + (tlField === q.id) + '">' +
             esc(q.label) + '</button>';
         }).join('') + '</div>' +
@@ -2071,6 +2201,12 @@
     h += instructorPanel(done);
 
     viewEl.innerHTML = h + '</div>';
+    bindFilters();
+    on(viewEl, '[data-goalhistory]', 'click', function (e) {
+      var text = missRows[+e.currentTarget.dataset.goalhistory];
+      var rows = done.map(function (r) { var q = Store.questionFor(r, 'goals'); var goal = q && (r.answers[q.id] || []).find(function (g) { return g.text.trim() === text; }); return { record: r, goal: goal }; }).filter(function (x) { return x.goal; });
+      openSheet({ title: text, text: T.goalHistoryHint, body: '<div class="group">' + rows.map(function (x) { return '<a class="item" data-historyflight="' + esc(x.record.id) + '" href="#/flight/' + encodeURIComponent(x.record.id) + '"><span>' + esc(fmtFull(x.record.flownAt)) + '</span><b>' + esc(x.goal.status === 'met' ? T.goalsMet : x.goal.status === 'missed' ? T.goalsMissed : T.notAnswered) + '</b></a>'; }).join('') + '</div>', actions: [{ label: T.cancel }], onOpen: function (sh) { on(sh, '[data-historyflight]', 'click', function () { sh.close(); }); } });
+    });
     on(viewEl, '[data-tlf]', 'click', function (e) { tlField = e.currentTarget.dataset.tlf; screenTrends(); });
     on(viewEl, '[data-gosyl]', 'click', function () { go('syllabus'); });
     // an instructor's name is already searchable across every answer, so this
@@ -2103,9 +2239,12 @@
     if (!global.SyllabusRef || !SyllabusRef.count()) return null;
     var flownNames = {};
     Store.done().forEach(function (r) {
-      var q = Store.roleQuestion('subject') || Store.question('q_subject');
+      if (r.course !== Store.courseId()) return;
+      var q = Store.questionFor(r, 'subject') || Store.question('q_subject');
       if (!q) return;
-      var e = SyllabusRef.lookup(r.answers[q.id]);
+      var e = r.syllabusEntry && r.syllabusEntry.course === r.course
+        ? SyllabusRef.all(r.course).filter(function (x) { return x.name === r.syllabusEntry.name; })[0]
+        : (SyllabusRef.candidates(r.answers[q.id], r.course).length === 1 ? SyllabusRef.lookup(r.answers[q.id], r.course) : null);
       if (e) flownNames[e.name] = (flownNames[e.name] || 0) + 1;
     });
 
@@ -2158,6 +2297,8 @@
 
     var by = {}, order = [];
     done.forEach(function (r) {
+      qi = Store.questionFor(r, 'instructor'); qg = Store.questionFor(r, 'goals');
+      if (!qi) return;
       var name = String(r.answers[qi.id] || '').trim();
       if (!name) return;
       if (!by[name]) { by[name] = { name: name, n: 0, met: 0, tot: 0, miss: {} }; order.push(by[name]); }
@@ -2201,7 +2342,7 @@
 
   function screenSettings() {
     renderTopbar({ title: T.settings, sub: T.capSet });
-    var s = Store.settings(), since = daysSince(s.lastExport), qs = Store.questions();
+    var s = Store.settings(), since = daysSince(s.lastBackup), qs = Store.questions();
 
     viewEl.innerHTML = '<div class="stack-6 stagger">' +
       (since === null || since >= 14
@@ -2252,7 +2393,11 @@
       '<section class="stack"><h2 class="h-sect">' + esc(T.yourData) + '</h2><div class="group">' +
         item('download', T.exportCsv, T.exportCsvSub, 'export-csv') +
         item('download', T.exportJson, T.exportJsonSub, 'export-json') +
-        item('upload', T.importJson, T.importJsonSub, 'import-json') + '</div></section>' +
+        item('upload', T.importJson, T.importJsonSub, 'import-json') +
+        item('layers', T.recovery, T.backupRecoveryBody, 'recovery') + '</div></section>' +
+      '<section class="stack"><div class="group">' + item('notebook', T.notebookTitle, T.onDeviceOnly, 'notebook') +
+        item('trending', T.courseProgress, T.progressSub, 'progress') + item('pencil', T.feedback, T.feedbackSub, 'feedback') +
+        item('flag', T.whatsNew, BUILD, 'whatsnew') + '</div></section>' +
 
       // only when the gate is actually configured; otherwise there is no account
       (global.Auth && Auth.enabled() && Auth.session()
@@ -2272,10 +2417,10 @@
         (s.pin ? item('x', T.removeCode, '', 'pin-off') : '') + '</div>' +
         '<p class="dim" style="font-size:var(--t-12);line-height:1.6">' + esc(T.privacyNote) + '</p></section>' +
 
-      '<section><div class="group"><button class="item item--danger" data-clear>' +
+      '<details class="advanced-settings"><summary>' + esc(T.advancedSettings) + '</summary><div class="group"><button class="item item--danger" data-clear>' +
         '<span class="item__ic">' + icon('trash') + '</span><span class="item__b">' +
         '<span class="item__t">' + esc(T.deleteAll) + '</span>' +
-        '<span class="item__s">' + esc(T.cannotUndo) + '</span></span></button></div></section>' +
+        '<span class="item__s">' + esc(T.confirmDeleteAllBody) + '</span></span></button></div></details>' +
 
       '<p class="dim" style="font-size:var(--t-10);text-align:center;font-family:var(--font-mono);letter-spacing:.1em">' +
         esc(T.app) + ' ' + BUILD + ' · ' + esc(T.offline) + ' · ' + Store.count() + ' ' + esc(T.onDevice) + '</p>' +
@@ -2330,14 +2475,14 @@
 
     on(viewEl, '[data-act]', 'click', function (e) {
       var a = e.currentTarget.dataset.act;
+      if (['notebook', 'progress', 'feedback', 'whatsnew', 'recovery'].indexOf(a) !== -1) { go(a); return; }
       if (a === 'export-csv') {
         if (!Store.count()) return toast(T.noFlights, 'alert');
         saveFile('tahkir-' + stamp() + '.csv', Store.toCSV(), 'text/csv');
         setTimeout(screenSettings, 400);
       }
       if (a === 'export-json') {
-        if (!Store.count()) return toast(T.noFlights, 'alert');
-        saveFile('tahkir-backup-' + stamp() + '.json', Store.toJSON(), 'application/json');
+        saveFile('tahkir-backup-' + stamp() + '.json', Store.toJSON(), 'application/json', 'backup');
         setTimeout(screenSettings, 400);
       }
       if (a === 'syllabus') { go('syllabus'); return; }
@@ -2357,10 +2502,18 @@
       var fr = new FileReader();
       fr.onload = function () {
         try {
-          Store.importJSON(String(fr.result)).then(function (res) {
-            toast(res.added + ' נוספו, ' + res.updated + ' עודכנו'); screenSettings();
+          var text = String(fr.result), plan = Store.inspectImport(text);
+          openSheet({ title: T.importPreview, text: T.importCounts(plan),
+            body: '<label class="checkline"><input type="checkbox" id="restorePreferences"' + (!Store.count() ? ' checked' : '') + '> ' + esc(T.importPreferences) + '</label><p class="field__hint">' + esc(T.importMergeHint) + '</p>',
+            actions: [{ label: T.importJson, cls: 'btn--lit', keepOpen: true, run: function (sh) {
+              var restore = $('#restorePreferences', sh).checked;
+              $$('button', sh).forEach(function (b) { b.disabled = true; });
+              Store.importJSON(text, { restorePreferences: restore }).then(function (res) {
+                sh.close(); toast(T.importComplete(res)); screenSettings();
+              }).catch(function () { sh.close(); toast(T.importFailed, 'alert'); });
+            } }, { label: T.cancel }]
           });
-        } catch (err) { toast('לא ניתן לקרוא את הקובץ', 'alert'); }
+        } catch (err) { toast(T.importInvalid, 'alert'); }
       };
       fr.readAsText(f); e.target.value = '';
     });
@@ -2377,7 +2530,7 @@
       confirmSheet({
         title: T.confirmDeleteAll(Store.count()), text: T.confirmDeleteAllBody,
         confirmLabel: T.delete, danger: true, icon: 'trash',
-        onConfirm: function () { Store.clearAll().then(function () { toast(T.deletedToast, 'trash'); go(''); }); }
+        onConfirm: function () { return Store.clearAll().then(function () { toast(T.deletedToast, 'trash'); go(''); }).catch(reportActionError); }
       });
     });
   }
@@ -2395,7 +2548,7 @@
 
     openSheet({
       title: isNew ? T.addQuestion : T.editQuestion,
-      body: '<div class="stack-4">' +
+      body: '<div class="stack-4"><p class="field__hint">' + esc(T.questionVersionHint) + '</p>' +
         '<div class="field"><label class="field__label" for="qLabel"><b>' + esc(T.qLabel) + '</b></label>' +
           '<input class="input" id="qLabel" type="text" dir="auto" value="' + esc(cur.label) + '"></div>' +
         '<div class="field"><span class="field__label"><b>' + esc(T.qStage) + '</b></span>' +
@@ -2480,9 +2633,12 @@
     var minutes = 0, met = {}, missed = {}, focus = {}, ex = {}, points = [], safety = [];
     var soloYes = 0, soloTot = 0;
 
-    function subjOf(r) { return qSubj ? String(r.answers[qSubj.id] || '').trim() : ''; }
+    function subjOf(r) { var q = Store.questionFor(r, 'subject'); return q ? String(r.answers[q.id] || '').trim() : ''; }
 
     sorted.forEach(function (r) {
+      qGoals = Store.questionFor(r, 'goals'); qPoints = Store.questionFor(r, 'points'); qSolo = Store.questionFor(r, 'solo');
+      qSyl = Store.questions(true).find(function (q) { return q.type === 'syllabus' && r.answers[q.id] !== undefined; });
+      qMin = Store.questions(true).find(function (q) { return q.type === 'minutes' && r.answers[q.id] !== undefined; });
       if (qSolo) {
         var sv = String(r.answers[qSolo.id] == null ? '' : r.answers[qSolo.id]).trim();
         if (sv) { soloTot++; if (sv === soloYesVal) soloYes++; }
@@ -2496,7 +2652,7 @@
       });
       if (qSyl) (r.answers[qSyl.id] || []).forEach(function (x) {
         var t = String(x.text || '').trim();
-        if (t) ex[t] = (ex[t] || 0) + 1;
+        if (t && String(x.notes || '').trim()) ex[t] = (ex[t] || 0) + 1;
         var f = String(x.focus || '').trim();
         if (f) focus[f] = (focus[f] || 0) + 1;
       });
@@ -2552,9 +2708,11 @@
     }
     function head(r) {
       var bits = [fmtFull(r.flownAt)];
-      if (s.q.qSubj && r.answers[s.q.qSubj.id]) bits.push(r.answers[s.q.qSubj.id]);
-      if (s.q.qInst && r.answers[s.q.qInst.id]) bits.push(r.answers[s.q.qInst.id]);
-      if (s.q.qMin && r.answers[s.q.qMin.id]) bits.push(r.answers[s.q.qMin.id] + ' ' + T.minutesUnit);
+      var subject = Store.questionFor(r, 'subject'), instructor = Store.questionFor(r, 'instructor');
+      if (subject && r.answers[subject.id]) bits.push(r.answers[subject.id]);
+      if (instructor && r.answers[instructor.id]) bits.push(r.answers[instructor.id]);
+      var minutes = Store.questions(true).find(function (q) { return q.type === 'minutes' && r.answers[q.id] !== undefined; });
+      if (minutes && r.answers[minutes.id]) bits.push(r.answers[minutes.id] + ' ' + T.minutesUnit);
       return bits.join(' · ');
     }
     function dated(entries) {
@@ -2592,21 +2750,20 @@
     if (s.points.length) h += '<h2>' + esc(T.secPoints) + '</h2>' + dated(s.points);
     if (s.safety.length) h += '<h2>' + esc(T.secSafety) + '</h2>' + dated(s.safety);
 
-    h += '<h2>' + esc(T.secFlights) + '</h2>';
-    s.records.forEach(function (r) {
+    if (!summaryCompact) h += '<h2>' + esc(T.secFlights) + '</h2>';
+    (summaryCompact ? [] : s.records).forEach(function (r) {
       h += '<h3>' + esc(head(r)) + '</h3>';
-      if (!s.q.qSyl) return;
-      var xs = (r.answers[s.q.qSyl.id] || []).filter(function (x) { return String(x.text || '').trim(); });
+      var q = Store.questions(true).find(function (q) { return q.type === 'syllabus' && r.answers[q.id] !== undefined; });
+      if (!q) return;
+      var xs = (r.answers[q.id] || []).filter(function (x) { return String(x.text || '').trim(); });
       var told = xs.filter(function (x) { return String(x.notes || '').trim(); });
       var rest = xs.filter(function (x) { return !String(x.notes || '').trim(); });
       if (told.length) h += list(told, function (x) {
         return '<b>' + esc(x.text) + ':</b> ' + esc(String(x.notes).trim()) +
           (String(x.focus || '').trim() ? ' <i>(' + esc(x.focus) + ')</i>' : '');
       });
-      // the ones with nothing written about them still count as flown, but they
-      // do not deserve a bullet each
       if (rest.length) {
-        h += '<p class="also">' + esc(T.alsoFlown) +
+        h += '<p class="also">' + esc(T.plannedExercises) +
           esc(rest.map(function (x) { return x.text.trim(); }).join(' · ')) + '</p>';
       }
     });
@@ -2626,7 +2783,7 @@
   }
 
   function screenSummary() {
-    var recs = Store.all().filter(function (r) { return selected[r.id]; });
+    var recs = Store.done().filter(function (r) { return selected[r.id]; });
     renderTopbar({ title: T.summary, sub: 'SUMMARY', back: true, backTo: 'log' });
 
     if (!recs.length) {
@@ -2684,7 +2841,7 @@
     if (s.missed.length) h += sec(T.goalsMissed + ' (' + s.missed.length + ')', 'red', rows(s.missed, 'is-missed'));
     if (s.recurring.length) h += sec(T.secRepeatGoals, 'red', rows(s.recurring, 'is-missed'));
     if (s.focus.length) h += sec(T.secFocus, 'amber', rows(s.focus));
-    if (s.exercises.length) h += sec(T.secExercises, '', rows(s.exercises));
+    if (!summaryCompact && s.exercises.length) h += sec(T.documentedExercises, '', rows(s.exercises));
     /* dates, not "לפני 3 ימים" — the summary is read next to a logbook */
     function timeline(entries) {
       return '<div class="tl">' + entries.map(function (p) {
@@ -2698,7 +2855,8 @@
     if (s.points.length) h += sec(T.secPoints, '', timeline(s.points));
     if (s.safety.length) h += sec(T.secSafety, 'amber', timeline(s.safety));
 
-    h += '<div class="stack">' +
+    h += '<div class="stack"><p class="field__hint">' + esc(T.summaryCompletedOnly) + '</p>' +
+      '<div class="seg"><button class="seg__b" data-summarymode="short" aria-pressed="' + summaryCompact + '">' + esc(T.summaryShort) + '</button><button class="seg__b" data-summarymode="full" aria-pressed="' + !summaryCompact + '">' + esc(T.summaryFull) + '</button></div>' +
       '<button class="btn btn--lit btn--block btn--lg" data-copydoc>' + icon('copy') + esc(T.copyDoc) + '</button>' +
       '<button class="btn btn--block" data-exportdoc>' + icon('download') + esc(T.exportDoc) + '</button>' +
       '<p class="dim" style="font-size:var(--t-12);line-height:1.6;text-align:center">' + esc(T.docHint) + '</p>' +
@@ -2706,11 +2864,14 @@
 
     viewEl.innerHTML = h;
 
+    on(viewEl, '[data-summarymode]', 'click', function (e) { summaryCompact = e.currentTarget.dataset.summarymode === 'short'; screenSummary(); });
     on(viewEl, '[data-copydoc]', 'click', function () {
       var html = summaryDocHTML(s);
-      var plain = html.replace(/<[^>]+>/g, function (m) {
+      var clean = new DOMParser().parseFromString(html, 'text/html');
+      var plain = clean.body.innerHTML.replace(/<[^>]+>/g, function (m) {
         return /<\/(h1|h2|h3|li|p)>/.test(m) ? '\n' : '';
       }).replace(/\n{3,}/g, '\n\n').trim();
+      var decoded = document.createElement('textarea'); decoded.innerHTML = plain; plain = decoded.value;
       if (global.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
         navigator.clipboard.write([new ClipboardItem({
           'text/html': new Blob([html], { type: 'text/html' }),
@@ -2889,7 +3050,7 @@
     var c = $('[data-key="cancel"]', lockEl);
     if (c) c.textContent = mode === 'unlock' ? '' : T.cancel;
   }
-  function closeLock() { lockEl.hidden = true; appEl.hidden = false; }
+  function closeLock() { lockEl.hidden = true; appEl.hidden = false; maybeRelease(); }
 
   /* ================================================================= boot */
 
@@ -2993,6 +3154,10 @@
     sheetEl = document.getElementById('sheet');
     lockEl = document.getElementById('lockScreen');
     sheetEl.addEventListener('click', function (e) { if (e.target === sheetEl) sheetEl.close(); });
+    var storageNotified = false;
+    global.addEventListener('sortie:storage-error', function () {
+      if (!storageNotified && !appEl.hidden) { storageNotified = true; toast(T.saveFailedBody, 'alert'); }
+    });
 
     /* Registered once, not per render. pagehide is the event iOS actually
        delivers when a PWA is swiped away, and hidden covers backgrounding —
@@ -3043,9 +3208,15 @@
           }
           showCoursePicker(null, function () { Store.applyCourse(); start(); });
         });
-    }).then(null, function () {
-      // never leave a blank screen because something upstream threw
-      Store.applyCourse(); start();
+    }).then(null, function (err) {
+      appEl.hidden = false;
+      viewEl.innerHTML = '<section class="empty"><h1>' + esc(T.startupError) + '</h1><p>' + esc(T.startupErrorBody) + '</p><button class="btn" id="retryBoot">' + esc(T.retry) + '</button><button class="btn" id="emergencyExport">' + esc(T.rawRecovery) + '</button></section>';
+      $('#retryBoot').onclick = function () { location.reload(); };
+      $('#emergencyExport').onclick = function () {
+        var blob = new Blob([Store.emergencyJSON()], { type: 'application/json' }), url = URL.createObjectURL(blob), a = document.createElement('a');
+        a.href = url; a.download = 'sortie-raw-recovery.json'; a.click(); setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+      };
+      console.error('Sortie startup failed', err);
     });
 
     function start() {
@@ -3062,11 +3233,27 @@
         var reloading = false;
         navigator.serviceWorker.addEventListener('controllerchange', function () {
           if (!hadController || reloading) return;
+          if (formFlush && !updateApproved) {
+            pendingReload = true;
+            toast(T.updateReady, 'download', { label: T.updateNow, run: function () { if (formFlush() !== false) location.reload(); } });
+            return;
+          }
           reloading = true;
           location.reload();
         });
         navigator.serviceWorker.register('sw.js').then(function (reg) {
-          if (reg) reg.update().catch(function () {});
+          function ready(worker) {
+            if (!worker) return;
+            pendingWorker = worker;
+            if (formFlush) toast(T.updateReady, 'download', { label: T.updateNow, run: activateUpdate });
+            else activateUpdate();
+          }
+          if (reg.waiting) ready(reg.waiting);
+          reg.addEventListener('updatefound', function () {
+            var worker = reg.installing;
+            if (worker) worker.addEventListener('statechange', function () { if (worker.state === 'installed') ready(reg.waiting); });
+          });
+          reg.update().catch(function () {});
         }).catch(function () {});
       }
     }

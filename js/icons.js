@@ -4,6 +4,8 @@
   'use strict';
 
   var P = {
+    notebook: '<path d="M6 3h13v18H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/><path d="M8 3v18M2 7h4M2 12h4M2 17h4M11 8h5M11 12h5"/>',
+    folder: '<path d="M3 7V4h6l3 3h9v13H3Z"/>',
     plane:      '<path d="M17.8 19.8 16 14l-4-1.5-4 1.5-1.8 5.8L4 21l1.3-6.4L2 12l3.3-2.6L4 3l2.2 1.2L8 10l4 1.5L16 10l1.8-5.8L20 3l-1.3 6.4L22 12l-3.3 2.6L20 21z"/>',
     horizon:    '<path d="M3 12h18"/><path d="m9 8 3 3 3-3"/><circle cx="12" cy="12" r="9"/>',
     plus:       '<path d="M12 5v14M5 12h14"/>',

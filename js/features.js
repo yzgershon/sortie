@@ -1,0 +1,271 @@
+/* Notebook, course journey, feedback, recovery and release notes. */
+(function (g) {
+  'use strict';
+  function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+  function $(s, root) { return (root || document).querySelector(s); }
+  function all(s, root) { return Array.from((root || document).querySelectorAll(s)); }
+  function date(ts) { return new Date(ts).toLocaleDateString('he-IL', { day: 'numeric', month: 'short', year: 'numeric' }); }
+  function button(label, attr, ic, cls) { return '<button type="button" class="btn ' + (cls || '') + '" ' + attr + '>' + (ic ? icon(ic) : '') + esc(label) + '</button>'; }
+  function input(label, id, value, type) { return '<label class="field"><span class="field__label"><b>' + esc(label) + '</b></span><input class="input" id="' + id + '" type="' + (type || 'text') + '" dir="auto" value="' + esc(value || '') + '"></label>'; }
+  function notebook(route, ui) {
+    ui.topbar({ title: T.notebookTitle, back: true, backTo: '' });
+    var data = Workspace.all(), folders = data.folders.filter(function (f) { return !f.deletedAt; });
+    var folder = g.Features.folder || '', query = g.Features.noteQuery || '';
+    var existing = route.param && Workspace.note(route.param);
+    if (existing && !existing.deletedAt) return editor(existing, folders, ui);
+    ui.view.innerHTML = '<section class="notebook"><header class="notebook__cover"><span class="notebook__stamp">' + esc(T.app) + '</span>' +
+      '<h1>' + esc(T.notebookTitle) + '</h1><p>' + esc(T.notebookSub) + '</p>' + button(T.noteNew, 'data-newnote', 'plus', 'btn--lit') + '</header>' +
+      '<div class="notebook__tabs" role="group" aria-label="' + esc(T.folderName) + '">' +
+      [{ id: '', title: T.noteAll }, { id: 'inbox', title: T.noteInbox }].concat(folders).map(function (f) {
+        return '<button type="button" data-folder="' + esc(f.id) + '" aria-pressed="' + (folder === f.id) + '">' + icon('folder') + esc(f.title) + '</button>';
+      }).join('') + button(T.folderNew, 'data-newfolder', 'plus') + '</div>' +
+      '<div class="notebook__paper"><label class="search">' + icon('search') + '<input class="input" id="noteSearch" type="search" value="' + esc(query) + '" placeholder="' + esc(T.noteSearch) + '" aria-label="' + esc(T.noteSearch) + '"></label>' +
+      '<div id="noteRows"></div><p class="notebook__foot">' + esc(T.onDeviceOnly) + '</p></div></section>';
+    function paint() {
+      var notes = Workspace.all().notes.filter(function (n) {
+        return !n.deletedAt && (!folder || (folder === 'inbox' ? !n.folder : n.folder === folder)) &&
+          (!query || (n.title + '\n' + n.body).toLowerCase().indexOf(query.toLowerCase()) !== -1);
+      }).sort(function (a, b) { return (+b.pinned - +a.pinned) || b.priority - a.priority || b.updatedAt - a.updatedAt; });
+      var selectedFolder = folders.find(function (f) { return f.id === folder; });
+      $('#noteRows').innerHTML = (selectedFolder ? '<div class="notebook__foldertools">' + button(T.folderRename, 'data-renamefolder', 'pencil') + button(T.folderDelete, 'data-deletefolder', 'trash') + '</div>' : '') +
+        (notes.length ? notes.map(function (n) {
+          return '<a class="note-page" href="#/notebook/' + encodeURIComponent(n.id) + '"><span class="note-page__priority priority-' + (+n.priority || 0) + '">' + esc(T.priorities[n.priority || 0]) + '</span>' +
+            '<h2>' + (n.pinned ? icon('flag') : '') + esc(n.title || T.noteUntitled) + '</h2><p dir="auto">' + esc((n.body || '').slice(0, 150)) + '</p>' +
+            '<span class="note-page__date">' + esc(date(n.updatedAt)) + '</span></a>';
+        }).join('') : '<div class="notebook__empty">' + icon('notebook') + '<h2>' + esc(T.noteEmpty) + '</h2><p>' + esc(T.noteEmptyBody) + '</p></div>');
+      if (selectedFolder) {
+        $('[data-renamefolder]').onclick = function () { folderSheet(selectedFolder); };
+        $('[data-deletefolder]').onclick = function () { ui.confirm({ title: T.folderDelete, text: T.folderDeleteBody, onConfirm: function () {
+          try { Workspace.removeFolder(folder); g.Features.folder = ''; notebook(route, ui); } catch (e) { ui.toast(T.saveFailedBody, 'alert'); }
+        } }); };
+      }
+    }
+    function folderSheet(f) {
+      ui.sheet({ title: f ? T.folderRename : T.folderNew, body: input(T.folderName, 'folderTitle', f && f.title), actions: [
+        { label: T.save, cls: 'btn--lit', keepOpen: true, run: function (sh) {
+          var title = $('#folderTitle', sh).value.trim(); if (!title) return $('#folderTitle', sh).focus();
+          try { var saved = Workspace.folder(title, f && f.id); sh.close(); g.Features.folder = saved.id; notebook(route, ui); } catch (e) { ui.toast(T.saveFailedBody, 'alert'); }
+        } }, { label: T.cancel }
+      ] });
+    }
+    $('[data-newfolder]').onclick = function () { folderSheet(null); };
+    $('[data-newnote]').onclick = function () {
+      try { var note = Workspace.saveNote({ title: '', body: '', folder: folder && folder !== 'inbox' ? folder : '', priority: 0 }); ui.go('notebook/' + note.id); }
+      catch (e) { ui.toast(T.saveFailedBody, 'alert'); }
+    };
+    all('[data-folder]').forEach(function (b) { b.onclick = function () { g.Features.folder = b.dataset.folder; notebook(route, ui); }; });
+    $('#noteSearch').oninput = function (e) { query = e.target.value; g.Features.noteQuery = query; paint(); };
+    paint();
+  }
+  function editor(note, folders, ui) {
+    ui.topbar({ title: T.notebook, back: true, backTo: 'notebook' });
+    ui.view.innerHTML = '<article class="notebook notebook--editor"><div class="notebook__binding"></div><div class="notebook__paper">' +
+      '<div class="notebook__editorbar"><select id="noteFolder" aria-label="' + esc(T.folderName) + '">' + [{ id: '', title: T.noteInbox }].concat(folders).map(function (f) { return '<option value="' + esc(f.id) + '"' + (note.folder === f.id ? ' selected' : '') + '>' + esc(f.title) + '</option>'; }).join('') + '</select>' +
+      '<select id="notePriority" aria-label="' + esc(T.priority) + '">' + T.priorities.map(function (p, i) { return '<option value="' + i + '"' + (+note.priority === i ? ' selected' : '') + '>' + esc(p) + '</option>'; }).join('') + '</select></div>' +
+      '<input id="noteTitle" class="notebook__title" dir="auto" maxlength="200" value="' + esc(note.title) + '" placeholder="' + esc(T.noteTitle) + '" aria-label="' + esc(T.noteTitle) + '">' +
+      '<textarea id="noteBody" class="notebook__writing" dir="auto" placeholder="' + esc(T.noteBody) + '" aria-label="' + esc(T.noteBody) + '">' + esc(note.body) + '</textarea>' +
+      '<div class="notebook__status"><span id="noteState" role="status">' + esc(T.draftSaved) + '</span><span>' + esc(date(note.updatedAt)) + '</span></div>' +
+      '<div class="notebook__actions">' + button(note.pinned ? T.unpinNote : T.pinNote, 'data-pinnote', 'flag') + button(T.noteDelete, 'data-deletenote', 'trash') + button(T.downloadNote, 'data-downloadnote', 'download') + '<button class="btn" data-notecopy hidden>' + esc(T.saveSeparateCopy) + '</button></div></div></article>';
+    var timer, dirty = false, alive = true, root = $('.notebook--editor');
+    function flush() {
+      clearTimeout(timer);
+      if (!dirty || !alive) return true;
+      try {
+        note = Workspace.saveNote(Object.assign({}, note, { baseUpdatedAt: note.updatedAt, title: $('#noteTitle').value, body: $('#noteBody').value,
+          folder: $('#noteFolder').value, priority: +$('#notePriority').value }));
+        dirty = false; $('#noteState').textContent = T.draftSaved; return true;
+      } catch (e) { $('#noteState').textContent = e.message === 'EDIT_CONFLICT' ? T.draftConflict : T.saveFailed; $('[data-notecopy]').hidden = e.message !== 'EDIT_CONFLICT'; return false; }
+    }
+    function touched() { dirty = true; $('#noteState').textContent = T.draftSaving; clearTimeout(timer); timer = setTimeout(flush, 400); }
+    root.addEventListener('input', touched); root.addEventListener('change', touched);
+    ui.setFlush(flush);
+    $('[data-downloadnote]').onclick = function () { ui.saveFile('sortie-note.txt', $('#noteTitle').value + '\n\n' + $('#noteBody').value, 'text/plain'); };
+    $('[data-notecopy]').onclick = function () {
+      try { var copy = Workspace.saveNote({ title: $('#noteTitle').value, body: $('#noteBody').value, folder: $('#noteFolder').value, priority: +$('#notePriority').value }); dirty = false; clearTimeout(timer); ui.go('notebook/' + copy.id); }
+      catch (e) { ui.toast(T.saveFailedBody, 'alert'); }
+    };
+    $('[data-pinnote]').onclick = function () {
+      if (!flush()) return;
+      try { note = Workspace.saveNote(Object.assign({}, note, { pinned: !note.pinned, baseUpdatedAt: note.updatedAt })); editor(note, folders, ui); }
+      catch (e) { ui.toast(T.saveFailedBody, 'alert'); }
+    };
+    $('[data-deletenote]').onclick = function () { ui.confirm({ title: T.noteDelete, onConfirm: function () {
+      if (!flush()) return;
+      try { Workspace.deleteNote(note.id); alive = false; clearTimeout(timer); ui.setFlush(null); ui.toast(T.noteDeleted); ui.go('notebook'); }
+      catch (e) { ui.toast(T.saveFailedBody, 'alert'); }
+    } }); };
+    if (!note.title && !note.body) $('#noteBody').focus();
+  }
+  function progress(route, ui) {
+    ui.topbar({ title: T.courseProgress, back: true, backTo: '' });
+    var p = ui.progress(), course = Store.course(), pct = Math.round(p.done / Math.max(1, p.total) * 100);
+    var milestones = Workspace.all().milestones.filter(function (m) { return !m.deletedAt && m.course === course.id; }).sort(function (a, b) { return (a.date || '9999').localeCompare(b.date || '9999'); });
+    var unknown = Store.done().filter(function (r) { return !r.course; }).length;
+    var checkpoints = [];
+    SyllabusRef.all(course.id).forEach(function (entry) {
+      if (entry.sim || !/סולו|לילה/.test(entry.name)) return;
+      var kind = /סולו/.test(entry.name) ? T.checkpointSolo : T.checkpointNight;
+      if (!checkpoints.some(function (item) { return item.kind === kind; })) checkpoints.push({ kind: kind, entry: entry });
+    });
+    ui.view.innerHTML = '<div class="journey stack-6"><header class="journey__hero"><div class="journey__eyebrow">' + icon('flag') + '<span>' + esc(course.label) + '</span></div>' +
+      '<h1>' + esc(T.courseProgress) + '</h1><p>' + esc(T.progressSub) + '</p>' +
+      '<div class="journey__instrument"><svg viewBox="0 0 320 320" aria-hidden="true"><circle class="journey__outer" cx="160" cy="160" r="148"/>' +
+      Array.from({ length: 60 }, function (_, i) { var a = i * Math.PI / 30, r1 = i % 5 === 0 ? 131 : 138; return '<line class="journey__tick" x1="' + (160 + Math.sin(a) * r1) + '" y1="' + (160 - Math.cos(a) * r1) + '" x2="' + (160 + Math.sin(a) * 144) + '" y2="' + (160 - Math.cos(a) * 144) + '"/>'; }).join('') +
+      '<circle class="journey__track" cx="160" cy="160" r="116"/><circle class="journey__arc" cx="160" cy="160" r="116" pathLength="100" stroke-dasharray="' + pct + ' 100" transform="rotate(-90 160 160)"/></svg>' +
+      '<div class="journey__reading"><strong dir="ltr">' + pct + '<small>%</small></strong><span>' + esc(T.progressCount(p.done, p.total)) + '</span></div></div>' +
+      '<div class="journey__numbers"><div><b>' + p.done + '</b><span>' + esc(T.progressCompleted) + '</span></div><div><b>' + (p.total - p.done) + '</b><span>' + esc(T.progressRemaining) + '</span></div></div>' +
+      button(T.shareProgress, 'data-shareprogress', 'share', 'btn--lit btn--block') + '<p class="field__hint">' + esc(T.progressBasis) + '</p>' +
+      (unknown ? '<p class="field__hint">' + esc(T.progressUnknown(unknown)) + '</p>' : '') + '</header>' +
+      '<section><div class="section-heading"><h2>' + esc(T.milestones) + '</h2>' + button(T.milestoneAdd, 'data-addmilestone', 'plus') + '</div><div class="milestones">' +
+      (milestones.length ? milestones.map(function (m) {
+        var done = m.done || (m.target > 0 && p.done >= m.target);
+        return '<button type="button" class="milestone' + (done ? ' is-done' : '') + '" data-milestone="' + esc(m.id) + '"><span class="milestone__dot">' + icon(done ? 'check' : 'flag') + '</span><span class="milestone__text"><b>' + esc(m.title) + '</b><small>' + esc(m.date ? date(m.date + 'T12:00:00') : T.milestonePersonal) + '</small></span>' + (m.share ? icon('share') : '') + icon('chevLeft') + '</button>';
+      }).join('') : '<p class="field__hint">' + esc(T.milestoneEmpty) + '</p>') + '</div></section>' +
+      '<section><h2 class="h-sect">' + esc(T.catalogueCheckpoints) + '</h2><p class="field__hint">' + esc(T.catalogueCheckpointsHint) + '</p><div class="milestones">' + checkpoints.map(function (item) {
+        var done = !!p.flown[item.entry.name];
+        return '<div class="milestone' + (done ? ' is-done' : '') + '"><span class="milestone__dot">' + icon(done ? 'check' : 'flag') + '</span><span class="milestone__text"><b>' + esc(item.kind) + '</b><small dir="auto">' + esc(item.entry.name) + '</small></span><span class="field__hint">' + esc(done ? T.checkpointLogged : T.checkpointPending) + '</span></div>';
+      }).join('') + '</div></section>' +
+      '<section><h2 class="h-sect">' + esc(T.progressSections) + '</h2><div class="journey__sections">' + p.sections.map(function (s, i) {
+        var done = s.done === s.total;
+        return '<div class="journey-section' + (done ? ' is-done' : '') + '"><span class="journey-section__number">' + (done ? icon('check') : String(i + 1).padStart(2, '0')) + '</span><div><div class="journey-section__head"><b>' + esc(s.name) + '</b><span dir="ltr">' + s.done + ' / ' + s.total + '</span></div><div class="journey-section__track"><span style="width:' + Math.round(s.done / s.total * 100) + '%"></span></div></div></div>';
+      }).join('') + '</div></section>' + (p.next ? '<a class="journey__next" href="#/syllabus"><span>' + esc(T.progressNext) + '</span><b dir="auto">' + esc(p.next.name) + '</b>' + icon('chevLeft') + '</a>' : '') + '</div>';
+    function milestoneSheet(m) {
+      ui.sheet({ title: m ? m.title : T.milestoneAdd, body: input(T.milestoneTitle, 'milestoneTitle', m && m.title) + input(T.milestoneDate, 'milestoneDate', m && m.date, 'date') +
+        input(T.milestoneTarget, 'milestoneTarget', m && m.target, 'number') + '<label class="checkline"><input type="checkbox" id="milestoneDone"' + (m && m.done ? ' checked' : '') + '> ' + esc(T.milestoneDone) + '</label>' +
+        '<label class="checkline"><input type="checkbox" id="milestoneShare"' + (m && m.share ? ' checked' : '') + '> ' + esc(T.milestoneShare) + '</label>',
+        actions: [{ label: T.save, cls: 'btn--lit', keepOpen: true, run: function (sh) {
+          var title = $('#milestoneTitle', sh).value.trim(); if (!title) return $('#milestoneTitle', sh).focus();
+          try { Workspace.milestone({ id: m && m.id, course: course.id, title: title, date: $('#milestoneDate', sh).value,
+            target: Math.max(0, +$('#milestoneTarget', sh).value || 0), done: $('#milestoneDone', sh).checked, share: $('#milestoneShare', sh).checked }); sh.close(); progress(route, ui); }
+          catch (e) { ui.toast(T.saveFailedBody, 'alert'); }
+        } }].concat(m ? [{ label: T.delete, cls: 'btn--danger', run: function () { try { Workspace.deleteMilestone(m.id); progress(route, ui); } catch (e) { ui.toast(T.saveFailedBody, 'alert'); } } }] : []).concat([{ label: T.cancel }])
+      });
+    }
+    $('[data-addmilestone]').onclick = function () { milestoneSheet(null); };
+    all('[data-milestone]').forEach(function (b) { b.onclick = function () { milestoneSheet(milestones.find(function (m) { return m.id === b.dataset.milestone; })); }; });
+    $('[data-shareprogress]').onclick = function () { shareProgress(p, course, milestones, ui); };
+  }
+  async function shareProgress(p, course, milestones, ui) {
+    if (document.fonts && document.fonts.ready) await document.fonts.ready;
+    var pct = Math.round(p.done / Math.max(1, p.total) * 100), canvas = document.createElement('canvas');
+    canvas.width = 1080; canvas.height = 1350;
+    var c = canvas.getContext('2d'); c.fillStyle = '#03060A'; c.fillRect(0, 0, 1080, 1350);
+    c.strokeStyle = '#173341'; c.lineWidth = 2; c.strokeRect(40, 40, 1000, 1270);
+    for (var x = 80; x < 1040; x += 40) { c.beginPath(); c.moveTo(x, 60); c.lineTo(x, 1290); c.strokeStyle = '#091620'; c.stroke(); }
+    c.direction = 'rtl'; c.textAlign = 'right'; c.fillStyle = '#22D3EE'; c.font = '500 32px Heebo, Arial'; c.fillText(T.app, 976, 118);
+    c.fillStyle = '#DCE9F5'; c.font = '700 64px Heebo, Arial'; c.fillText(T.courseProgress, 976, 236);
+    c.fillStyle = '#8FA6BC'; c.font = '400 36px Heebo, Arial'; c.fillText(course.label, 976, 296);
+    c.beginPath(); c.arc(540, 610, 220, 0, Math.PI * 2); c.strokeStyle = '#142B37'; c.lineWidth = 18; c.stroke();
+    if (pct) { c.beginPath(); c.arc(540, 610, 220, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * p.done / p.total); c.strokeStyle = '#22D3EE'; c.lineCap = 'round'; c.stroke(); }
+    c.textAlign = 'center'; c.direction = 'ltr'; c.fillStyle = '#DCE9F5'; c.font = '600 126px Arial'; c.fillText(pct + '%', 540, 630);
+    c.direction = 'rtl'; c.font = '400 30px Heebo, Arial'; c.fillStyle = '#8FA6BC'; c.fillText(T.progressCount(p.done, p.total), 540, 697);
+    var visible = milestones.filter(function (m) { return m.share; }).slice(0, 3);
+    c.textAlign = 'right';
+    visible.forEach(function (m, i) { c.fillStyle = '#FFB020'; c.fillRect(960, 934 + i * 80, 10, 10); c.fillStyle = '#DCE9F5'; c.font = '500 30px Heebo, Arial'; c.fillText(m.title.slice(0, 48), 930, 952 + i * 80, 805); c.fillStyle = '#8FA6BC'; c.font = '400 22px Heebo, Arial'; c.fillText(m.date ? date(m.date + 'T12:00:00') : T.milestonePersonal, 930, 980 + i * 80); });
+    c.textAlign = 'center'; c.font = '400 22px Heebo, Arial'; c.fillStyle = '#8FA6BC'; c.fillText(T.progressBasis, 540, 1230, 920); c.fillText(date(Date.now()), 540, 1268);
+    var blob = await new Promise(function (resolve) { canvas.toBlob(resolve, 'image/png'); });
+    if (!blob) return ui.toast(T.shareFailed, 'alert');
+    var url = URL.createObjectURL(blob), caption = T.shareCaption(course.label, pct, p.done, p.total);
+    var file = new File([blob], 'sortie-progress.png', { type: 'image/png' });
+    function download() { var a = document.createElement('a'); a.href = url; a.download = file.name; a.click(); }
+    ui.sheet({ title: T.sharePreview, text: T.shareProgressHint, body: '<img class="share-preview" src="' + url + '" alt="' + esc(caption) + '">', actions: [
+      { label: T.shareImage, cls: 'btn--lit', keepOpen: true, run: function () {
+        if (navigator.canShare && navigator.canShare({ files: [file] })) navigator.share({ files: [file], title: T.courseProgress, text: caption }).catch(function (e) { if (e.name !== 'AbortError') ui.toast(T.shareFailed, 'alert'); });
+        else download();
+      } }, { label: T.downloadImage, keepOpen: true, run: download },
+      { label: T.copySummary, keepOpen: true, run: function () { navigator.clipboard.writeText(caption).then(function () { ui.toast(T.copiedToast); }).catch(function () { ui.toast(T.shareFailed, 'alert'); }); } },
+      { label: T.cancel, run: function () { URL.revokeObjectURL(url); } }
+    ] });
+  }
+  function feedback(route, ui) {
+    ui.topbar({ title: T.feedback, back: true, backTo: 'settings' });
+    var draft = Workspace.feedbackDraft() || { id: Store.uid('feedback'), kind: 0, message: '', contact: '', diagnostics: false };
+    var endpoint = g.FEEDBACK_CONFIG && FEEDBACK_CONFIG.endpoint;
+    ui.view.innerHTML = '<section class="stack-4"><div class="feature-intro">' + icon('pencil') + '<h1>' + esc(T.feedback) + '</h1><p>' + esc(T.feedbackSub) + '</p></div>' +
+      '<form id="feedbackForm" class="panel"><div class="panel__body stack-4"><label class="field"><span class="field__label">' + esc(T.feedbackKind) + '</span><select class="input" id="feedbackKind">' + T.feedbackTypes.map(function (t, i) { return '<option value="' + i + '"' + (+draft.kind === i ? ' selected' : '') + '>' + esc(t) + '</option>'; }).join('') + '</select></label>' +
+      '<label class="field"><span class="field__label">' + esc(T.feedbackMessage) + '</span><textarea class="ta" id="feedbackMessage" dir="auto" rows="7" minlength="5" maxlength="5000" required>' + esc(draft.message) + '</textarea></label>' +
+      input(T.feedbackContact, 'feedbackContact', draft.contact, 'email') +
+      '<label class="checkline"><input id="feedbackDiagnostics" type="checkbox"' + (draft.diagnostics ? ' checked' : '') + '> ' + esc(T.feedbackDiagnostics) + '</label>' +
+      '<p class="field__hint">' + esc(T.feedbackPrivacy) + '</p><p id="feedbackState" role="status">' + esc(endpoint ? '' : T.feedbackNotReady) + '</p>' +
+      '<button type="submit" class="btn btn--lit btn--block" id="feedbackSend">' + esc(endpoint ? T.feedbackSend : T.save) + '</button></div></form></section>';
+    var busy = false, feedbackRoot = $('#feedbackForm'), stateEl = $('#feedbackState'), sendButton = $('#feedbackSend');
+    var kindEl = $('#feedbackKind'), messageEl = $('#feedbackMessage'), contactEl = $('#feedbackContact'), diagnosticsEl = $('#feedbackDiagnostics');
+    function save() {
+      draft.kind = +kindEl.value; draft.message = messageEl.value; draft.contact = contactEl.value; draft.diagnostics = diagnosticsEl.checked;
+      try { Workspace.saveFeedback(draft); return true; } catch (e) { stateEl.textContent = T.saveFailed; return false; }
+    }
+    ui.setFlush(save); $('#feedbackForm').addEventListener('input', save);
+    $('#feedbackForm').onsubmit = async function (e) {
+      e.preventDefault(); if (busy || !save()) return;
+      if (!endpoint) { stateEl.textContent = T.feedbackSaved; return; }
+      if (navigator.onLine === false) { stateEl.textContent = T.feedbackOffline; return; }
+      if (draft.message.trim().length < 5 || draft.message.length > 5000) { stateEl.textContent = T.feedbackLength; return; }
+      busy = true; sendButton.disabled = true; stateEl.textContent = T.feedbackSending;
+      all('input, textarea, select', feedbackRoot).forEach(function (el) { el.disabled = true; });
+      var payload = { message: draft.message.trim(), category: T.feedbackTypes[draft.kind], submission_id: draft.id };
+      if (draft.contact.trim()) payload.email = draft.contact.trim();
+      if (draft.diagnostics) payload.diagnostics = { build: ui.build, course: Store.courseId(), device: navigator.userAgent };
+      var sentMessage = draft.message;
+      var controller = new AbortController(), timeout = setTimeout(function () { controller.abort(); }, 20000);
+      try {
+        var response = await fetch(endpoint, { method: 'POST', headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: controller.signal });
+        if (!response.ok) throw new Error('SEND_FAILED');
+        var latest = Workspace.feedbackDraft();
+        if (latest && latest.id === draft.id && latest.message === sentMessage) Workspace.clearFeedback();
+        if (document.contains(feedbackRoot)) {
+          ui.setFlush(null); stateEl.textContent = T.feedbackSent;
+          all('input, textarea, select', feedbackRoot).forEach(function (el) { el.disabled = true; });
+        }
+      } catch (err) { stateEl.textContent = T.feedbackFailed; sendButton.disabled = false; all('input, textarea, select', feedbackRoot).forEach(function (el) { el.disabled = false; }); }
+      finally { clearTimeout(timeout); busy = false; }
+    };
+  }
+  function whatsnew(route, ui) {
+    ui.topbar({ title: T.whatsNew, back: true, backTo: 'settings' });
+    ui.view.innerHTML = '<section class="release"><span class="release__version mono">' + esc(ui.build) + '</span><h1>' + esc(T.whatsNew) + '</h1><p>' + esc(T.releaseIntro) + '</p><div class="release__list">' + T.releaseItems.map(function (x, i) { return '<article><span class="mono">' + String(i + 1).padStart(2, '0') + '</span><div><h2>' + esc(x[0]) + '</h2><p>' + esc(x[1]) + '</p></div></article>'; }).join('') + '</div>' + button(T.understood, 'data-understood', 'check', 'btn--lit btn--block') + '</section>';
+    $('[data-understood]').onclick = function () { if (/preview/.test(ui.build) || Store.set('releaseSeen', ui.build)) ui.go(''); else ui.toast(T.saveFailedBody, 'alert'); };
+  }
+  function recovery(route, ui) {
+    ui.topbar({ title: T.backupRecovery, back: true, backTo: 'settings' });
+    var trash = Store.trash().filter(function (r) { return r.kind === 'flight'; }), workspace;
+    try { workspace = Workspace.all(); } catch (e) { workspace = { notes: [], milestones: [] }; }
+    var notes = workspace.notes.filter(function (n) { return n.deletedAt; }), drafts = Store.drafts();
+    var milestones = workspace.milestones.filter(function (m) { return m.deletedAt; });
+    var archived = Store.questions(true).filter(function (q) { return q.archived; });
+    ui.view.innerHTML = '<div class="stack-6"><section class="panel"><div class="panel__body stack"><h1>' + esc(T.backupRecovery) + '</h1><p>' + esc(T.backupRecoveryBody) + '</p>' +
+      button(T.exportJson, 'data-fullbackup', 'download', 'btn--lit btn--block') + (Store.recovery() ? button(T.recoveryCopy, 'data-recoverycopy', 'download', 'btn--block') : '') + button(T.rawRecovery, 'data-rawbackup', 'download', 'btn--quiet') + '</div></section>' +
+      '<section><h2 class="h-sect">' + esc(T.recentlyDeleted) + '</h2>' + (trash.length + notes.length + milestones.length ? '<div class="group">' + trash.map(function (item) {
+        var q = Store.questionFor(item.record, 'subject');
+        return '<div class="recovery-row"><span><b dir="auto">' + esc(q && item.record.answers[q.id] || item.record.flownAt) + '</b><small>' + esc(date(item.updatedAt)) + '</small></span>' + button(T.restore, 'data-restoreflight="' + esc(item.id) + '"', 'upload') + '</div>';
+      }).concat(notes.map(function (n) { return '<div class="recovery-row"><span><b>' + esc(n.title || T.noteUntitled) + '</b><small>' + esc(T.notebook) + '</small></span>' + button(T.restore, 'data-restorenote="' + esc(n.id) + '"', 'upload') + '</div>'; })).concat(milestones.map(function (m) { return '<div class="recovery-row"><span><b>' + esc(m.title) + '</b><small>' + esc(T.milestones) + '</small></span>' + button(T.restore, 'data-restoremilestone="' + esc(m.id) + '"', 'upload') + '</div>'; })).join('') + '</div>' : '<p class="field__hint">' + esc(T.recoveryEmpty) + '</p>') + '</section>' +
+      '<section><h2 class="h-sect">' + esc(T.recoveryDrafts) + '</h2><div class="group">' + Object.keys(drafts).map(function (key, i) {
+        var draft; try { draft = JSON.parse(drafts[key]); } catch (e) { return ''; }
+        var rec = draft.rec || draft, q = rec.answers && Store.questionFor(rec, 'subject');
+        return '<div class="recovery-row"><span><b>' + esc(q && rec.answers[q.id] || T.resumeDraft) + '</b><small>' + esc(draft.at ? date(draft.at) : '') + '</small></span>' + button(T.resumeDraft, 'data-draftkey="' + i + '"', 'pencil') + '</div>';
+      }).join('') + '</div></section>' +
+      '<section><h2 class="h-sect">' + esc(T.archivedQuestions) + '</h2><div class="group">' + archived.map(function (q) { return '<div class="recovery-row"><b>' + esc(q.label) + '</b>' + button(T.archiveRestore, 'data-unarchive="' + esc(q.id) + '"', 'upload') + '</div>'; }).join('') + '</div></section></div>';
+    $('[data-fullbackup]').onclick = function () { ui.saveFile('sortie-backup-' + Store.todayISO() + '.json', Store.toJSON(), 'application/json', 'backup'); };
+    $('[data-rawbackup]').onclick = function () { ui.saveFile('sortie-raw-recovery.json', Store.emergencyJSON(), 'application/json'); };
+    if ($('[data-recoverycopy]')) $('[data-recoverycopy]').onclick = function () {
+      var r = Store.recovery(); ui.saveFile('sortie-recovery.json', JSON.stringify({ app: 'tahkir', schema: 4, backupVersion: 1, flights: r.flights, questions: r.settings.questions, nextGoals: r.settings.nextGoals,
+        preferences: { course: r.settings.course, theme: r.settings.theme }, drafts: r.drafts, workspace: r.workspace, trash: r.trash }, null, 2), 'application/json');
+    };
+    all('[data-restoreflight]').forEach(function (b) { b.onclick = function () { var item = trash.find(function (t) { return t.id === b.dataset.restoreflight; }); Store.restore(item.record).then(function () { ui.toast(T.restored); recovery(route, ui); }).catch(function () { ui.toast(T.saveFailedBody, 'alert'); }); }; });
+    all('[data-restorenote]').forEach(function (b) { b.onclick = function () { try { Workspace.restoreNote(b.dataset.restorenote); ui.toast(T.restored); recovery(route, ui); } catch (e) { ui.toast(T.saveFailedBody, 'alert'); } }; });
+    all('[data-restoremilestone]').forEach(function (b) { b.onclick = function () { try { Workspace.restoreMilestone(b.dataset.restoremilestone); ui.toast(T.restored); recovery(route, ui); } catch (e) { ui.toast(T.saveFailedBody, 'alert'); } }; });
+    all('[data-unarchive]').forEach(function (b) { b.onclick = function () {
+      var questions = JSON.parse(JSON.stringify(Store.settings().questions)); questions.find(function (q) { return q.id === b.dataset.unarchive; }).archived = false;
+      if (Store.set('questions', questions)) recovery(route, ui); else ui.toast(T.saveFailedBody, 'alert');
+    }; });
+    all('[data-draftkey]').forEach(function (b) { b.onclick = function () {
+      var key = Object.keys(drafts)[+b.dataset.draftkey], wrapper = JSON.parse(drafts[key]), rec = wrapper.rec || wrapper;
+      if (rec.id && Store.get(rec.id)) ui.go((key.indexOf(':b:') !== -1 ? 'brief/' : 'debrief/') + rec.id);
+      else if (key === 'sortie:draft:new' || key === 'sortie:draft') ui.go('brief');
+      else { if (Store.promoteDraft(rec)) ui.go('brief'); else ui.toast(T.saveFailedBody, 'alert'); }
+    }; });
+  }
+  g.Features = { render: function (route, ui) {
+    try { ({ notebook: notebook, progress: progress, feedback: feedback, whatsnew: whatsnew, recovery: recovery })[route.name](route, ui); }
+    catch (e) { ui.view.innerHTML = '<section class="empty"><h1>' + esc(T.startupError) + '</h1><p>' + esc(T.startupErrorBody) + '</p><a class="btn" href="#/recovery">' + esc(T.backupRecovery) + '</a></section>'; console.error('Feature could not open', e); }
+  } };
+})(window);
