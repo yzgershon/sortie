@@ -1,6 +1,6 @@
 # Sortie handoff
 
-Updated 2026-09-25. Read this and the actual git status before editing. Preserve other agents' or Yish's work. User instructions take precedence over old agent briefings.
+Updated 2026-09-26. Read this and the actual git status before editing. Preserve other agents' or Yish's work. User instructions take precedence over old agent briefings.
 
 ## Current state
 
@@ -9,7 +9,8 @@ Updated 2026-09-25. Read this and the actual git status before editing. Preserve
 - Yish authorized the audit fixes, notebook, progress/sharing, feedback and release announcement. He selected on-device notebook storage with full backup and image/text sharing, not a public progress link.
 - The new code is implemented locally and tested. The release is **not ready to deploy** until the service/device/content acceptance items in `RELEASE-CHECKLIST.md` are addressed.
 - Local preview: `node tools/preview.cjs`, `http://127.0.0.1:8980/`. Auth is overridden in the local server response, never in the production file. A clearly labeled example notebook page was created in that preview only.
-- Feedback recipient is already established with Yish. The Formspree endpoint remains empty. Registration is open in the workspace sidebar and a question is pending for Yish to sign in/create and verify his own account. No account, endpoint or real delivery has been claimed; no email was sent.
+- Mobile formatting is a primary requirement. The notebook now has a compact cover, a native folder picker with an always-visible New folder action, 48px controls, scalable text/rules, save status above writing and no bottom tabs while editing. Chrome checks cover 320/360/390/412px, 150% text, long folder names, touch creation and saving on Back. Storage formats and save logic were unchanged in this follow-up.
+- Feedback recipient is already established with Yish. The Formspree endpoint remains empty. Its purpose/account ownership was explained and registration was reopened in the sidebar at his request. No account, endpoint or real delivery has been claimed; no email was sent.
 
 ## People and settled constraints
 
@@ -68,7 +69,7 @@ Run `node tools/build-release.cjs` then `node tools/test.cjs`. The tracked suite
 
 The private legacy suites were also rerun. All passed except four obsolete `test-store.js` expectations; the tracked copy updates MIG 4, explicit carried-and-achieved goal setup, and retained orphan drafts. Their original logs remain for comparison. The pre-course upgrade test passes 31 checks; older upgrade passes 20. No real-device acceptance is implied by Chrome emulation.
 
-Evidence: `C:\Dev\artifacts\sortie-v23\final-tests.log` and screenshots; original audit/report/probes under `C:\Dev\artifacts\sortie-review-2026-09-25`. The public tracked tests are Node files, not seed HTML. Never run `dev/serve-test.js` or `dev/shots.js` against the live origin.
+Evidence: the full suite now passes 348 checks across 14 suites, logged in `C:\Dev\artifacts\sortie-v23\mobile-tests.log`; notebook screenshots are `mobile-notebook-*.png` in that directory. Earlier evidence remains in `final-tests.log`; original audit/report/probes are under `C:\Dev\artifacts\sortie-review-2026-09-25`. The public tracked tests are Node files, not seed HTML. Never run `dev/serve-test.js` or `dev/shots.js` against the live origin. Short viewport emulation is not a real phone keyboard test.
 
 Live traps: wrap `.map(flightRow)`; map's second argument is selectable. Use pointer events and `touch-action: none` for dragging. Keep LF and never insert control characters. Export new Store APIs at the bottom. Gate install prompts from rendering behind authentication. Browser tests must wait for an actual new document, disable the worker in migration-only suites, avoid virtual-time-budget, and wait for entrance animations before screenshots. New tests use CDP device metrics for phone-size rendering.
 

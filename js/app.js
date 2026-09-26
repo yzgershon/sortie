@@ -254,6 +254,9 @@
     if (screens[route.name]) screens[route.name]();
     else Features.render(route, { view: viewEl, topbar: renderTopbar, toast: toast, sheet: openSheet, confirm: confirmSheet,
       go: go, build: BUILD, progress: syllabusProgress, saveFile: saveFile, setFlush: function (fn) { formFlush = fn; } });
+    var notebookEditor = route.name === 'notebook' && !!viewEl.querySelector('.notebook--editor');
+    viewEl.classList.toggle('view--notebookEditor', notebookEditor);
+    if (notebookEditor) tabbarEl.hidden = true;
     autosizeAll();
     if (pendingReload && !formFlush) { location.reload(); return; }
     maybeRelease();

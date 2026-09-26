@@ -317,6 +317,7 @@
     noteNew: 'עמוד חדש', noteUntitled: 'ללא כותרת', noteTitle: 'כותרת העמוד', noteBody: 'מה חשוב לך לזכור?',
     noteInbox: 'ללא תיקייה', noteAll: 'כל העמודים', noteSearch: 'חיפוש במחברת', noteEmpty: 'העמוד הראשון מחכה לך',
     noteEmptyBody: 'אפשר להתחיל ממחשבה קצרה. הטקסט נשמר במכשיר ונכלל בגיבוי.',
+    noteFolders: 'תיקיות במחברת', noteFolder: 'תיקייה',
     folderNew: 'תיקייה חדשה', folderName: 'שם התיקייה', folderRename: 'שינוי שם התיקייה', folderDelete: 'מחיקת תיקייה',
     folderDeleteBody: 'העמודים יועברו ל״ללא תיקייה״. התוכן שלהם יישמר.',
     priority: 'עדיפות', priorities: ['רגילה', 'חשובה', 'דחופה'], pinNote: 'נעיצה בראש המחברת', unpinNote: 'ביטול נעיצה',

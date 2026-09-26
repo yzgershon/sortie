@@ -15,10 +15,10 @@
     if (existing && !existing.deletedAt) return editor(existing, folders, ui);
     ui.view.innerHTML = '<section class="notebook"><header class="notebook__cover"><span class="notebook__stamp">' + esc(T.app) + '</span>' +
       '<h1>' + esc(T.notebookTitle) + '</h1><p>' + esc(T.notebookSub) + '</p>' + button(T.noteNew, 'data-newnote', 'plus', 'btn--lit') + '</header>' +
-      '<div class="notebook__tabs" role="group" aria-label="' + esc(T.folderName) + '">' +
+      '<div class="notebook__folders"><label class="notebook__folderpick">' + icon('folder') + '<select id="notebookFolder" aria-label="' + esc(T.noteFolders) + '">' +
       [{ id: '', title: T.noteAll }, { id: 'inbox', title: T.noteInbox }].concat(folders).map(function (f) {
-        return '<button type="button" data-folder="' + esc(f.id) + '" aria-pressed="' + (folder === f.id) + '">' + icon('folder') + esc(f.title) + '</button>';
-      }).join('') + button(T.folderNew, 'data-newfolder', 'plus') + '</div>' +
+        return '<option value="' + esc(f.id) + '"' + (folder === f.id ? ' selected' : '') + '>' + esc(f.title) + '</option>';
+      }).join('') + '</select></label>' + button(T.folderNew, 'data-newfolder', 'plus') + '</div>' +
       '<div class="notebook__paper"><label class="search">' + icon('search') + '<input class="input" id="noteSearch" type="search" value="' + esc(query) + '" placeholder="' + esc(T.noteSearch) + '" aria-label="' + esc(T.noteSearch) + '"></label>' +
       '<div id="noteRows"></div><p class="notebook__foot">' + esc(T.onDeviceOnly) + '</p></div></section>';
     function paint() {
@@ -53,19 +53,20 @@
       try { var note = Workspace.saveNote({ title: '', body: '', folder: folder && folder !== 'inbox' ? folder : '', priority: 0 }); ui.go('notebook/' + note.id); }
       catch (e) { ui.toast(T.saveFailedBody, 'alert'); }
     };
-    all('[data-folder]').forEach(function (b) { b.onclick = function () { g.Features.folder = b.dataset.folder; notebook(route, ui); }; });
+    $('#notebookFolder').onchange = function (e) { g.Features.folder = e.target.value; notebook(route, ui); };
     $('#noteSearch').oninput = function (e) { query = e.target.value; g.Features.noteQuery = query; paint(); };
     paint();
   }
   function editor(note, folders, ui) {
     ui.topbar({ title: T.notebook, back: true, backTo: 'notebook' });
     ui.view.innerHTML = '<article class="notebook notebook--editor"><div class="notebook__binding"></div><div class="notebook__paper">' +
-      '<div class="notebook__editorbar"><select id="noteFolder" aria-label="' + esc(T.folderName) + '">' + [{ id: '', title: T.noteInbox }].concat(folders).map(function (f) { return '<option value="' + esc(f.id) + '"' + (note.folder === f.id ? ' selected' : '') + '>' + esc(f.title) + '</option>'; }).join('') + '</select>' +
-      '<select id="notePriority" aria-label="' + esc(T.priority) + '">' + T.priorities.map(function (p, i) { return '<option value="' + i + '"' + (+note.priority === i ? ' selected' : '') + '>' + esc(p) + '</option>'; }).join('') + '</select></div>' +
+      '<div class="notebook__editorbar"><label><span>' + esc(T.noteFolder) + '</span><select id="noteFolder">' + [{ id: '', title: T.noteInbox }].concat(folders).map(function (f) { return '<option value="' + esc(f.id) + '"' + (note.folder === f.id ? ' selected' : '') + '>' + esc(f.title) + '</option>'; }).join('') + '</select></label>' +
+      '<label><span>' + esc(T.priority) + '</span><select id="notePriority">' + T.priorities.map(function (p, i) { return '<option value="' + i + '"' + (+note.priority === i ? ' selected' : '') + '>' + esc(p) + '</option>'; }).join('') + '</select></label></div>' +
       '<input id="noteTitle" class="notebook__title" dir="auto" maxlength="200" value="' + esc(note.title) + '" placeholder="' + esc(T.noteTitle) + '" aria-label="' + esc(T.noteTitle) + '">' +
-      '<textarea id="noteBody" class="notebook__writing" dir="auto" placeholder="' + esc(T.noteBody) + '" aria-label="' + esc(T.noteBody) + '">' + esc(note.body) + '</textarea>' +
       '<div class="notebook__status"><span id="noteState" role="status">' + esc(T.draftSaved) + '</span><span>' + esc(date(note.updatedAt)) + '</span></div>' +
-      '<div class="notebook__actions">' + button(note.pinned ? T.unpinNote : T.pinNote, 'data-pinnote', 'flag') + button(T.noteDelete, 'data-deletenote', 'trash') + button(T.downloadNote, 'data-downloadnote', 'download') + '<button class="btn" data-notecopy hidden>' + esc(T.saveSeparateCopy) + '</button></div></div></article>';
+      '<button class="btn" data-notecopy hidden>' + esc(T.saveSeparateCopy) + '</button>' +
+      '<textarea id="noteBody" class="notebook__writing" dir="auto" placeholder="' + esc(T.noteBody) + '" aria-label="' + esc(T.noteBody) + '">' + esc(note.body) + '</textarea>' +
+      '<div class="notebook__actions">' + button(note.pinned ? T.unpinNote : T.pinNote, 'data-pinnote', 'flag') + button(T.downloadNote, 'data-downloadnote', 'download') + button(T.noteDelete, 'data-deletenote', 'trash') + '</div></div></article>';
     var timer, dirty = false, alive = true, root = $('.notebook--editor');
     function flush() {
       clearTimeout(timer);
