@@ -160,7 +160,7 @@
     missedGoals: 'יעדים שלא הושגו',
     readAcross: 'תשובה אחת לאורך כל הטיסות',
     nothingHere: 'עדיין לא נכתב כאן דבר.',
-    totalMinutes: 'סך שעות',
+    totalMinutes: 'שעות מתועדות',
 
     /* syllabus progress */
     sylProgress: 'התקדמות בסילבוס',
@@ -386,8 +386,10 @@
     feedbackPrivacy: 'נשלחים רק המשוב, כתובת החזרה שהזנת ופרטי האבחון שבחרת. הטיסות והמחברת אינם מצורפים.',
     feedbackDiagnostics: 'צירוף גרסת האפליקציה, סוג המכשיר והקורס לצורך בדיקה',
     feedbackNotReady: 'שירות המשוב עדיין בהכנה. אפשר לכתוב ולשמור טיוטה.', feedbackLength: 'יש לכתוב בין 5 ל־5000 תווים.',
-    feedbackSaved: 'טיוטת המשוב נשמרה', whatsNew: 'מה חדש בתחקיר', releaseIntro: 'יותר מקום לכתוב, תמונה ברורה של הדרך ושמירה טובה יותר על העבודה שלך.',
+    feedbackSaved: 'טיוטת המשוב נשמרה', whatsNew: 'מה חדש בתחקיר', releaseIntro: 'עיצוב חדש, שעות הטיסה שלך במבט אחד ושליטה מלאה בהגדרות. כל מה ששמרת עבר איתך.',
     releaseItems: [
+      ['עיצוב חדש ומסך בית חכם', 'שעות הטיסה, קצב השבוע, היעדים והסולו מופיעים ראשונים, עם מספרים מתגלגלים וגרף טיסות של השבועות האחרונים.'],
+      ['שליטה מלאה בהגדרות', 'עדכון ידני של סך שעות הטיסה, בחירת רמת האנימציות והרטט, ובחירה מה יופיע במסך הבית.'],
       ['תחקיר אישי יותר', 'שם, כינוי ודגש אישי לבחירתך. מסך הבית מציג קודם את התחקירים שממתינים ואת הדרך שלך בקורס.'],
       ['לילה שקט ועיצוב נוח יותר', 'ערכת נושא כהה ורכה, תמונות תעופה מקוריות, טקסט קריא יותר וכפתורים נוחים.'],
       ['מחברת במרחק נגיעה', 'עמודים, תיקיות, חיפוש ועדיפויות. אפשר לפתוח אותה מכל מסך.'],
@@ -430,6 +432,71 @@
     retry: 'ניסיון נוסף', draftSaving: 'שומר…', draftSaved: 'הטיוטה נשמרה',
     exportJsonSub: 'גיבוי מלא, כולל המחברת והטיוטות',
     confirmDeleteBody: 'הטיסה תועבר לנמחקו לאחרונה ותהיה זמינה לשחזור.',
-    confirmDeleteAllBody: 'הטיסות יועברו לנמחקו לאחרונה ויישמר עותק מקומי לשחזור. מומלץ לייצא גיבוי קודם.'
+    confirmDeleteAllBody: 'הטיסות יועברו לנמחקו לאחרונה ויישמר עותק מקומי לשחזור. מומלץ לייצא גיבוי קודם.',
+    greeting: function (hour, name) {
+      var part = hour >= 5 && hour < 12 ? 'בוקר טוב' : hour >= 12 && hour < 17 ? 'צהריים טובים' : hour >= 17 && hour < 22 ? 'ערב טוב' : 'לילה טוב';
+      return name ? part + ', ' + name : part;
+    },
+    nextStep: 'הצעד הבא', nextFlight: 'הטיסה הבאה',
+    nextFlightGoals: function (n) { return n === 1 ? 'יעד אחד מחכה לתדריך הבא.' : n + ' יעדים מחכים לתדריך הבא.'; },
+    nextFlightHint: 'לפני הטיסה ממלאים תדריך קצר. אחרי הנחיתה משלימים אותו לתחקיר.',
+    draftInProgress: 'תדריך שעוד לא נשמר', continueBrief: 'המשך התדריך', draftUntitled: 'עוד בלי נושא',
+    goalsOpenTitle: 'יעדים פתוחים', lastEightWeeks: '8 שבועות',
+    detailBrief: 'לפני הטיסה', detailDebrief: 'אחרי הטיסה', moreActions: 'פעולות נוספות',
+    courseRouteHint: 'כל נקודת ציון היא פרק בסילבוס, במספור של הרשימה למטה. אורך כל רגל לפי מספר הגיחות בפרק.',
+    courseRouteLabel: function (pct, next) { return 'מפת המסלול בקורס: ' + pct + '% מהגיחות תועדו' + (next ? '. הפרק הבא: ' + next : ''); },
+    hoursUnit: 'שעות', minutesShort: 'דק׳', flightsN: function (n) { return n === 1 ? 'טיסה אחת' : n + ' טיסות'; },
+    quickActions: 'קיצורי דרך', qaRoute: 'המסלול', qaSyllabus: 'סילבוס', qaWeek: 'סיכום שבוע', qaBackup: 'גיבוי',
+    myProfile: 'הפרופיל שלי',
+    trailLabel: function (counts) { return 'טיסות מתוחקרות בכל אחד משמונת השבועות האחרונים, מהישן לחדש: ' + counts.join(', '); },
+
+    /* the course's end date */
+    courseEnds: 'סיום הקורס',
+    courseEndsOn: function (d) { return 'סיום הקורס ' + d; },
+    daysLeftN: function (n) { return n === 1 ? 'עוד יום אחד' : 'עוד ' + n + ' ימים'; },
+    daysLeftLabel: function (n) { return n === 1 ? 'יום לסיום הקורס' : 'ימים לסיום הקורס'; },
+    courseLastDay: 'היום הוא היום האחרון בקורס', courseEnded: function (d) { return 'הקורס הסתיים ב־' + d; },
+    sortiesUndocumented: function (n) { return n === 1 ? 'גיחה אחת בסילבוס עוד לא תועדה' : n + ' גיחות בסילבוס עוד לא תועדו'; },
+    paceToFinish: function (n) { return 'כדי שכל הסילבוס יתועד עד הסיום: כ־' + n + ' ' + (n === 1 ? 'גיחה' : 'גיחות') + ' בשבוע'; },
+    allDocumented: 'כל הגיחות בסילבוס תועדו',
+
+    /* flight hours in settings */
+    hoursTitle: 'שעות טיסה', hoursLogged: 'מתועדות ביומן', hoursManual: 'תוספת ידנית', hoursTotal: 'סך השעות שלך',
+    hoursInput: 'סך שעות הטיסה שלך', hoursInputHint: 'למשל 32.5 או 32:30',
+    hoursHint: 'השעות מחושבות מדקות הטיסה שתיעדת בכל תחקיר. אם טסת לפני שהתחלת לתעד כאן, או שחסרות דקות בחלק מהטיסות, אפשר לעדכן את הסך. הטיסות עצמן לא משתנות, וכל טיסה חדשה תתווסף לסך הזה.',
+    hoursSave: 'עדכון הסך', hoursReset: 'חזרה לשעות מהיומן', hoursSaved: 'סך שעות הטיסה עודכן', hoursResetDone: 'חזרנו לשעות שמתועדות ביומן',
+    hoursInvalid: 'צריך מספר שעות בין 0 ל־9999, למשל 32.5 או 32:30',
+    hoursWithManual: function (h) { return 'כולל ' + h + ' ידניות'; }, hoursCorrected: 'אחרי תיקון ידני',
+    hoursSettingsSub: function (total, adjusted) { return total + ' שעות' + (adjusted ? ' · כולל עדכון ידני' : ' · לפי היומן'); },
+
+    /* motion, touch and home */
+    motionTitle: 'תנועה ותחושה', motionLabel: 'אנימציות',
+    motionAuto: 'לפי הטלפון', motionFull: 'מלאות', motionReduced: 'מופחתות', motionOff: 'כבויות',
+    motionHint: 'מופחתות: רק מעברים קצרים, בלי אפקטים ברקע. לפי הטלפון: כבויות אם הטלפון מוגדר להפחתת תנועה.',
+    hapticsLabel: 'רטט בלחיצה', hapticsHint: 'באנדרואיד. באייפון הדפדפן לא מאפשר רטט.',
+    homeSectionsTitle: 'מסך הבית', homeSectionsHint: 'הנתונים והטיסה הבאה מוצגים תמיד. את השאר אפשר להסתיר.',
+    homeShowFocus: 'הדגש האישי', homeShowQuick: 'קיצורי דרך', homeShowGoals: 'יעדים פתוחים', homeShowRecent: 'טיסות אחרונות',
+    shownOnHome: 'מוצג', hiddenFromHome: 'מוסתר',
+
+    /* the update message and its tour */
+    releaseVersion: function (v) { return 'גרסה ' + String(v).replace(/^v/, ''); },
+    releaseKicker: 'עדכון חדש',
+    releaseHighlights: [
+      ['clock', 'שעות הטיסה שלך במבט אחד', 'כל הדקות שכבר תיעדת מחושבות לסך שעות, עם גרף של השבועות האחרונים.'],
+      ['target', 'היעדים והסולו על המסך הראשון', 'מדדים עם טבעות התקדמות, בלי לגלול.'],
+      ['settings', 'שליטה מלאה בהגדרות', 'עדכון ידני של שעות הטיסה, רמת האנימציות, רטט ומה יופיע במסך הבית.'],
+      ['layers', 'עיצוב חדש לגמרי', 'כרטיסי זכוכית, מספרים מתגלגלים וקיצורי דרך למסלול, לסילבוס ולגיבוי.']
+    ],
+    releaseSafe: 'הטיסות, הטיוטות, המחברת והיעדים שלך עברו בדיוק כמו שהם.',
+    releaseTour: 'הראו לי מה חדש', releaseLater: 'הבנתי, אולי אחר כך',
+    tourLabel: 'סיור במה שחדש', tourNext: 'הבא', tourBack: 'הקודם', tourSkip: 'דילוג', tourDone: 'סיום',
+    tourStep: function (i, n) { return i + ' מתוך ' + n; },
+    tourSteps: [
+      ['.flightcard', 'שעות הטיסה שלך', 'כל הדקות שתיעדת בתחקירים מתחברות כאן לסך שעות. הקו מראה כמה טסת בכל שבוע בחודשיים האחרונים.'],
+      ['.readouts--tiles', 'שלושה מדדים לדרך', 'טיסות מתוחקרות, אחוז היעדים שהשגת ואישורי הסולו של השבוע, עם טבעת התקדמות.'],
+      ['.qa', 'קיצורי דרך', 'המסלול שלך בקורס, הסילבוס, סיכום השבוע וגיבוי, בלחיצה אחת.'],
+      ['.tab--primary .tab__ic', 'תדריך חדש מכל מסך', 'הכפתור המרכזי פותח תדריך. אחרי הנחיתה משלימים אותו לתחקיר.'],
+      ['.topbar a[href="#/settings"]', 'הכל ניתן להתאמה', 'בהגדרות אפשר לעדכן את סך שעות הטיסה, לבחור ערכת נושא ואנימציות, ולקבוע מה יופיע במסך הבית.']
+    ]
   });
 })(window);

@@ -6,7 +6,7 @@
 (function (global) {
   'use strict';
 
-  var BUILD = 'v23-preview';   // keep in step with VERSION in sw.js
+  var BUILD = 'v23';   // keep in step with VERSION in sw.js
 
   var appEl, viewEl, topbarEl, tabbarEl, toasterEl, sheetEl, lockEl;
   var route = { name: 'home', param: null };
@@ -36,6 +36,21 @@
     return String(s == null ? '' : s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
+  /* A number as an altimeter drum: every digit a reel that rolls into place
+     when the screen arrives. The digits stay in the DOM as plain text and the
+     reels are drawn by CSS, so reading, copying and screen readers get the
+     real value; with reduced motion the reels simply sit on it. */
+  function odo(v) {
+    var s = String(v), n = s.replace(/\D/g, '').length, k = 0;
+    return '<span class="odo">' + s.split('').map(function (c) {
+      if (!/\d/.test(c)) return '<span class="odo__s">' + esc(c) + '</span>';
+      k++;
+      return '<span class="odo__d" style="--d:' + c + ';--k:' + (n - k) + '">' + c + '</span>';
+    }).join('') + '</span>';
+  }
+  /* The course badge, supplied by Yish: decorative wherever it appears, since
+     the app's name always stands beside it. */
+  var BADGE = '<img class="badge" src="assets/badge.png" alt="" width="160" height="160" decoding="async">';
   function $(s, r) { return (r || document).querySelector(s); }
   function $$(s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); }
   function reportActionError(e) {
@@ -82,7 +97,44 @@
   function isStandalone() {
     return global.navigator.standalone === true || global.matchMedia('(display-mode: standalone)').matches;
   }
-  function haptic(ms) { if (navigator.vibrate) { try { navigator.vibrate(ms || 8); } catch (e) {} } }
+  function haptic(ms) {
+    var st = global.Store && Store.settings ? Store.settings() : null;
+    if (st && st.haptics === false) return;
+    if (navigator.vibrate) { try { navigator.vibrate(ms || 8); } catch (e) {} }
+  }
+
+  /* Minutes flown on one record, read from whichever minutes question it was
+     answered under. Archived questions count too, so renaming or rebuilding
+     the question never drops earlier flights out of the total. */
+  function minutesQuestions() {
+    return Store.questions(true).filter(function (q) { return q.type === 'minutes'; });
+  }
+  function flightMinutes(r, qs) {
+    for (var i = 0; i < qs.length; i++) {
+      var v = r.answers ? r.answers[qs[i].id] : undefined;
+      if (v === undefined || v === null || String(v).trim() === '') continue;
+      var n = parseFloat(v);
+      if (isFinite(n) && n >= 0) return n;
+    }
+    return 0;
+  }
+  /** Every debriefed minute in the journal, before any manual change. */
+  function loggedMinutes() {
+    var qs = minutesQuestions(), m = 0;
+    Store.done().forEach(function (r) { m += flightMinutes(r, qs); });
+    return Math.round(m);
+  }
+  // tenths of an hour are six-minute steps; counting those avoids toFixed()
+  // rounding 2.05 down to 2.0 through binary fractions
+  function hoursOf(mins) { return (Math.round(Math.max(0, mins) / 6) / 10).toFixed(1); }
+  /** "32.5", "32,5" or "32:30" to minutes; null when it is not an amount. */
+  function parseHours(v) {
+    v = String(v == null ? '' : v).trim().replace(',', '.');
+    var hm = /^(\d{1,4}):([0-5]\d)$/.exec(v);
+    if (hm) return +hm[1] * 60 + +hm[2];
+    if (/^\d{1,4}(\.\d+)?$/.test(v)) return Math.round(parseFloat(v) * 60);
+    return null;
+  }
 
   /** Installing is a different gesture on each platform, and the old text only
    *  described Safari's Share sheet — which is the wrong instruction for most
@@ -101,10 +153,12 @@
   function toast(msg, ic, act) {
     while (toasterEl.children.length >= 2) toasterEl.firstElementChild.remove();
     var t = document.createElement('div');
-    t.className = 'toast' + (act ? ' toast--act' : '');
+    t.className = 'toast' + (act ? ' toast--act' : '') + ' toast--' + (ic || 'checkCircle');
     t.innerHTML = icon(ic || 'checkCircle') + '<span>' + esc(msg) + '</span>' +
       (act ? '<button class="toast__b" type="button">' + esc(act.label) + '</button>' : '');
     toasterEl.appendChild(t);
+    // a saved flight gets a pass overhead
+    if (global.Motion && (msg === T.briefSavedToast || msg === T.debriefSavedToast)) Motion.flyby();
     var done = false;
     function close() {
       if (done) return;
@@ -122,7 +176,7 @@
 
   function openSheet(o) {
     sheetEl.setAttribute('aria-label', o.title || T.app);
-    sheetEl.innerHTML = '<div class="sheet__panel"><div class="sheet__grab"></div>' +
+    sheetEl.innerHTML = '<div class="sheet__panel' + (o.cls ? ' ' + o.cls : '') + '"><div class="sheet__grab"></div>' + (o.hero || '') +
       (o.title ? '<h2 class="sheet__title">' + esc(o.title) + '</h2>' : '') +
       (o.text ? '<p class="sheet__text">' + esc(o.text) + '</p>' : '') +
       (o.body || '') +
@@ -155,6 +209,8 @@
     if (p === 'auto') m = global.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
     if (['dark', 'calm', 'light'].indexOf(m) === -1) m = 'dark';
     document.documentElement.setAttribute('data-theme', m);
+    // the animation level chosen in הגדרות; `auto` follows the phone
+    document.documentElement.setAttribute('data-motion', Store.settings().motion || 'auto');
     document.documentElement.style.colorScheme = m === 'light' ? 'light' : 'dark';
     $$('meta[name="theme-color"]').forEach(function (meta) {
       meta.removeAttribute('media'); meta.content = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
@@ -205,38 +261,57 @@
     if (ROUTES.indexOf(n) === -1) n = 'home';
     route = { name: n, param: h[1] ? decodeURIComponent(h[1]) : null };
     navCount++;
+    // an arrival, so the new screen may materialize (a redraw in place may not)
+    if (global.Motion) Motion.enter(viewEl);
     render();
     global.scrollTo(0, 0);
     viewEl.focus({ preventScroll: true });
     if (pendingWorker && !formFlush) activateUpdate();
   }
 
+  /* The daily loop sits under the thumb: the log, a new brief in the middle,
+     and the notebook, which is opened between flights far more than settings
+     is. Settings moved up to the top bar of every main screen. */
   var TABS = [
-    { id: 'home',   l: T.navHome,   c: T.capHome,   ic: 'horizon'  },
-    { id: 'log',    l: T.navLog,    c: T.capLog,    ic: 'layers'   },
-    { id: 'trends', l: T.navTrends, c: T.capTrends, ic: 'trending' },
-    { id: 'settings', l: T.navSet,  c: T.capSet,    ic: 'settings' }
+    { id: 'home',     l: T.navHome,     ic: 'horizon'  },
+    { id: 'log',      l: T.navLog,      ic: 'layers'   },
+    { id: 'brief',    l: T.briefTitle,  ic: 'plus', primary: true },
+    { id: 'notebook', l: T.notebook,    ic: 'notebook' },
+    { id: 'trends',   l: T.navTrends,   ic: 'trending' }
   ];
+  var ROOT_SCREENS = ['home', 'log', 'trends', 'notebook'];
 
+  /* The lit pill slides from the tab you left to the one you opened. */
+  var lastTab = -1;
   function renderTabs() {
-    var cur = ({ flight: 'log', summary: 'log', progress: 'trends', profile: 'settings', feedback: 'settings', recovery: 'settings', whatsnew: 'settings', syllabus: 'settings' })[route.name] || route.name;
-    tabbarEl.innerHTML = TABS.map(function (t) {
-      return '<a class="tab" href="#/' + (t.id === 'home' ? '' : t.id) + '"' +
-        (t.id === cur ? ' aria-current="page"' : '') + '>' + icon(t.ic) +
+    var cur = ({ flight: 'log', summary: 'log', progress: 'trends', syllabus: 'trends' })[route.name] || route.name;
+    var at = -1;
+    TABS.forEach(function (t, i) { if (t.id === cur && !t.primary) at = i; });
+    tabbarEl.innerHTML = (at !== -1 ? '<span class="tabbar__glow" aria-hidden="true" style="--i:' + at + ';--f:' + (lastTab === -1 ? at : lastTab) + '"></span>' : '') +
+      TABS.map(function (t) {
+      return '<a class="tab' + (t.primary ? ' tab--primary' : '') + '" href="#/' + (t.id === 'home' ? '' : t.id) + '"' +
+        (t.id === cur ? ' aria-current="page"' : '') + '><span class="tab__ic">' + icon(t.ic) + '</span>' +
         '<span>' + esc(t.l) + '</span></a>';
     }).join('');
+    if (at !== -1) lastTab = at;
   }
 
   function renderTopbar(c) {
+    var root = ROOT_SCREENS.indexOf(route.name) !== -1 && !c.back;
+    var formish = route.name === 'brief' || route.name === 'debrief';
+    topbarEl.classList.toggle('topbar--root', root);
     topbarEl.innerHTML =
       (c.back ? '<button class="iconbtn iconbtn--flip" data-back aria-label="' + esc(T.back) + '">' + icon('chevLeft') + '</button>' : '') +
+      (root ? '<span class="topbar__mark" aria-hidden="true">' + BADGE + '</span>' : '') +
       '<div class="topbar__title">' + esc(c.title || '') + '</div>' +
-      (route.name !== 'notebook' ? '<a class="iconbtn notebook-shortcut" href="#/notebook" aria-label="' + esc(T.notebook) + '">' + icon('notebook') + '</a>' : '') +
-      (c.sub ? '<span class="topbar__sub">' + esc(c.sub) + '</span>' : '') +
+      /* A brief is often written next to notes from the last flight. The tab
+         bar is hidden on forms, so the notebook stays one tap away there. */
+      (formish ? '<a class="iconbtn notebook-shortcut" href="#/notebook" aria-label="' + esc(T.notebook) + '">' + icon('notebook') + '</a>' : '') +
       (c.actions || []).map(function (a) {
         return '<button class="iconbtn' + (a.lit ? ' iconbtn--lit' : '') + '" data-topact="' + a.id +
           '" aria-label="' + esc(a.label) + '">' + icon(a.ic) + '</button>';
-      }).join('');
+      }).join('') +
+      (root ? '<a class="iconbtn" href="#/settings" aria-label="' + esc(T.settings) + '">' + icon('settings') + '</a>' : '');
     on(topbarEl, '[data-back]', 'click', function () {
       if (navCount > 1) history.back(); else go(c.backTo || '');
     });
@@ -259,7 +334,7 @@
        summary: screenSummary, syllabus: screenSyllabus };
     if (screens[route.name]) screens[route.name]();
     else Features.render(route, { view: viewEl, topbar: renderTopbar, toast: toast, sheet: openSheet, confirm: confirmSheet,
-      go: go, build: BUILD, progress: syllabusProgress, saveFile: saveFile, setFlush: function (fn) { formFlush = fn; } });
+      go: go, build: BUILD, progress: syllabusProgress, clock: courseClock, saveFile: saveFile, tour: startTour, setFlush: function (fn) { formFlush = fn; } });
     var notebookEditor = route.name === 'notebook' && !!viewEl.querySelector('.notebook--editor');
     viewEl.classList.toggle('view--notebookEditor', notebookEditor);
     if (notebookEditor) tabbarEl.hidden = true;
@@ -268,14 +343,56 @@
     maybeRelease();
   }
 
+  /* Only people who used an earlier version are told what changed. Someone
+     opening תחקיר for the first time has nothing that "came with them"; the
+     version is marked as seen for them, and the tour stays in מה חדש. */
+  function hasHistory() {
+    var w = global.Workspace && Workspace.all ? Workspace.all() : null;
+    return Store.count() > 0 || !!Store.readDraft() || Store.nextGoals().length > 0 ||
+      !!(w && ((w.notes || []).length || (w.milestones || []).length));
+  }
   function maybeRelease() {
     if (releasePrompted || /preview/.test(BUILD) || appEl.hidden || !lockEl.hidden || route.name !== 'home' || Store.settings().releaseSeen === BUILD) return;
     releasePrompted = true;
-    openSheet({ title: T.whatsNew, text: T.releaseIntro,
-      body: '<ul class="release-highlights">' + T.releaseItems.map(function (item) { return '<li><b>' + esc(item[0]) + '</b><p>' + esc(item[1]) + '</p></li>'; }).join('') + '</ul>',
-      actions: [{ label: T.understood, cls: 'btn--lit', keepOpen: true, run: function (sh) { if (Store.set('releaseSeen', BUILD)) sh.close(); else toast(T.saveFailedBody, 'alert'); } },
-        { label: T.releaseDetails, run: function () { go('whatsnew'); } }]
+    if (!hasHistory()) { Store.set('releaseSeen', BUILD); return; }
+    releaseSheet();
+  }
+
+  /* The update message: what changed, in four lines, the reassurance that
+     nothing saved was touched, and a way to be shown rather than told. */
+  function releaseSheet() {
+    function seen() { return /preview/.test(BUILD) || Store.set('releaseSeen', BUILD); }
+    openSheet({ title: T.whatsNew, text: T.releaseIntro, cls: 'sheet__panel--release',
+      hero: '<div class="release-hero">' +
+          '<div class="release-hero__art" aria-hidden="true">' +
+            Visuals.contrail({ values: [1, 2, 1, 3, 2, 3, 4, 5], w: 320, h: 70, animate: !(global.Motion && Motion.reduced()) }) + '</div>' +
+          '<span class="release-hero__mark" aria-hidden="true">' + BADGE + '</span>' +
+          '<span class="release-hero__kicker">' + esc(T.releaseKicker) + '</span>' +
+          '<span class="release-hero__ver mono">' + esc(T.releaseVersion(BUILD)) + '</span></div>',
+      body: '<ul class="release-points">' + T.releaseHighlights.map(function (x) {
+          return '<li><span class="release-points__ic" aria-hidden="true">' + icon(x[0]) + '</span><div><b>' + esc(x[1]) + '</b><p>' + esc(x[2]) + '</p></div></li>';
+        }).join('') + '</ul>' +
+        '<p class="release-safe">' + icon('checkCircle') + '<span>' + esc(T.releaseSafe) + '</span></p>',
+      actions: [
+        { label: T.releaseTour, cls: 'btn--lit btn--lg', icon: 'plane', keepOpen: true, run: function (sh) {
+            if (!seen()) return toast(T.saveFailedBody, 'alert');
+            sh.close(); startTour();
+          } },
+        { label: T.releaseLater, cls: 'btn--quiet', keepOpen: true, run: function (sh) { if (seen()) sh.close(); else toast(T.saveFailedBody, 'alert'); } },
+        { label: T.releaseDetails, cls: 'btn--quiet', run: function () { go('whatsnew'); } }
+      ]
     });
+  }
+
+  /* A guided look at what is new, spotlighting each part of the home screen. */
+  function startTour() {
+    if (!global.Tour) return;
+    function run() {
+      Tour.start(T.tourSteps.map(function (x) { return { sel: x[0], title: x[1], body: x[2] }; }), {
+        label: T.tourLabel, next: T.tourNext, back: T.tourBack, skip: T.tourSkip, done: T.tourDone, step: T.tourStep, inert: appEl
+      });
+    }
+    if (route.name !== 'home') { go(''); setTimeout(run, 60); } else run();
   }
 
   function empty(ic, t, p) {
@@ -294,20 +411,15 @@
     var open = waiting[0] || null;
     var s = Store.settings(), goals = Store.nextGoals(), pilot = s.pilotProfile || {};
 
-    renderTopbar({
-      title: T.app,
-      actions: [{ id: 'new', ic: 'plus', label: T.newBrief, lit: true, run: function () { go('brief'); } }]
-    });
+    // a new brief is the centre of the tab bar, so it is not repeated up here
+    renderTopbar({ title: T.app });
 
-    var qMin = Store.questions().filter(function (q) { return q.type === 'minutes'; })[0];
-    var mins = 0;
-    if (qMin) done.forEach(function (r) {
-      var v = parseInt(r.answers[qMin.id], 10);
-      if (!isNaN(v)) mins += v;
-    });
     // logged per flight in minutes, totalled here in hours the way flight time
-    // is actually recorded
-    var hours = (mins / 60).toFixed(1);
+    // is actually recorded, plus any correction made in הגדרות
+    var mins = loggedMinutes(), adjust = +s.hoursAdjust || 0;
+    var hours = hoursOf(mins + adjust);
+    var hide = s.homeHide || [];
+    function shown(part) { return hide.indexOf(part) === -1; }
 
     var qg = Store.roleQuestion('goals'), met = 0, tot = 0;
     if (qg) done.forEach(function (r) {
@@ -338,113 +450,151 @@
     }
     var week = all.filter(inThisWeek).length;
 
-    var h = '<div class="stack-6 stagger">';
+    var progress = syllabusProgress(), percentage = progress ? Math.round(progress.done / Math.max(1, progress.total) * 100) : 0;
+    var clock = progress ? courseClock(progress) : null;
 
-    h += '<header class="pilot-home"><div class="pilot-home__top"><span class="page-heading__context">' + esc(T.pilotJournal) + '</span><a href="#/profile">' + esc(T.personalizeProfile) + '</a></div>' +
-      '<div class="pilot-identity"><span class="pilot-mark" aria-hidden="true">' + icon('horizon') + '</span><div><h1>' + esc(T.pilotGreeting(pilot.name)) + '</h1>' +
-      '<div class="pilot-identity__meta"><span>' + esc(Store.course().label) + '</span>' + (pilot.callsign ? '<b dir="auto">' + esc(pilot.callsign) + '</b>' : '') + '</div></div></div>' +
-      '<p class="pilot-home__date">' + esc(new Date().toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' })) + '</p>' +
-      '<a class="pilot-focus" href="#/profile">' + icon('target') + '<span><small>' + esc(T.pilotFocus) + '</small><b dir="auto">' + esc(pilot.focus || T.focusPrompt) + '</b></span>' + icon('chevLeft') + '</a></header>';
-    var progress = syllabusProgress(), percentage = Math.round(progress.done / Math.max(1, progress.total) * 100);
-    var shortcuts = '<a class="course-strip" href="#/progress"><div><span>' + esc(T.courseProgress) + '</span><strong dir="ltr">' + percentage + '<small>%</small></strong></div>' +
-      '<div class="course-strip__track" aria-hidden="true"><span style="width:' + percentage + '%"></span></div><p>' + esc(T.progressCount(progress.done, progress.total)) + ' · ' + esc(Store.course().label) + '</p></a>';
-    h +=
-      (Store.readDraft() ? '<a class="btn btn--block" href="#/brief">' + icon('pencil') + esc(T.resumeDraft) + '</a>' : '');
-
-    var overview = '<section class="journal-overview"><div class="section-heading"><h2>' + esc(T.journalOverview) + '</h2></div><p class="field__hint">' + esc(T.allJournalData) + '</p><div class="readouts">' +
-      readout('cyan', 'clock', T.rHours, T.capHours, hours, mins + ' ' + T.rMinutes) +
-      readout('', 'layers', T.rFlights, T.capFlights, String(done.length), '') +
-      readout('green', 'target', T.rGoals, T.capGoals,
-        tot ? Math.round(met / tot * 100) + '<small>%</small>' : '<small>' + esc(T.notAnswered) + '</small>', tot ? T.recordedGoals(met, tot) : T.noGradedGoals) +
-      (qSolo
-        ? readout('amber', 'checkCircle', T.rSolo, T.capSolo,
-            soloTot ? Math.round(soloYes / soloTot * 100) + '<small>%</small>' : '<small>—</small>',
-            soloTot ? soloYes + '/' + soloTot + ' · ' + T.rWeek : T.rWeek)
-        : readout('amber', 'trending', T.rWeek, T.capWeek, String(week), '')) +
-    '</div></section>';
-
-    /* Everything still waiting on a תחקיר, not just the newest. Flying several
-       times a week means forgetting one is routine, and showing only the most
-       recent left the older one visible nowhere but the log. */
-    if (open) {
-      var subQ = Store.roleQuestion('subject') || Store.question('q_subject');
-      var subj = subQ ? (open.answers[subQ.id] || '') : '';
-      h += '<section class="panel panel--amber brackets">' +
-        '<div class="panel__head">' + icon('flag') +
-          '<span class="panel__t">' + esc(T.briefsWaiting(waiting.length)) + '</span>' +
-          '<span class="panel__a">' + esc(T.capBrief) + '</span></div>' +
-        '<div class="panel__body stack">' +
-          (subj ? '<div style="font-size:var(--t-17);font-weight:700" dir="auto">' + esc(subj) + '</div>' : '') +
-          '<div class="dim" style="font-size:var(--t-12)">' + esc(fmtLong(open.flownAt)) + '</div>' +
-          '<button class="btn btn--amber btn--block btn--lg" data-godebrief="' + esc(open.id) + '">' +
-            icon('check') + esc(T.openBrief) + '</button>' +
-          '<button class="btn btn--quiet btn--block" data-gobrief="' + esc(open.id) + '">' +
-            icon('pencil') + esc(T.editBrief) + '</button>' +
-          (waiting.length > 1
-            ? '<div class="waitmore"><span class="waitmore__k">' + esc(T.alsoWaiting) + '</span>' +
-              waiting.slice(1).map(function (r) {
-                var t = subQ ? (r.answers[subQ.id] || '') : '';
-                return '<button class="waitmore__r" data-godebrief="' + esc(r.id) + '">' +
-                  '<span dir="auto">' + esc(t || fmtDate(r.flownAt)) + '</span>' +
-                  '<span class="mono">' + esc(fmtNum(r.flownAt)) + '</span></button>';
-              }).join('') + '</div>'
-            : '') +
-        '</div></section>';
-    } else {
-      h += '<button class="btn btn--lit btn--block btn--lg" data-new>' +
-        icon('plus') + esc(T.newBrief) + '</button>';
+    /* Debriefed flights in each of the last eight weeks, the same windows as
+       מגמות, drawn on the card as a contrail. */
+    var trail = [];
+    for (var wk8 = 7; wk8 >= 0; wk8--) {
+      var wEnd = new Date(); wEnd.setHours(23, 59, 59, 999); wEnd.setDate(wEnd.getDate() - wk8 * 7);
+      var wStart = new Date(wEnd); wStart.setDate(wStart.getDate() - 6); wStart.setHours(0, 0, 0, 0);
+      trail.push(done.filter(function (r) {
+        var t = parseISO(r.flownAt).getTime();
+        return t >= wStart.getTime() && t <= wEnd.getTime();
+      }).length);
     }
-    h += shortcuts + overview;
+    // the aircraft only flies the trail on arrival, never on a redraw in place
+    var live = global.Motion ? Motion.entering(viewEl) : false;
 
-    /* First run. 27 people got a link and no manual, and the three things that
-       make this app worth opening are all invisible from an empty screen. */
-    if (!all.length && !s.startDismissed) {
-      h += '<section class="panel panel--cyan"><div class="panel__head">' + icon('info') +
-        '<span class="panel__t">' + esc(T.startTitle) + '</span></div>' +
-        '<div class="panel__body"><ol class="howto">' +
-          '<li>' + esc(T.startB1) + '</li>' +
-          '<li>' + esc(T.startB2) + '</li>' +
-          '<li>' + esc(T.startB3) + '</li>' +
-        '</ol><button class="btn btn--quiet btn--block" data-startdone style="margin-top:var(--s-3)">' +
-          esc(T.startGo) + '</button></div></section>';
-    }
-
-    /* carried goals */
-    h += '<section class="panel">' +
-      '<div class="panel__head">' + icon('target') +
-        '<span class="panel__t">' + esc(T.goalsCarried) + '</span>' +
-        (goals.length ? '<span class="panel__a">' + goals.length + '</span>' : '') + '</div>' +
-      '<div class="panel__body">' +
-        (goals.length ? '<p class="field__hint" style="margin-bottom:var(--s-2)">' +
-          esc(T.goalsCarriedHint) + '</p>' : '') +
-        (goals.length
-          ? '<div class="goals">' + goals.map(function (g) {
-              return '<div class="goalrow">' + catChip(g) +
-                '<span class="goalrow__t" dir="auto">' + esc(g.text) + '</span>' +
-                '<button class="rowx" data-goaldel="' + esc(g.id) + '" aria-label="' + esc(T.remove) + '">' +
-                icon('x') + '</button></div>';
-            }).join('') + '</div>'
-          : '<div class="empty" style="padding:var(--s-4) 0"><h3>' + esc(T.noGoals) + '</h3>' +
-            '<p>' + esc(T.noGoalsHint) + '</p></div>') +
-        '<div class="addrow">' +
-          '<input class="input" id="newGoal" type="text" dir="auto" enterkeyhint="done" placeholder="' + esc(T.addGoal) + '">' +
-          '<button class="btn" data-goaladd aria-label="' + esc(T.addGoal) + '">' + icon('plus') + '</button>' +
-        '</div></div></section>';
-
-    /* recent */
-    h += '<section class="panel">' +
-      '<div class="panel__head">' + icon('list3') +
-        '<span class="panel__t">' + esc(T.recent) + '</span>' +
-        (all.length ? '<a class="panel__a" href="#/log">' + esc(T.viewAll) + ' ' + all.length + '</a>' : '') + '</div>' +
-      '<div class="panel__body' + (all.length ? ' panel__body--flush' : '') + '">' +
-        // not .map(flightRow): map passes the index as the second argument, which
-        // is flightRow's `selectable` flag, so every row after the first drew a
-        // selection checkbox instead of its chevron
-        (all.length ? '<div class="list">' + all.slice(0, 4).map(function (r) {
-                        return flightRow(r);
-                      }).join('') + '</div>'
-                    : empty('layers', T.noFlights, T.noFlightsHint)) +
+    /* The numbers, where the eye lands first: flight hours as the headline
+       figure the way a bank shows a balance, the week's pace beside it, then
+       the three readouts that say how the flying is going. */
+    var overview = '<section class="journal-overview" aria-labelledby="overviewTitle">' +
+      '<h2 class="sr" id="overviewTitle">' + esc(T.journalOverview + '. ' + T.allJournalData) + '</h2>' +
+      '<div class="flightcard" data-tilt>' +
+        '<span class="flightcard__glint" aria-hidden="true"></span>' +
+        '<div class="flightcard__top"><span class="flightcard__k">' + icon('clock') + '<span>' + esc(T.rHours) + '</span></span>' +
+          '<span class="flightcard__chip">' + icon('trending') + '<span>' + esc(week ? T.nThisWeek(week) : T.noneThisWeek) + '</span></span></div>' +
+        '<div class="flightcard__v">' + odo(hours) + '<small>' + esc(T.hoursUnit) + '</small>' +
+          '<span class="flightcard__mins">' + (adjust
+            ? esc(adjust > 0 ? T.hoursWithManual(hoursOf(adjust)) : T.hoursCorrected)
+            : '<span dir="ltr">' + mins + '</span> ' + esc(T.minutesShort)) + '</span></div>' +
+        '<div class="flightcard__trail">' + Visuals.contrail({ values: trail, w: 320, h: 58, animate: live, label: T.trailLabel(trail) }) + '</div>' +
+        (progress
+          ? '<a class="flightcard__course" href="#/progress"><span class="flightcard__ck">' + esc(T.courseProgress) +
+              (clock ? '<small data-courseclock="' + clock.days + '">' + esc(clockLine(clock)) + '</small>' : '') + '</span>' +
+              '<span class="flightcard__bar" aria-hidden="true"><i style="--p:' + percentage + '%"></i></span>' +
+              '<strong dir="ltr">' + percentage + '<small>%</small></strong>' + icon('chevLeft') + '</a>'
+          : '') +
+      '</div>' +
+      '<div class="readouts readouts--tiles">' +
+        readout('', 'layers', T.rFlights, odo(done.length), '') +
+        readout('green', 'target', T.rGoals,
+          tot ? odo(Math.round(met / tot * 100)) + '<small>%</small>' : '<small>' + esc(T.notAnswered) + '</small>',
+          tot ? T.recordedGoals(met, tot) : T.noGradedGoals, tot ? Math.round(met / tot * 100) : null) +
+        (qSolo
+          ? readout('amber', 'checkCircle', T.rSolo,
+              soloTot ? odo(Math.round(soloYes / soloTot * 100)) + '<small>%</small>' : '<small>—</small>',
+              soloTot ? soloYes + '/' + soloTot + ' · ' + T.rWeek : T.rWeek, soloTot ? Math.round(soloYes / soloTot * 100) : null)
+          : readout('amber', 'trending', T.rWeek, odo(week), '')) +
       '</div></section>';
+
+    /* Shortcuts to the places the tab bar does not reach, laid out like a
+       banking app's quick actions. */
+    function qa(kind, target, ic, label) {
+      var inner = '<span class="qa__ic">' + icon(ic) + '</span><span class="qa__l">' + esc(label) + '</span>';
+      return kind === 'a' ? '<a class="qa__b" href="' + target + '">' + inner + '</a>'
+        : '<button class="qa__b" type="button" ' + target + '>' + inner + '</button>';
+    }
+    var quick = '<nav class="qa" aria-label="' + esc(T.quickActions) + '">' +
+      (progress ? qa('a', '#/progress', 'flag', T.qaRoute) : '') +
+      qa('a', '#/syllabus', 'list3', T.qaSyllabus) +
+      (done.length ? qa('button', 'data-weeksum', 'calendar', T.qaWeek) : '') +
+      (all.length ? qa('button', 'data-backupnow', 'download', T.qaBackup) : '') +
+    '</nav>';
+
+    var h = '<div class="home stack-5">';
+    var subQ = Store.roleQuestion('subject') || Store.question('q_subject');
+    var draft = Store.readDraft();
+    var draftSubject = draft && draft.answers && subQ ? String(draft.answers[subQ.id] || '').trim() : '';
+
+    /* Who and when, in one compact row so the numbers below it are on the
+       first screen. Name, callsign and focus are optional; without them the
+       greeting stands on its own. */
+    var initial = String(pilot.name || '').trim().charAt(0);
+    h += '<header class="pilot-home">' +
+      '<div class="pilot-row">' +
+        '<div class="pilot-identity">' +
+          '<span class="pilot-home__date">' +
+            esc(new Date().toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' })) + '</span>' +
+          '<h1 class="pilot-greet">' + esc(T.greeting(new Date().getHours(), pilot.name)) + '</h1>' +
+          '<div class="pilot-identity__meta"><span>' + esc(Store.course().label) + '</span>' +
+          (pilot.callsign ? '<b dir="auto">' + esc(pilot.callsign) + '</b>' : '') + '</div></div>' +
+        '<a class="pilot-avatar" href="#/profile" aria-label="' + esc(T.myProfile) + '">' +
+          '<span class="pilot-avatar__ring" aria-hidden="true"></span>' +
+          (initial ? '<span class="pilot-avatar__i" aria-hidden="true">' + esc(initial) + '</span>' : '<span class="pilot-avatar__badge" aria-hidden="true">' + BADGE + '</span>') +
+        '</a>' +
+      '</div>' +
+      (shown('focus')
+        ? '<a class="pilot-focus' + (pilot.focus ? '' : ' is-empty') + '" href="#/profile">' + icon('target') +
+            '<span><small>' + esc(T.pilotFocus) + '</small><b dir="auto">' + esc(pilot.focus || T.focusPrompt) + '</b></span>' +
+            icon('chevLeft') + '</a>'
+        : '') + '</header>';
+
+    /* A flight still waiting on its תחקיר comes before everything, the
+       numbers included. Everything waiting stays listed, because flying
+       several times a week means forgetting one is routine. */
+    if (open) {
+      var subj = subQ ? (open.answers[subQ.id] || '') : '';
+      h += '<section class="nextup-area stack" aria-label="' + esc(T.nextStep) + '">' +
+        '<div class="next-card next-card--debrief">' +
+        '<div class="next-card__eyebrow"><span class="beacon" aria-hidden="true"></span><span>' + esc(T.briefsWaiting(waiting.length)) + '</span></div>' +
+        '<div class="next-card__head">' + (subj ? '<h2 class="next-card__title" dir="auto">' + esc(subj) + '</h2>' : '') +
+          '<p class="next-card__meta">' + esc(fmtDate(open.flownAt)) + '</p></div>' +
+        '<div class="next-card__acts next-card__acts--row">' +
+          '<button class="btn btn--amber btn--lg" data-godebrief="' + esc(open.id) + '">' +
+            icon('check') + esc(T.openBrief) + '</button>' +
+          '<button class="btn btn--glass btn--square" data-gobrief="' + esc(open.id) + '" aria-label="' + esc(T.editBrief) + '">' +
+            icon('pencil') + '</button></div>' +
+        (waiting.length > 1
+          ? '<div class="waitmore"><span class="waitmore__k">' + esc(T.alsoWaiting) + '</span>' +
+            waiting.slice(1).map(function (r) {
+              var t = subQ ? (r.answers[subQ.id] || '') : '';
+              return '<button class="waitmore__r" data-godebrief="' + esc(r.id) + '">' +
+                '<span dir="auto">' + esc(t || fmtDate(r.flownAt)) + '</span>' +
+                '<span class="mono">' + esc(fmtNum(r.flownAt)) + '</span>' + icon('chevLeft') + '</button>';
+            }).join('') + '</div>'
+          : '') +
+        '</div>' +
+        (draft
+          ? '<a class="draft-row" href="#/brief">' + icon('pencil') + '<span><b>' + esc(T.draftInProgress) + '</b>' +
+              '<small dir="auto">' + esc(draftSubject || T.draftUntitled) + '</small></span>' + icon('chevLeft') + '</a>'
+          : '') +
+        '</section>';
+    }
+
+    h += overview + (shown('quick') ? quick : '');
+
+    /* Nothing waiting: the next step is the brief in progress, or a new one. */
+    if (!open) {
+      h += '<section class="nextup-area stack" aria-label="' + esc(T.nextStep) + '">';
+      if (draft) {
+        h += '<div class="next-card next-card--draft">' +
+          '<div class="next-card__eyebrow">' + icon('pencil') + '<span>' + esc(T.draftInProgress) + '</span></div>' +
+          '<h2 class="next-card__title" dir="auto">' + esc(draftSubject || T.draftUntitled) + '</h2>' +
+          (goals.length ? '<p class="next-card__meta">' + esc(T.nextFlightGoals(goals.length)) + '</p>' : '') +
+          '<div class="next-card__acts"><a class="btn btn--lit btn--block btn--lg" href="#/brief">' +
+            icon('pencil') + esc(T.continueBrief) + '</a></div></div>';
+      } else {
+        h += '<div class="next-card">' +
+          '<div class="next-card__eyebrow">' + icon('plane') + '<span>' + esc(T.nextFlight) + '</span></div>' +
+          '<p class="next-card__meta">' + esc(goals.length ? T.nextFlightGoals(goals.length) : T.nextFlightHint) + '</p>' +
+          '<div class="next-card__acts"><button class="btn btn--lit btn--block btn--lg" data-new>' +
+            icon('plus') + esc(T.newBrief) + '</button></div></div>';
+      }
+      h += '</section>';
+    }
 
     /* Backup, where it can actually be seen. It used to be a note inside
        הגדרות, which is the one screen a pilot never opens; everything here
@@ -452,25 +602,65 @@
     var sinceExport = daysSince(s.lastBackup);
     if (all.length >= 3 && (sinceExport === null || sinceExport >= 10)) {
       h += '<div class="note note--warn">' + icon('alert') +
-        '<div><b>' + esc(T.backupHomeTitle) + '</b><br>' + esc(T.backupHomeBody) +
-        '<br><button class="btn btn--amber" data-backupnow style="min-height:36px;margin-top:8px;font-size:var(--t-12)">' +
-        icon('download') + esc(T.backupNow) + '</button></div></div>';
+        '<div><b>' + esc(T.backupHomeTitle) + '</b><p>' + esc(T.backupHomeBody) + '</p>' +
+        '<div class="note__acts"><button class="btn btn--amber" data-backupnow>' +
+        icon('download') + esc(T.backupNow) + '</button></div></div></div>';
     }
 
+    /* First run. 27 people got a link and no manual, and the three things that
+       make this app worth opening are all invisible from an empty screen. */
+    if (!all.length && !s.startDismissed) {
+      h += '<section class="card card--intro"><div class="section-heading"><h2>' + esc(T.startTitle) + '</h2></div>' +
+        '<ol class="howto">' +
+          '<li>' + esc(T.startB1) + '</li>' +
+          '<li>' + esc(T.startB2) + '</li>' +
+          '<li>' + esc(T.startB3) + '</li>' +
+        '</ol><button class="btn btn--quiet btn--block" data-startdone>' + esc(T.startGo) + '</button></section>';
+    }
+
+    /* carried goals */
+    if (shown('goals')) h += '<section class="home-goals"><div class="section-heading"><h2>' + esc(T.goalsOpenTitle) + '</h2>' +
+        (goals.length ? '<span class="count-pill mono">' + goals.length + '</span>' : '') + '</div>' +
+      '<div class="card">' +
+        (goals.length
+          ? '<p class="field__hint">' + esc(T.goalsCarriedHint) + '</p><div class="goals">' + goals.map(function (g) {
+              return '<div class="goalrow">' + catChip(g) +
+                '<span class="goalrow__t" dir="auto">' + esc(g.text) + '</span>' +
+                '<button class="rowx" data-goaldel="' + esc(g.id) + '" aria-label="' + esc(T.remove) + '">' +
+                icon('x') + '</button></div>';
+            }).join('') + '</div>'
+          : '<div class="empty empty--inline"><h3>' + esc(T.noGoals) + '</h3>' +
+            '<p>' + esc(T.noGoalsHint) + '</p></div>') +
+        '<div class="addrow">' +
+          '<input class="input" id="newGoal" type="text" dir="auto" enterkeyhint="done" placeholder="' + esc(T.addGoal) + '" aria-label="' + esc(T.addGoal) + '">' +
+          '<button class="btn" data-goaladd aria-label="' + esc(T.addGoal) + '">' + icon('plus') + '</button>' +
+        '</div></div></section>';
+
+    /* recent, as separate rows like a statement's latest transactions */
+    if (shown('recent')) h += '<section class="home-recent"><div class="section-heading"><h2>' + esc(T.recent) + '</h2>' +
+        (all.length ? '<a class="section-heading__link" href="#/log">' + esc(T.viewAll) + ' <span class="mono">' + all.length + '</span></a>' : '') + '</div>' +
+        // not .map(flightRow): map passes the index as the second argument, which
+        // is flightRow's `selectable` flag, so every row after the first drew a
+        // selection checkbox instead of its chevron
+        (all.length ? '<div class="list list--float">' + all.slice(0, 4).map(function (r) {
+                        return flightRow(r);
+                      }).join('') + '</div>'
+                    : '<div class="card card--flush">' + empty('layers', T.noFlights, T.noFlightsHint) + '</div>') +
+      '</section>';
+
     if (!isStandalone() && !s.installDismissed) {
-      h += '<div class="note note--info">' + icon('info') +
-        '<div><b>' + esc(T.installTitle) + '</b><br>' + esc(installBody()) +
-        '<br><div class="note__acts">' +
+      h += '<div class="note note--info">' + icon('download') +
+        '<div><b>' + esc(T.installTitle) + '</b><p>' + esc(installBody()) + '</p>' +
+        '<div class="note__acts">' +
           (installPrompt
-            ? '<button class="btn btn--lit" data-installnow style="min-height:36px;font-size:var(--t-12)">' +
-              icon('download') + esc(T.installNow) + '</button>'
+            ? '<button class="btn btn--lit" data-installnow>' + icon('download') + esc(T.installNow) + '</button>'
             : '') +
-          '<button class="btn btn--quiet" data-dismiss style="min-height:36px;font-size:var(--t-12)">' +
-          esc(T.gotIt) + '</button></div></div></div>';
+          '<button class="btn btn--quiet" data-dismiss>' + esc(T.gotIt) + '</button></div></div></div>';
     }
 
     h += '</div>';
     viewEl.innerHTML = h;
+    if (global.Motion) Motion.decode($('.pilot-greet', viewEl));
 
     on(viewEl, '[data-new]', 'click', function () { go('brief'); });
     on(viewEl, '[data-startdone]', 'click', function () { Store.set('startDismissed', true); screenHome(); });
@@ -479,6 +669,7 @@
       saveFile('tahkir-backup-' + stamp() + '.json', Store.toJSON(), 'application/json', 'backup');
       setTimeout(screenHome, 500);
     });
+    on(viewEl, '[data-weeksum]', 'click', function () { selectThisWeek(); go('summary'); });
     on(viewEl, '[data-installnow]', 'click', function () {
       if (!installPrompt) return;
       var p = installPrompt; installPrompt = null;
@@ -506,11 +697,15 @@
       if (e.key === 'Enter') { e.preventDefault(); addGoal(); }
     });
 
-    function readout(tone, ic, k, cap, v, s2) {
+    /* `ring` draws the share as a gauge around the icon; null leaves it out */
+    function readout(tone, ic, k, v, s2, ring) {
       return '<div class="readout' + (tone ? ' readout--' + tone : '') + '">' +
-        '<div class="readout__k">' + icon(ic) + '<span>' + esc(k) + '</span></div>' +
+        '<div class="readout__k"><span class="readout__ic">' + icon(ic) +
+          (ring != null ? '<svg class="ring" viewBox="0 0 36 36" aria-hidden="true" focusable="false"><circle class="ring__track" cx="18" cy="18" r="16"/>' +
+            '<circle class="ring__fill" cx="18" cy="18" r="16" pathLength="100" style="--p:' + ring + '"/></svg>' : '') +
+          '</span><span>' + esc(k) + '</span></div>' +
         '<div class="readout__v">' + v + '</div>' +
-        '<div class="readout__s">' + esc(s2 || cap) + '</div></div>';
+        (s2 ? '<div class="readout__s">' + esc(s2) + '</div>' : '') + '</div>';
     }
   }
 
@@ -614,13 +809,11 @@
 
     renderTopbar({
       title: isBrief ? T.briefTitle : T.debriefTitle,
-      sub: isBrief ? T.capBrief : T.capDebrief,
       back: true, backTo: ''
     });
 
     var datePanel = '<div class="panel"><div class="panel__body">' +
-      '<div class="field"><label class="field__label" for="f_date"><b>' + esc(T.hDate) + '</b>' +
-        '<span class="cap">DATE</span></label>' +
+      '<div class="field"><label class="field__label" for="f_date"><b>' + esc(T.hDate) + '</b></label>' +
         '<input class="input input--num" id="f_date" type="date" value="' + esc(rec.flownAt) + '"></div>' +
     '</div></div>';
 
@@ -654,8 +847,7 @@
       (restored
         ? '<div class="note note--info">' + icon('pencil') +
           '<div><b>' + esc(T.draftRestored) + '</b>' +
-          '<div class="note__acts"><button type="button" class="btn btn--quiet" data-draftdrop ' +
-          'style="min-height:34px;font-size:var(--t-12)">' + esc(T.draftDiscard) + '</button></div></div></div>'
+          '<div class="note__acts"><button type="button" class="btn btn--quiet" data-draftdrop>' + esc(T.draftDiscard) + '</button></div></div></div>'
         : '');
 
     var folded = qs.filter(foldable);
@@ -1784,8 +1976,7 @@
 
   function screenLog() {
     renderTopbar({
-      title: logSelect ? T.nSelected(selCount()) : T.navLog,
-      sub: logSelect ? '' : String(Store.count()),
+      title: logSelect ? T.nSelected(selCount()) : T.app,
       actions: logSelect
         ? [{ id: 'done', ic: 'x', label: T.cancel, run: function () {
             logSelect = false; selected = {}; writeSel(); screenLog();
@@ -1793,8 +1984,7 @@
         : [
             { id: 'sel', ic: 'checkCircle', label: T.selectMode, run: function () {
               logSelect = true; screenLog();
-            } },
-            { id: 'new', ic: 'plus', label: T.newBrief, lit: true, run: function () { go('brief'); } }
+            } }
           ]
     });
 
@@ -1814,7 +2004,7 @@
       return t >= wk.start.getTime() && t <= wk.stop.getTime();
     }).length;
 
-    viewEl.innerHTML = '<div class="stack-4" id="logRoot">' + (!logSelect ? pageHeading(T.flightLogTitle, T.flightLogSub) : '') +
+    viewEl.innerHTML = '<div class="stack-4" id="logRoot">' + (!logSelect ? pageHeading(T.flightLogTitle, Store.count() ? T.instFlights(Store.count()) : '') : '') +
       (!logSelect && Store.count()
         ? '<button class="weekbtn" data-weeksum>' +
             icon('calendar') +
@@ -1891,14 +2081,14 @@
       rows.forEach(function (r) {
         var m = monthKey(r.flownAt);
         if (m !== month) {
-          if (month !== null) out += '</div></div>';
+          if (month !== null) out += '</div></div></section>';
           month = m;
-          out += '<div class="panel"><div class="listhead">' + esc(monthLabel(r.flownAt)) + '</div>' +
-            '<div class="list">';
+          out += '<section class="month"><h2 class="listhead">' + esc(monthLabel(r.flownAt)) + '</h2>' +
+            '<div class="card card--flush"><div class="list">';
         }
         out += flightRow(r, logSelect);
       });
-      out += '</div></div>';
+      out += '</div></div></section>';
       $('#logResults').innerHTML = out;
     }
     on(viewEl, '[data-clearfilters]', 'click', function () { logQuery = ''; logCats = {}; Object.keys(logFilters).forEach(function (k) { logFilters[k] = ''; }); screenLog(); });
@@ -1967,7 +2157,7 @@
     renderTopbar({
       // a real date, not "לפני 4 ימים" — this is a permanent record and it gets
       // read next to a logbook weeks later
-      title: fmtNum(r.flownAt), sub: pending ? T.capBrief : T.capDebrief,
+      title: fmtNum(r.flownAt),
       back: true, backTo: 'log',
       actions: [
         { id: 'share', ic: 'share', label: T.share, run: function () {
@@ -1993,8 +2183,17 @@
         ? '<button class="btn btn--amber btn--block btn--lg" data-godebrief>' + icon('check') +
           esc(T.openBrief) + '</button>'
         : '') +
-      '<section class="panel">' + qs.map(function (q) { return answerBlock(q, r.answers[q.id]); }).join('') +
-      '</section>' +
+      /* Grouped by when it was written instead of tagging every brief answer,
+         so the record reads in the order the day happened. */
+      [['brief', T.detailBrief], ['debrief', T.detailDebrief]].map(function (part) {
+        var mine = qs.filter(function (q) { return (q.stage === 'brief') === (part[0] === 'brief'); });
+        // a flight still waiting on its תחקיר has nothing to show there yet,
+        // unless an older build left answers behind, which are never hidden
+        if (!mine.length || (part[0] === 'debrief' && pending &&
+            !mine.some(function (q) { return hasAns(q, r.answers[q.id]); }))) return '';
+        return '<section class="detail-part"><h2 class="listhead">' + esc(part[1]) + '</h2><div class="card card--flush">' +
+          mine.map(function (q) { return answerBlock(q, r.answers[q.id]); }).join('') + '</div></section>';
+      }).join('') +
       '<div class="stack">' +
         '<button class="btn btn--block" data-copy>' + icon('copy') + esc(T.copyText) + '</button>' +
         '<button class="btn btn--quiet btn--block" data-del>' + icon('trash') + esc(T.deleteFlight) + '</button>' +
@@ -2037,8 +2236,7 @@
     }
 
     function answerBlock(q, v) {
-      var head = '<div class="answer__q"><b>' + esc(q.label) + '</b>' +
-        (q.stage === 'brief' ? '<span class="tagline">' + esc(T.capBrief) + '</span>' : '') + '</div>';
+      var head = '<div class="answer__q"><b>' + esc(q.label) + '</b></div>';
 
       if (q.type === 'goals') {
         var list = (v || []).filter(function (g) { return g.text.trim(); });
@@ -2083,13 +2281,15 @@
       }
 
       if (q.type === 'minutes') {
-        return '<div class="answer">' + head +
-          '<div class="answer__a is-num">' + (+v || 0) + ' <small style="font-size:var(--t-12)">' +
+        return '<div class="answer answer--kv">' + head +
+          '<div class="answer__a is-num">' + (+v || 0) + ' <small>' +
           esc(T.minutesUnit) + '</small></div></div>';
       }
 
       var txt = v == null ? '' : String(v);
-      return '<div class="answer">' + head +
+      // a short one-line answer reads as a label and its value, like a logbook row
+      var kv = txt.trim().length <= 32 && !/\n/.test(txt) && q.type !== 'textarea';
+      return '<div class="answer' + (kv ? ' answer--kv' : '') + '">' + head +
         '<div class="answer__a' + (txt.trim() ? '' : ' is-empty') + '" dir="auto">' +
         esc(txt.trim() || T.notAnswered) + '</div></div>';
     }
@@ -2100,7 +2300,7 @@
   var tlField = null, trendScope = { course: '', from: '', to: '' };
 
   function screenTrends() {
-    renderTopbar({ title: T.navTrends, sub: T.capTrends });
+    renderTopbar({ title: T.app });
     var done = Store.done().filter(function (r) { return (!trendScope.course || r.course === trendScope.course) && (!trendScope.from || r.flownAt >= trendScope.from) && (!trendScope.to || r.flownAt <= trendScope.to); });
     var filters = '<details class="log-filters"' + (trendScope.course || trendScope.from || trendScope.to ? ' open' : '') + '><summary>' + esc(T.logFilters) + '</summary><div class="log-filters__grid"><label>' + esc(T.courseLabel) + '<select class="input" data-trendscope="course"><option value="">' + esc(T.allCourses) + '</option>' + Courses.all().map(function (c) { return '<option value="' + c.id + '"' + (trendScope.course === c.id ? ' selected' : '') + '>' + esc(c.label) + '</option>'; }).join('') + '</select></label>' + ['from', 'to'].map(function (key) { return '<label>' + esc(key === 'from' ? T.fromDate : T.toDate) + '<input class="input" type="date" data-trendscope="' + key + '" value="' + esc(trendScope[key]) + '"></label>'; }).join('') + '</div></details>';
     function bindFilters() { on(viewEl, '[data-trendscope]', 'change', function (e) { trendScope[e.currentTarget.dataset.trendscope] = e.currentTarget.value; screenTrends(); }); }
@@ -2116,9 +2316,8 @@
     });
     var rate = tot ? Math.round(met / tot * 100) : 0;
 
-    var qMin = Store.questions().filter(function (q) { return q.type === 'minutes'; })[0];
-    var mins = 0;
-    if (qMin) done.forEach(function (r) { var v = parseInt(r.answers[qMin.id], 10); if (!isNaN(v)) mins += v; });
+    var mqs = minutesQuestions(), mins = 0;
+    done.forEach(function (r) { mins += flightMinutes(r, mqs); });
 
     var weeks = [];
     for (var w = 7; w >= 0; w--) {
@@ -2150,15 +2349,15 @@
 
     var h = '<div class="stack-4 stagger">' + pageHeading(T.trendsTitle, T.trendsSub) + filters +
       '<div class="readouts">' +
-        ro('cyan', 'clock', T.totalMinutes, 'HOURS', (mins / 60).toFixed(1)) +
-        ro('', 'layers', T.rFlights, 'FLIGHTS', String(done.length)) +
-        ro('green', 'target', T.goalRate, 'GOALS', rate + '<small>%</small>') +
-        ro('amber', 'alert', T.repeatedGoals, 'REPEAT', String(recurringN)) +
+        ro('cyan', 'clock', T.totalMinutes, hoursOf(mins)) +
+        ro('', 'layers', T.rFlights, String(done.length)) +
+        ro('green', 'target', T.goalRate, rate + '<small>%</small>') +
+        ro('amber', 'alert', T.repeatedGoals, String(recurringN)) +
       '</div>' +
 
       '<section class="panel"><div class="panel__head">' + icon('trending') +
         '<span class="panel__t">' + esc(T.flightsPerWeek) + '</span>' +
-        '<span class="panel__a">8W</span></div><div class="panel__body">' +
+        '<span class="panel__a">' + esc(T.lastEightWeeks) + '</span></div><div class="panel__body">' +
         '<div class="weeks">' + weeks.map(function (x, i) {
           return '<div class="week" role="img" aria-label="' + esc(T.weekChartLabel(x.l, x.n)) + '"><div class="week__count">' + x.n + '</div><div class="week__bar' + (x.n ? '' : ' is-zero') + '" style="height:' +
             Math.max(3, Math.round(x.n / wMax * 54)) + 'px;animation-delay:' + (i * 26) + 'ms"></div>' +
@@ -2204,7 +2403,7 @@
           var rows = done.map(function (r) {
             return { r: r, lines: Store.linesOf(r.answers[tlField]) };
           }).filter(function (x) { return x.lines.length; }).slice(0, 20);
-          if (!rows.length) return '<p class="dim" style="font-size:var(--t-13)">' + esc(T.nothingHere) + '</p>';
+          if (!rows.length) return '<p class="fineprint">' + esc(T.nothingHere) + '</p>';
           return rows.map(function (x) {
             return '<div class="tlrow"><div class="tlrow__m">' + esc(fmtNum(x.r.flownAt)) + '</div>' +
               x.lines.map(function (t) {
@@ -2232,10 +2431,12 @@
       logQuery = e.currentTarget.dataset.instq; logCats = {}; go('log');
     });
 
-    function ro(tone, ic, k, cap, v) {
+    function ro(tone, ic, k, v) {
+      // the leading figure rolls in on its drums; any unit after it stays put
+      var m = /^([\d.]+)([\s\S]*)$/.exec(v);
       return '<div class="readout' + (tone ? ' readout--' + tone : '') + '">' +
-        '<div class="readout__k">' + icon(ic) + '<span>' + esc(k) + '</span></div>' +
-        '<div class="readout__v">' + v + '</div><div class="readout__s">' + esc(cap) + '</div></div>';
+        '<div class="readout__k"><span class="readout__ic">' + icon(ic) + '</span><span>' + esc(k) + '</span></div>' +
+        '<div class="readout__v">' + (m ? odo(m[1]) + m[2] : v) + '</div></div>';
     }
     function bar(label, n, max, total, i, red, flag) {
       return '<div class="bar"><div class="bar__top">' +
@@ -2276,15 +2477,43 @@
     return { sections: sections, done: doneN, total: SyllabusRef.count(), next: next, flown: flownNames };
   }
 
+  /* The current course's end date as a countdown, with what is still to be
+     documented and the weekly pace that would cover it. null when the course
+     has no announced end date, so nothing is shown rather than a guess. */
+  function courseClock(p) {
+    var c = Store.course(), days = global.Courses && c ? Courses.daysLeft(c.id, Store.todayISO()) : null;
+    if (days === null) return null;
+    var left = p ? Math.max(0, p.total - p.done) : 0;
+    return {
+      days: days, left: left,
+      date: parseISO(c.ends).toLocaleDateString('he-IL', { day: 'numeric', month: 'long' }),
+      full: parseISO(c.ends).toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }),
+      pace: days > 0 && left > 0 ? Math.ceil(left * 7 / days) : 0
+    };
+  }
+  function clockLine(k) {
+    if (!k) return '';
+    return k.days > 0 ? T.daysLeftN(k.days) + ' · ' + k.date : k.days === 0 ? T.courseLastDay : T.courseEnded(k.date);
+  }
+
+  /* The course as a one-line route: each section a waypoint, lit as far as the
+     recorded coverage reaches, the aircraft where it stands today. */
+  function courseRouteMini(p) {
+    return Visuals.course({ sections: p.sections, done: p.done, w: 330, h: 64, rows: 1, seed: Store.courseId(), fit: 'xMidYMid meet',
+      grid: false, topo: false, rings: false, wpLabels: false, shipSize: 15, padX: 12, padY: 16, cls: 'mchart--mini' });
+  }
+
   function syllabusProgressPanel() {
     var p = syllabusProgress();
     if (!p) return '';
-    var pct = p.total ? Math.round(p.done / p.total * 100) : 0;
+    var pct = p.total ? Math.round(p.done / p.total * 100) : 0, k = courseClock(p);
     return '<section class="panel"><div class="panel__head">' + icon('list3') +
       '<span class="panel__t">' + esc(T.sylProgress) + '</span>' +
       '<span class="panel__a mono">' + pct + '%</span></div>' +
       '<div class="panel__body">' +
-        '<p class="field__hint" style="margin-bottom:var(--s-3)">' + esc(T.sylDone(p.done, p.total)) + '</p>' +
+        '<p class="field__hint">' + esc(T.sylDone(p.done, p.total)) + '</p>' +
+        (k ? '<p class="field__hint course-clock__line">' + icon('calendar') + '<span>' + esc(T.courseEndsOn(k.date) + ' · ' + clockLine(k)) + '</span></p>' : '') +
+        '<a class="course-strip__route" href="#/progress" aria-label="' + esc(T.courseProgress) + '">' + courseRouteMini(p) + '</a>' +
         (p.done
           ? '<div class="bars">' + p.sections.map(function (s, i) {
               return '<div class="bar"><div class="bar__top">' +
@@ -2294,7 +2523,7 @@
                   Math.round(s.done / Math.max(1, s.total) * 100) +
                   '%;animation-delay:' + (i * 30) + 'ms"></div></div></div>';
             }).join('') + '</div>'
-          : '<p class="dim" style="font-size:var(--t-13)">' + esc(T.sylNoneYet) + '</p>') +
+          : '<p class="fineprint">' + esc(T.sylNoneYet) + '</p>') +
         (p.next
           ? '<div class="nextup"><span class="nextup__k">' + esc(T.sylNext) + '</span>' +
             '<span class="nextup__v" dir="auto">' + esc(p.next.name) + '</span>' +
@@ -2359,11 +2588,27 @@
 
   var questionEditorOpen = false;
   function screenSettings() {
-    renderTopbar({ title: T.settings, sub: T.capSet });
+    renderTopbar({ title: T.settings, back: true, backTo: '' });
     var s = Store.settings(), since = daysSince(s.lastBackup), qs = Store.questions();
 
+    var logged = loggedMinutes(), adj = +s.hoursAdjust || 0, motion = s.motion || 'auto', hideHome = s.homeHide || [];
     viewEl.innerHTML = '<div class="stack-6 stagger">' + pageHeading(T.settings, T.settingsSub) +
       '<div class="group">' + item('horizon', T.pilotProfile, (s.pilotProfile && (s.pilotProfile.name || s.pilotProfile.callsign)) || T.pilotProfileSub, 'profile') + '</div>' +
+
+      /* flight hours: the logged total, and a correction on top of it */
+      '<section class="stack" aria-labelledby="hoursHead"><h2 class="h-sect" id="hoursHead">' + esc(T.hoursTitle) + '</h2>' +
+        '<div class="card hours-card">' +
+          '<div class="hours-card__sum"><span>' + esc(T.hoursTotal) + '</span><strong dir="ltr">' + hoursOf(logged + adj) + '</strong></div>' +
+          '<div class="hours-card__rows"><span>' + esc(T.hoursLogged) + ' <b dir="ltr">' + hoursOf(logged) + '</b></span>' +
+            (adj ? '<span>' + esc(T.hoursManual) + ' <b dir="ltr">' + (adj > 0 ? '+' : '−') + hoursOf(Math.abs(adj)) + '</b></span>' : '') + '</div>' +
+          '<label class="field__label" for="hoursTotal">' + esc(T.hoursInput) + '</label>' +
+          '<div class="addrow"><input class="input input--num" id="hoursTotal" type="text" inputmode="decimal" autocomplete="off" enterkeyhint="done" dir="ltr" value="' +
+            hoursOf(logged + adj) + '" placeholder="' + esc(T.hoursInputHint) + '" aria-describedby="hoursHint hoursErr">' +
+            '<button class="btn btn--lit" type="button" data-hourssave>' + esc(T.hoursSave) + '</button></div>' +
+          '<p class="field__err" id="hoursErr" role="alert" hidden></p>' +
+          '<p class="field__hint" id="hoursHint">' + esc(T.hoursHint) + '</p>' +
+          (adj ? '<button class="btn btn--quiet btn--block" type="button" data-hoursreset>' + esc(T.hoursReset) + '</button>' : '') +
+        '</div></section>' +
       (since === null || since >= 14
         ? '<div class="note">' + icon('alert') + '<div><b>' + esc(T.backupTitle) + '</b><br>' +
           esc(since === null ? T.backupNever : T.backupDays(since)) + ' ' + esc(T.backupBody) + '</div></div>' : '') +
@@ -2372,6 +2617,23 @@
         [['dark', T.themeDark, T.themeDarkHint], ['calm', T.themeCalm, T.themeCalmHint], ['light', T.themeLight, T.themeLightHint], ['auto', T.themeAuto, T.themeAutoHint]].map(function (t) {
           return '<button class="theme-choice" data-theme-set="' + t[0] + '" aria-pressed="' + (s.theme === t[0]) + '"><span class="theme-swatch theme-swatch--' + t[0] + '" aria-hidden="true"><i></i><i></i><i></i></span><b>' +
             esc(t[1]) + '</b><small>' + esc(t[2]) + '</small></button>';
+        }).join('') + '</div></section>' +
+
+      '<section class="stack"><h2 class="h-sect">' + esc(T.motionTitle) + '</h2><div class="card">' +
+        '<span class="field__label" id="motionLbl">' + esc(T.motionLabel) + '</span>' +
+        '<div class="seg seg--wrap" role="group" aria-labelledby="motionLbl">' +
+          [['auto', T.motionAuto], ['full', T.motionFull], ['reduced', T.motionReduced], ['off', T.motionOff]].map(function (m) {
+            return '<button type="button" data-motion-set="' + m[0] + '" aria-pressed="' + (motion === m[0]) + '">' + esc(m[1]) + '</button>';
+          }).join('') + '</div>' +
+        '<p class="field__hint">' + esc(T.motionHint) + '</p>' +
+        '<div class="group group--inset">' + toggle('haptics', T.hapticsLabel, T.hapticsHint, s.haptics !== false) + '</div>' +
+      '</div></section>' +
+
+      '<section class="stack"><h2 class="h-sect">' + esc(T.homeSectionsTitle) + '</h2>' +
+        '<p class="fineprint">' + esc(T.homeSectionsHint) + '</p><div class="group">' +
+        [['focus', T.homeShowFocus], ['quick', T.homeShowQuick], ['goals', T.homeShowGoals], ['recent', T.homeShowRecent]].map(function (x) {
+          var on = hideHome.indexOf(x[0]) === -1;
+          return toggle('home-' + x[0], x[1], on ? T.shownOnHome : T.hiddenFromHome, on);
         }).join('') + '</div></section>' +
 
       '<section class="stack"><h2 class="h-sect">' + esc(T.courseSection) + '</h2><div class="group">' +
@@ -2397,7 +2659,7 @@
         item('flag', T.whatsNew, BUILD, 'whatsnew') + '</div></section>' +
 
       '<details class="settings-disclosure" id="questionEditor"' + (questionEditorOpen ? ' open' : '') + '><summary>' + icon('list3') + '<span><b>' + esc(T.questionEditor) + '</b><small>' + esc(T.questionCount(qs.length)) + '</small></span>' + icon('chevDown') + '</summary><section class="stack">' +
-        '<p class="dim" style="font-size:var(--t-12);line-height:1.6;margin-top:-6px">' + esc(T.questionsHint) + '</p>' +
+        '<p class="fineprint">' + esc(T.questionsHint) + '</p>' +
         '<div class="group">' + qs.map(function (q, i) {
           var lock = Store.isProtected(q);
           return '<div class="qrow' + (lock ? ' qrow--lock' : '') + '" data-qid="' + esc(q.id) + '">' +
@@ -2413,7 +2675,7 @@
         }).join('') +
         '<button class="item" data-qadd><span class="item__ic">' + icon('plus') + '</span>' +
         '<span class="item__b"><span class="item__t">' + esc(T.addQuestion) + '</span></span></button></div>' +
-        '<button class="btn btn--quiet btn--block" data-qreset style="min-height:38px;font-size:var(--t-12)">' +
+        '<button class="btn btn--quiet btn--block" data-qreset>' +
           esc(T.restoreDefaults) + '</button>' +
       '</section></details>' +
 
@@ -2433,17 +2695,22 @@
         item('lock', s.pin ? T.changeCode : T.setCode,
              Store.cryptoReady() ? (s.pin ? T.codeOn : T.codeOff) : T.needsHttps, 'pin-set') +
         (s.pin ? item('x', T.removeCode, '', 'pin-off') : '') + '</div>' +
-        '<p class="dim" style="font-size:var(--t-12);line-height:1.6">' + esc(T.privacyNote) + '</p></section>' +
+        '<p class="fineprint">' + esc(T.privacyNote) + '</p></section>' +
 
       '<details class="advanced-settings"><summary>' + esc(T.advancedSettings) + '</summary><div class="group"><button class="item item--danger" data-clear>' +
         '<span class="item__ic">' + icon('trash') + '</span><span class="item__b">' +
         '<span class="item__t">' + esc(T.deleteAll) + '</span>' +
         '<span class="item__s">' + esc(T.confirmDeleteAllBody) + '</span></span></button></div></details>' +
 
-      '<p class="dim" style="font-size:var(--t-10);text-align:center;font-family:var(--font-mono);letter-spacing:.1em">' +
+      '<p class="app-footer">' +
         esc(T.app) + ' ' + BUILD + ' · ' + esc(T.offline) + ' · ' + Store.count() + ' ' + esc(T.onDevice) + '</p>' +
       '</div><input type="file" id="importFile" accept=".json,application/json" hidden>';
 
+    function toggle(key, t, sub, on) {
+      return '<button class="item item--switch" type="button" role="switch" aria-checked="' + on + '" data-switch="' + key + '">' +
+        '<span class="item__b"><span class="item__t">' + esc(t) + '</span>' + (sub ? '<span class="item__s">' + esc(sub) + '</span>' : '') + '</span>' +
+        '<span class="switch" aria-hidden="true"><i></i></span></button>';
+    }
     function item(ic, t, sub, act) {
       return '<button class="item" data-act="' + act + '"><span class="item__ic">' + icon(ic) + '</span>' +
         '<span class="item__b"><span class="item__t">' + esc(t) + '</span>' +
@@ -2452,6 +2719,39 @@
     }
 
     $('#questionEditor').addEventListener('toggle', function (e) { questionEditorOpen = e.currentTarget.open; });
+    function saveHours() {
+      var input = $('#hoursTotal'), err = $('#hoursErr'), m = parseHours(input.value);
+      if (m == null || m > 9999 * 60) {
+        err.textContent = T.hoursInvalid; err.hidden = false; input.setAttribute('aria-invalid', 'true'); input.focus();
+        return;
+      }
+      if (!Store.set('hoursAdjust', m - loggedMinutes())) return toast(T.saveFailedBody, 'alert');
+      haptic(12); toast(T.hoursSaved, 'clock'); screenSettings();
+    }
+    on(viewEl, '[data-hourssave]', 'click', saveHours);
+    on(viewEl, '#hoursTotal', 'keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); saveHours(); } });
+    on(viewEl, '#hoursTotal', 'input', function (e) { e.currentTarget.removeAttribute('aria-invalid'); $('#hoursErr').hidden = true; });
+    on(viewEl, '[data-hoursreset]', 'click', function () {
+      if (!Store.set('hoursAdjust', 0)) return toast(T.saveFailedBody, 'alert');
+      toast(T.hoursResetDone, 'clock'); screenSettings();
+    });
+    on(viewEl, '[data-motion-set]', 'click', function (e) {
+      var level = e.currentTarget.dataset.motionSet;
+      if (!Store.set('motion', level)) return toast(T.saveFailedBody, 'alert');
+      applyTheme(); screenSettings(); $('[data-motion-set="' + level + '"]').focus({ preventScroll: true });
+    });
+    on(viewEl, '[data-switch]', 'click', function (e) {
+      var key = e.currentTarget.dataset.switch, turnOn = e.currentTarget.getAttribute('aria-checked') !== 'true', done;
+      if (key === 'haptics') done = Store.set('haptics', turnOn);
+      else {
+        var part = key.replace('home-', ''), list = (Store.settings().homeHide || []).filter(function (x) { return x !== part; });
+        if (!turnOn) list.push(part);
+        done = Store.set('homeHide', list);
+      }
+      if (!done) return toast(T.saveFailedBody, 'alert');
+      if (turnOn) haptic(12);
+      screenSettings(); $('[data-switch="' + key + '"]').focus({ preventScroll: true });
+    });
     on(viewEl, '[data-theme-set]', 'click', function (e) {
       var nextTheme = e.currentTarget.dataset.themeSet;
       if (!Store.set('theme', nextTheme)) return toast(T.saveFailedBody, 'alert');
@@ -2577,7 +2877,7 @@
             '<button type="button" data-s="brief" aria-pressed="' + (cur.stage === 'brief') + '">' + esc(T.stageBrief) + '</button>' +
             '<button type="button" data-s="debrief" aria-pressed="' + (cur.stage === 'debrief') + '">' + esc(T.stageDebrief) + '</button>' +
           '</div></div>' +
-        (lock ? '<p class="dim" style="font-size:var(--t-12)">' + esc(T.lockedQuestion) + '</p>'
+        (lock ? '<p class="fineprint">' + esc(T.lockedQuestion) + '</p>'
               : '<div class="field"><span class="field__label"><b>' + esc(T.qType) + '</b></span>' +
                 '<div class="opts" id="qType">' +
                   ['text', 'textarea', 'list', 'choice', 'number', 'minutes', 'date', 'syllabus'].map(function (t) {
@@ -2764,7 +3064,7 @@
   var sylOpen = {};   // which גיחות are expanded, kept across repaints
 
   function screenSyllabus() {
-    renderTopbar({ title: T.syllabusRef, sub: 'SYLLABUS', back: true, backTo: 'settings' });
+    renderTopbar({ title: T.syllabusRef, back: true, backTo: 'trends' });
     var all = global.SyllabusRef ? SyllabusRef.all() : [];
 
     if (!all.length) {
@@ -3030,6 +3330,10 @@
     sheetEl = document.getElementById('sheet');
     lockEl = document.getElementById('lockScreen');
     sheetEl.addEventListener('click', function (e) { if (e.target === sheetEl) sheetEl.close(); });
+    // the sign-in, course and PIN screens share one scope and mark, drawn once
+    $$('.lock').forEach(function (el, i) { el.insertAdjacentHTML('afterbegin', Visuals.scope('lock' + i)); });
+    if (global.Motion) Motion.init();
+    $$('.lock__mark').forEach(function (el) { el.innerHTML = BADGE; });
     var storageNotified = false;
     global.addEventListener('sortie:storage-error', function () {
       if (!storageNotified && !appEl.hidden) { storageNotified = true; toast(T.saveFailedBody, 'alert'); }

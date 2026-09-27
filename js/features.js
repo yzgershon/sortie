@@ -26,16 +26,18 @@
     ui.setFlush(flush);
   }
   function notebook(route, ui) {
-    ui.topbar({ title: T.notebookTitle, back: true, backTo: '' });
     var data = Workspace.all(), folders = data.folders.filter(function (f) { return !f.deletedAt; });
     var folder = g.Features.folder || '', query = g.Features.noteQuery || '';
     if (folder && folder !== 'inbox' && !folders.some(function (f) { return f.id === folder; })) folder = g.Features.folder = '';
     var selectedFolder = folders.find(function (f) { return f.id === folder; });
     var existing = route.param && Workspace.note(route.param);
     if (existing && !existing.deletedAt) return editor(existing, folders, ui);
-    ui.view.innerHTML = '<section class="notebook"><header class="notebook__heading"><div class="notebook__toolbar">' +
-      button(T.noteFolders, 'data-folders aria-controls="notebookFolders" aria-expanded="false" aria-haspopup="dialog"', 'folder') + button(T.noteNew, 'data-newnote', 'plus', 'btn--lit') + '</div>' +
-      '<h1>' + esc(selectedFolder ? selectedFolder.title : folder === 'inbox' ? T.noteInbox : T.noteAll) + '</h1><p id="noteCount" role="status"></p></header>' +
+    // the notebook is a main tab, so its list is a top-level screen
+    ui.topbar({ title: T.app });
+    ui.view.innerHTML = '<section class="notebook"><header class="notebook__heading"><span class="page-heading__context">' + esc(T.notebookTitle) + '</span>' +
+      '<h1>' + esc(selectedFolder ? selectedFolder.title : folder === 'inbox' ? T.noteInbox : T.noteAll) + '</h1><p id="noteCount" role="status"></p>' +
+      '<div class="notebook__toolbar">' +
+      button(T.noteFolders, 'data-folders aria-controls="notebookFolders" aria-expanded="false" aria-haspopup="dialog"', 'folder') + button(T.noteNew, 'data-newnote', 'plus', 'btn--lit') + '</div></header>' +
       '<label class="search">' + icon('search') + '<input class="input" id="noteSearch" type="search" value="' + esc(query) + '" placeholder="' + esc(T.noteSearch) + '" aria-label="' + esc(T.noteSearch) + '"></label>' +
       '<div id="noteRows"></div><p class="notebook__foot">' + esc(T.onDeviceOnly) + '</p>' +
       '<dialog id="notebookFolders" class="notebook-drawer" aria-labelledby="notebookFoldersTitle"><div class="notebook-drawer__head"><h2 id="notebookFoldersTitle">' + esc(T.noteFolders) + '</h2>' +
@@ -135,6 +137,7 @@
   function progress(route, ui) {
     ui.topbar({ title: T.courseProgress, back: true, backTo: '' });
     var p = ui.progress(), course = Store.course(), pct = Math.round(p.done / Math.max(1, p.total) * 100);
+    var clock = ui.clock ? ui.clock(p) : null;
     var milestones = Workspace.all().milestones.filter(function (m) { return !m.deletedAt && m.course === course.id; }).sort(function (a, b) { return (a.date || '9999').localeCompare(b.date || '9999'); });
     var unknown = Store.done().filter(function (r) { return !r.course; }).length;
     var checkpoints = [];
@@ -144,13 +147,24 @@
       if (!checkpoints.some(function (item) { return item.kind === kind; })) checkpoints.push({ kind: kind, entry: entry });
     });
     var pilot = Store.settings().pilotProfile || {};
-    ui.view.innerHTML = '<div class="journey stack-6"><header class="journey__hero"><div class="journey__eyebrow">' + icon('flag') + '<span>' + esc(course.label) + '</span>' + (pilot.name || pilot.callsign ? '<b dir="auto">' + esc(pilot.callsign || pilot.name) + '</b>' : '') + '</div>' +
+    ui.view.innerHTML = '<div class="journey stack-6"><header class="journey__hero"><div class="journey__eyebrow"><span class="journey__badge" aria-hidden="true"><img class="badge" src="assets/badge.png" alt="" width="160" height="160" decoding="async"></span><span>' + esc(course.label) + '</span>' + (pilot.name || pilot.callsign ? '<b dir="auto">' + esc(pilot.callsign || pilot.name) + '</b>' : '') + '</div>' +
       '<h1>' + esc(T.courseProgress) + '</h1><p>' + esc(T.progressSub) + '</p>' +
-      '<div class="journey__instrument"><svg viewBox="0 0 320 320" aria-hidden="true"><circle class="journey__outer" cx="160" cy="160" r="148"/>' +
-      Array.from({ length: 60 }, function (_, i) { var a = i * Math.PI / 30, r1 = i % 5 === 0 ? 131 : 138; return '<line class="journey__tick" x1="' + (160 + Math.sin(a) * r1) + '" y1="' + (160 - Math.cos(a) * r1) + '" x2="' + (160 + Math.sin(a) * 144) + '" y2="' + (160 - Math.cos(a) * 144) + '"/>'; }).join('') +
-      '<circle class="journey__track" cx="160" cy="160" r="116"/><circle class="journey__arc" cx="160" cy="160" r="116" pathLength="100" stroke-dasharray="' + pct + ' 100" transform="rotate(-90 160 160)"/></svg>' +
-      '<div class="journey__reading"><strong dir="ltr">' + pct + '<small>%</small></strong><span>' + esc(T.progressCount(p.done, p.total)) + '</span></div></div>' +
+      /* The course as a flight plan: each section a numbered waypoint, legs as
+         long as the sorties they hold, lit as far as the recorded coverage. */
+      '<figure class="journey__map">' +
+      '<div class="journey__reading"><strong dir="ltr">' + pct + '<small>%</small></strong><span>' + esc(T.progressCount(p.done, p.total)) + '</span></div>' +
+      Visuals.course({ sections: p.sections, done: p.done, w: 360, h: 280, seed: course.id, headings: true, padX: 26, padY: 34,
+        shipKind: 'f16', shipSize: 22, label: T.courseRouteLabel(pct, p.next ? p.next.section || p.next.name : '') }) +
+      '<figcaption>' + esc(T.courseRouteHint) + '</figcaption></figure>' +
       '<div class="journey__numbers"><div><b>' + p.done + '</b><span>' + esc(T.progressCompleted) + '</span></div><div><b>' + (p.total - p.done) + '</b><span>' + esc(T.progressRemaining) + '</span></div></div>' +
+      /* the end of the course, when it is known: how long is left, and what
+         documenting the rest of the syllabus would take each week */
+      (clock ? '<div class="course-clock" data-courseclock="' + clock.days + '"><div class="course-clock__k">' + icon('calendar') + '<span>' + esc(T.courseEnds) + '</span><b>' + esc(clock.full) + '</b></div>' +
+        (clock.days > 0
+          ? '<div class="course-clock__v"><strong dir="ltr">' + clock.days + '</strong><span>' + esc(T.daysLeftLabel(clock.days)) + '</span></div>'
+          : '<p class="course-clock__v course-clock__v--end">' + esc(clock.days === 0 ? T.courseLastDay : T.courseEnded(clock.date)) + '</p>') +
+        (clock.days >= 0 ? '<p class="course-clock__s">' + esc(clock.left ? T.sortiesUndocumented(clock.left) + (clock.pace ? '. ' + T.paceToFinish(clock.pace) + '.' : '') : T.allDocumented) + '</p>' : '') +
+        '</div>' : '') +
       button(T.shareProgress, 'data-shareprogress', 'share', 'btn--lit btn--block') + '<p class="field__hint">' + esc(T.progressBasis) + '</p>' +
       (unknown ? '<p class="field__hint">' + esc(T.progressUnknown(unknown)) + '</p>' : '') + '</header>' +
       '<section><div class="section-heading"><h2>' + esc(T.milestones) + '</h2>' + button(T.milestoneAdd, 'data-addmilestone', 'plus') + '</div><div class="milestones">' +
@@ -190,17 +204,57 @@
     function color(token) { return theme.getPropertyValue(token).trim(); }
     var c = canvas.getContext('2d'); c.fillStyle = color('--bg'); c.fillRect(0, 0, 1080, 1350);
     c.strokeStyle = color('--rule-2'); c.lineWidth = 2; c.strokeRect(40, 40, 1000, 1270);
-    for (var x = 80; x < 1040; x += 40) { c.beginPath(); c.moveTo(x, 60); c.lineTo(x, 1290); c.strokeStyle = color('--rule'); c.stroke(); }
-    c.direction = 'rtl'; c.textAlign = 'right'; c.fillStyle = color('--cyan'); c.font = '500 32px Heebo, Arial'; c.fillText(T.app, 976, 118);
+    // the flag's two blue stripes, as thin rules inside the frame
+    c.fillStyle = color('--iaf'); c.fillRect(40, 66, 1000, 5); c.fillRect(40, 1279, 1000, 5);
+    try {
+      var badge = new Image(); badge.src = 'assets/badge.png'; await badge.decode();
+      c.save(); c.shadowColor = 'rgba(0,0,0,.35)'; c.shadowBlur = 18; c.shadowOffsetY = 6; c.drawImage(badge, 96, 92, 104, 104); c.restore();
+    } catch (e) {}   // the card is complete without it
+    c.direction = 'rtl'; c.textAlign = 'right'; c.fillStyle = color('--cyan'); c.font = '500 32px Heebo, Arial'; c.fillText(T.app, 976, 132);
     c.fillStyle = color('--fg'); c.font = '700 64px Heebo, Arial'; c.fillText(T.courseProgress, 976, 236);
     c.fillStyle = color('--fg-mid'); c.font = '400 36px Heebo, Arial'; c.fillText(course.label, 976, 296);
-    c.beginPath(); c.arc(540, 610, 220, 0, Math.PI * 2); c.strokeStyle = color('--rule-2'); c.lineWidth = 18; c.stroke();
-    if (pct) { c.beginPath(); c.arc(540, 610, 220, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * p.done / p.total); c.strokeStyle = color('--cyan'); c.lineCap = 'round'; c.stroke(); }
-    c.textAlign = 'center'; c.direction = 'ltr'; c.fillStyle = color('--fg'); c.font = '600 126px Arial'; c.fillText(pct + '%', 540, 630);
-    c.direction = 'rtl'; c.font = '400 30px Heebo, Arial'; c.fillStyle = color('--fg-mid'); c.fillText(T.progressCount(p.done, p.total), 540, 697);
+    c.font = '400 30px Heebo, Arial'; c.fillText(T.progressCount(p.done, p.total), 976, 356);
+    c.direction = 'ltr'; c.textAlign = 'left'; c.fillStyle = color('--fg'); c.font = '600 132px "Space Grotesk", Arial'; c.fillText(pct + '%', 100, 300);
+
+    /* The same course route the progress screen draws, at print size. */
+    // the map takes the room of any milestone rows that are not shared
     var visible = milestones.filter(function (m) { return m.share; }).slice(0, 3);
-    c.textAlign = 'right';
-    visible.forEach(function (m, i) { c.fillStyle = color('--amber'); c.fillRect(960, 934 + i * 80, 10, 10); c.fillStyle = color('--fg'); c.font = '500 30px Heebo, Arial'; c.fillText(m.title.slice(0, 48), 930, 952 + i * 80, 805); c.fillStyle = color('--fg-mid'); c.font = '400 22px Heebo, Arial'; c.fillText(m.date ? date(m.date + 'T12:00:00') : T.milestonePersonal, 930, 980 + i * 80); });
+    var MX = 80, MY = 400, MW = 920, MH = 460 + (3 - visible.length) * 80, base = MY + MH;
+    var geo = Visuals.courseRoute({ sections: p.sections, done: p.done, w: MW, h: MH, seed: course.id, padX: 70, padY: 70 });
+    function trace(pts) { c.beginPath(); pts.forEach(function (q, i) { if (i) c.lineTo(q.x, q.y); else c.moveTo(q.x, q.y); }); }
+    c.save(); c.beginPath(); c.rect(MX, MY, MW, MH); c.clip(); c.translate(MX, MY);
+    c.fillStyle = color('--face'); c.fillRect(0, 0, MW, MH);
+    c.lineWidth = 1; c.strokeStyle = color('--rule');
+    for (var gx = 0; gx <= MW; gx += 46) { c.beginPath(); c.moveTo(gx, 0); c.lineTo(gx, MH); c.stroke(); }
+    for (var gy = 0; gy <= MH; gy += 46) { c.beginPath(); c.moveTo(0, gy); c.lineTo(MW, gy); c.stroke(); }
+    c.strokeStyle = color('--rule-2'); c.lineWidth = 1.5; c.stroke(new Path2D(Visuals.topoPath(course.id + ':share', MW, MH, 4)));
+    [110, 220].forEach(function (r) { c.beginPath(); c.arc(geo.wps[0].x, geo.wps[0].y, r, 0, Math.PI * 2); c.stroke(); });
+    c.lineJoin = 'round'; c.lineCap = 'round';
+    c.setLineDash([14, 14]); c.strokeStyle = color('--fg-dim'); c.lineWidth = 3; trace(geo.pts); c.stroke(); c.setLineDash([]);
+    if (geo.lit.length > 1) {
+      c.strokeStyle = color('--cyan'); c.globalAlpha = .25; c.lineWidth = 20; trace(geo.lit); c.stroke();
+      c.globalAlpha = 1; c.lineWidth = 7; trace(geo.lit); c.stroke();
+    }
+    geo.wps.forEach(function (w) {
+      var lit = w.kind === 'start' || w.state === 'done' || w.state === 'passed';
+      c.beginPath();
+      if (w.kind !== 'wp') c.arc(w.x, w.y, 13, 0, Math.PI * 2);
+      else { c.moveTo(w.x, w.y - 12); c.lineTo(w.x + 12, w.y); c.lineTo(w.x, w.y + 12); c.lineTo(w.x - 12, w.y); c.closePath(); }
+      c.fillStyle = lit ? color('--cyan') : color('--face'); c.fill();
+      c.lineWidth = 3; c.strokeStyle = w.state === 'next' ? color('--amber') : lit ? color('--cyan') : color('--fg-dim'); c.stroke();
+      if (w.label) {
+        c.fillStyle = w.state === 'next' ? color('--amber') : color('--fg-mid'); c.font = '600 22px "Space Grotesk", Arial';
+        c.textAlign = 'center'; c.direction = 'ltr'; c.fillText(w.label, w.x, w.y - 24);
+      }
+    });
+    c.save(); c.translate(geo.ship.x, geo.ship.y); c.rotate(geo.ship.h * Math.PI / 180); c.scale(.64, .64); c.translate(-50, -50);
+    c.fillStyle = color('--fg'); c.fill(new Path2D(Visuals.jetPath('f16'))); c.restore();
+    c.restore();
+    c.strokeStyle = color('--rule-2'); c.lineWidth = 2; c.strokeRect(MX, MY, MW, MH);
+    if (p.next) { c.direction = 'rtl'; c.textAlign = 'right'; c.fillStyle = color('--amber'); c.font = '500 28px Heebo, Arial'; c.fillText(T.progressNext + ': ' + p.next.name, 976, base + 52, 880); }
+
+    c.direction = 'rtl'; c.textAlign = 'right';
+    visible.forEach(function (m, i) { c.fillStyle = color('--amber'); c.fillRect(960, base + 114 + i * 80, 10, 10); c.fillStyle = color('--fg'); c.font = '500 30px Heebo, Arial'; c.fillText(m.title.slice(0, 48), 930, base + 132 + i * 80, 805); c.fillStyle = color('--fg-mid'); c.font = '400 22px Heebo, Arial'; c.fillText(m.date ? date(m.date + 'T12:00:00') : T.milestonePersonal, 930, base + 160 + i * 80); });
     c.textAlign = 'center'; c.font = '400 22px Heebo, Arial'; c.fillStyle = color('--fg-mid'); c.fillText(T.progressBasis, 540, 1230, 920); c.fillText(date(Date.now()), 540, 1268);
     var blob = await new Promise(function (resolve) { canvas.toBlob(resolve, 'image/png'); });
     if (!blob) return ui.toast(T.shareFailed, 'alert');
@@ -261,8 +315,12 @@
   }
   function whatsnew(route, ui) {
     ui.topbar({ title: T.whatsNew, back: true, backTo: 'settings' });
-    ui.view.innerHTML = '<section class="release"><span class="release__version mono">' + esc(ui.build) + '</span><h1>' + esc(T.whatsNew) + '</h1><p>' + esc(T.releaseIntro) + '</p><div class="release__list">' + T.releaseItems.map(function (x, i) { return '<article><span class="mono">' + String(i + 1).padStart(2, '0') + '</span><div><h2>' + esc(x[0]) + '</h2><p>' + esc(x[1]) + '</p></div></article>'; }).join('') + '</div>' + button(T.understood, 'data-understood', 'check', 'btn--lit btn--block') + '</section>';
-    $('[data-understood]').onclick = function () { if (/preview/.test(ui.build) || Store.set('releaseSeen', ui.build)) ui.go(''); else ui.toast(T.saveFailedBody, 'alert'); };
+    ui.view.innerHTML = '<section class="release"><span class="release__version mono">' + esc(ui.build) + '</span><h1>' + esc(T.whatsNew) + '</h1><p>' + esc(T.releaseIntro) + '</p><div class="release__list">' + T.releaseItems.map(function (x, i) { return '<article><span class="mono">' + String(i + 1).padStart(2, '0') + '</span><div><h2>' + esc(x[0]) + '</h2><p>' + esc(x[1]) + '</p></div></article>'; }).join('') + '</div><div class="release__acts">' + button(T.releaseTour, 'data-starttour', 'plane', 'btn--lit btn--block btn--lg') +
+      button(T.understood, 'data-understood', 'check', 'btn--quiet btn--block') + '</div></section>';
+    function seen() { return /preview/.test(ui.build) || Store.set('releaseSeen', ui.build); }
+    $('[data-understood]').onclick = function () { if (seen()) ui.go(''); else ui.toast(T.saveFailedBody, 'alert'); };
+    // the same guided look the update message offers, on demand
+    $('[data-starttour]').onclick = function () { if (seen()) ui.tour(); else ui.toast(T.saveFailedBody, 'alert'); };
   }
   function recovery(route, ui) {
     ui.topbar({ title: T.backupRecovery, back: true, backTo: 'settings' });

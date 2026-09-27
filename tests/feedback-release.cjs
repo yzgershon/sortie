@@ -11,8 +11,11 @@ async function ok(label,expression,expected){assert.deepEqual(await b.ev(express
  fail=false;await b.ev("document.querySelector('#feedbackSend').click();document.querySelector('#feedbackSend').click()");await b.until("document.querySelector('#feedbackState').textContent===T.feedbackSent");await ok('accepted feedback clears its draft',"Workspace.feedbackDraft()",null);assert.equal(requests.length,2);checks++;console.log('PASS repeated click sends only one request');
  await b.route('whatsnew','[data-understood]');await b.click('[data-understood]');await b.until("document.body.dataset.route==='home'");await ok('preview acknowledgment does not consume released-version notice',"Store.settings().releaseSeen==='v23-preview'",false);
  b.close();b=await browser({source:(file,data)=>path.relative(root,file).replace(/\\/g,'/')==='js/app.js'?data.toString().replace("'v23-preview'","'v23'"):data});
- await b.until("document.querySelector('#sheet').open");await ok('released version announces after gate',"document.querySelector('.sheet__title').textContent",await b.ev('T.whatsNew'));
+ await ok('a first-time user is not told what changed',"[document.querySelector('#sheet').open,Store.settings().releaseSeen]",[false,'v23']);
+ await b.ev("(async()=>{await Store.save({id:'had',stage:'done',answers:{q_subject:'AW 1'}});Store.set('releaseSeen','v22');return 1;})()");
+ await b.ev('window.beforeReload=true');await b.send('Page.reload');await b.until("typeof beforeReload==='undefined'&&document.querySelector('#sheet').open");
+ await ok('released version announces after gate to someone with saved work',"document.querySelector('.sheet__title').textContent",await b.ev('T.whatsNew'));
  await b.click('#sheet [data-act="0"]');await b.ev('window.beforeReload=true');await b.send('Page.reload');await b.until("typeof beforeReload==='undefined'&&document.body.dataset.route==='home'");await ok('acknowledged release does not announce again',"document.querySelector('#sheet').open",false);
- await b.route('whatsnew','[data-understood]');await ok('full release notes remain accessible',"document.querySelectorAll('.release__list article').length",7);
+ await b.route('whatsnew','[data-understood]');await ok('full release notes remain accessible',"document.querySelectorAll('.release__list article').length",9);
  await ok('no runtime errors','true',b.errors.length===0);console.log(checks+' feedback/release checks passed');b.close();
 })().catch(e=>{console.error(e);if(b)b.close();process.exitCode=1;});

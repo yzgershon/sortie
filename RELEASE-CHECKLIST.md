@@ -1,6 +1,6 @@
-# v23 candidate release checklist
+# v23 release checklist
 
-Updated 2026-09-26. Branch `release/next-update`, baseline `005e762`, local build `v23-preview`. No production push or deployment.
+Updated 2026-09-26. Branch `release/next-update`, rebased on `origin/main` (`1b7c257`), build `v23`. Released to `main` on Yish's instruction on 2026-09-26.
 
 ## Implemented and verified locally
 
@@ -17,17 +17,22 @@ Updated 2026-09-26. Branch `release/next-update`, baseline `005e762`, local buil
 - [x] Frontend audit: optional profile and personal focus, task-first Home, calm charcoal/sage theme, consistent typography and controls, filter reset, collapsible question editor and syllabus sections, theme-aware progress image and updated release notes. MIG 5 adds profile only; SCHEMA stays 4. See `FRONTEND-AUDIT.md`.
 - [x] Completed-only weekly selection, planned/documented exercise wording, clean plain text, short/full summaries, log/trend filters and goal history.
 - [x] Instructor report: week/date/course controls, contextual recurrence and later achievement, next-flight goals, custom/history answers, optional identity, exact preview, document/rich-text/print exports; 39 regression checks and A4 rendering.
+- [x] Frontend redesign: one design system for all three themes, task-first Home, five-slot tab bar with a central brief action and the notebook, Hebrew-only labels, grouped flight record, 48px targets. No storage, schema, migration or save-flow change. See `FRONTEND-AUDIT.md`.
+- [x] IAF visual layer: seeded mission charts, data-driven course route on Home/trends/progress/share image, sign-in radar scope, outline ring-and-star mark, `--iaf` blue and flag double-stripe accents, generated F-35I/F-16I/F-15I images with provenance in `assets/ARTWORK.md`. Read-only; no storage change.
 - [x] Three original local aviation images across overview screens, with mobile crops and theme treatment; about 300 KB total, covered by the offline manifest. Prompts and provenance recorded in `assets/ARTWORK.md`.
 - [x] All answer-history questions, retained first-run dismissal, optional brief sections, separated destructive settings, touch/focus improvements and truthful Hebrew privacy/save copy.
 - [x] Verified network-first release manifest, complete-install requirement, previous/unrelated cache retention, HTTP-error/mixed-version fallback and safe update coordination during editing.
 - [x] Feedback UI with retained/offline draft, optional disclosed diagnostics, disabled duplicate clicks and honest uncertain-delivery state; automated checks use loopback mocks. Real Formspree submission and owner-confirmed email receipt verified on 2026-09-26.
-- [x] Stable-version What's New appears after auth/PIN at Home, acknowledges once and remains in Settings. Preview acknowledgment is separate.
+- [x] NexBank design system (UI UX Pro Max "Digital Banking"), Home stats on the first screen, read-only `js/motion.js` animations with a setting and reduced-motion support. No storage change. See `FRONTEND-AUDIT.md`.
+- [x] Flight hours: Home totals every debriefed minute under any minutes question, archived ones included; a v22 profile shows its hours after upgrade (real-Chrome upgrade test). A manual total in הגדרות is stored as an additive `hoursAdjust` correction, never written into a flight.
+- [x] More in הגדרות: animation level (auto/full/reduced/off), vibration, and which Home sections show. All are optional preferences, validated, carried by a full backup and skipped on restore if a later version wrote a value this one does not know. SCHEMA 4 and MIG 5 unchanged.
+- [x] Stable-version update message appears after auth/PIN at Home, only for people with saved work (a first-time user is marked as seen quietly). It offers a guided spotlight tour of the new Home (`js/tour.js`), acknowledges once, and the tour stays available from מה חדש. Preview acknowledgment is separate.
 - [x] Private access-maintenance CLI defaults to preview, validates hashes/course mapping and never pushes. Synthetic test only; real allowlist unchanged.
 - [x] README and HANDOFF rewritten to current behavior. Local private roster/dev files remain ignored.
 
 ## Evidence
 
-`node tools/build-release.cjs` and `node tools/test.cjs` passed **456 checks across 16 suites**, plus manifest/script/string/access-mapping validation (27 shell files).
+`node tools/build-release.cjs` and `node tools/test.cjs` passed **490 checks across 17 suites**, plus manifest/script/string/access-mapping validation (30 shell files). Latest log: `C:\Dev\artifacts\sortie-redesign\release-tests.log`. A dry run on a throwaway copy with the version set to `v23`/`sortie-v23` also passed all 17 suites (`C:\Dev\artifacts\sortie-redesign\release-dryrun-tests.log`); the working tree keeps `v23-preview`.
 
 | Suite | Checks |
 |---|---:|
@@ -37,12 +42,13 @@ Updated 2026-09-26. Branch `release/next-update`, baseline `005e762`, local buil
 | מתקדם internal catalogue verifier | 59 |
 | Preservation / backup / conflicts / journal | 27 |
 | Storage abort, deadline, failed quarantine | 3 |
-| Worker asset/fallback/ownership fault cases | 37 |
+| Worker asset/fallback/ownership fault cases | 40 |
 | Private access tool | 4 |
-| Real Chrome v22 upgrade and rollback | 11 |
+| Real Chrome v22 upgrade and rollback, including hours from v22 minutes | 12 |
 | Browser screen and data flows | 26 |
 | Real worker interruption, activation and offline relaunch | 10 |
-| Local mock feedback, live-endpoint isolation and release announcement | 11 |
+| Local mock feedback, live-endpoint isolation and release announcement | 12 |
+| Flight hours and correction, display preferences, backup/restore of them, course end date, update message and tour | 29 |
 | Buffers, storage failure, conflicts, filters, 360px enlarged text | 22 |
 | Notebook sidebar, preservation, 320-412px, themes and enlarged text | 40 |
 | Profile preservation/failure, 16-screen theme/size matrix, filters, sections, access screens and sharing | 37 |
@@ -58,12 +64,18 @@ A finding-by-finding reconciliation with the original proposal is in [IMPLEMENTA
 
 - [x] Owner's Formspree account/email verified, Sortie Feedback form created, public endpoint configured, provider settings reviewed. One synthetic test from the local candidate appeared in the Formspree inbox and Yish confirmed Gmail receipt. Formshield is on; CAPTCHA remains off by default. No paid upgrade or account-security change.
 - [ ] Recheck provider quota (currently 50 submissions/month) and domain restriction when releasing. A restriction to `yzgershon.github.io` would filter local-preview submissions into spam; production-origin delivery still needs release verification.
-- [ ] Yish reviews the local candidate. No UI acceptance has been assumed from automated checks.
+- [x] Yish reviewed the candidate on the preview link and ran a real single-phone update from v22 on `sortie-next`; the saved data carried over.
 - [ ] Test candidate on Galaxy S24 Chrome and installed iPhone Safari: Hebrew input, date/dialogs, safe areas, drag/edge scroll, offline opening/update, JSON recovery, native file/image sharing and opening summary in Google Docs.
 - [ ] Review the intermittent explicit-update reload timeout seen in one repeated browser suite run. Four isolated reruns and the final full suite passed, but the cause is unconfirmed. Failure evidence is retained in `frontend-update-timeout.log`; the test now captures additional failure state. Include open-draft update activation in real-device acceptance.
+- [x] ראשוני end date (2026-12-10) set in `js/courses.js`; progress, Home and the trends syllabus panel show it with a countdown, the גיחות not yet documented and the weekly pace that would cover them. מתקדם has `ends: null` until its date is announced, and then shows nothing.
+- [ ] Set the מתקדם end date in `js/courses.js` when it is announced.
 - [ ] Confirm course completion basis and real milestone/event names/dates with Evyatar. Current progress is recorded syllabus coverage, with personal milestones; it does not claim official qualification/completion.
 - [ ] Reconcile the original PDF uncertainties before making catalogue corrections. AW 2, the reconstructed solo entry, הקפות coverage and empty-exercise entries remain content questions. The catalogue data was not changed in this candidate.
 - [ ] Decide with cadets whether extra not-assessed/not-performed controls are useful. They were conditional in the proposal; no speculative grading step was added.
-- [ ] Set matching stable BUILD/VERSION, finalize accurate Hebrew release copy, regenerate manifest, rerun full checks and obtain Yish's deployment authorization.
+- [x] Set matching stable BUILD/VERSION (`v23` / `sortie-v23`), regenerated the manifest (30 files), reran the full checks (490 across 17 suites, log `C:\Dev\artifacts\sortie-redesign\v23-release-tests.log`) and received Yish's deployment instruction. Earlier note on the release-day steps: Release day, in order: `var BUILD = 'v23'` in `js/app.js` and `var VERSION = 'sortie-v23'` in `sw.js`; `node tools/build-release.cjs`; `node tools/test.cjs` (the tests read the version, so no test edits are needed); commit; push only on Yish's instruction. The update message then shows once to every cadet with saved work.
+
+Production `main` moved to `1b7c257` on 2026-09-26: an access-only commit adding one test account (hash only, ראשוני). The working tree carries the identical `js/auth-config.js`, so build the release on top of `origin/main`, not the older `005e762`.
+
+Single-phone update test: `https://yzgershon.github.io/sortie-next/` (public repo `yzgershon/sortie-next`, now commit `8e622cf`) serves this candidate as `v23-canary2`, with the course end date and badge. The test copy's worker only cleans up its own `sortie-v23-canary*` caches, so the live app's offline copy on the test phone is never removed. Same origin as the live app, so the test phone's saved data is what upgrades; nobody else receives it. Its cache (`sortie-v23-canary-shell`) and update notice are separate from the real release. After v23 ships, delete that repo (the test phone's worker unregisters when its script returns 404).
 
 Do not reinstall an existing cadet app to receive this update. Export a JSON backup before any deliberate reinstall. No local-only system can guarantee preservation after OS eviction, device loss or manual site-data deletion.

@@ -11,7 +11,7 @@ const config=globals.AUTH_CONFIG;
 if(new Set(config.allow).size!==config.allow.length||config.allow.some(h=>!/^[a-f0-9]{64}$/.test(h)||!globals.Courses.get(config.courses[h])))throw Error('Invalid allowlist or course assignment.');
 for(const file of ['js/app.js','js/features.js','js/summary.js'])for(const match of read(file).toString().matchAll(/\bT\.([A-Za-z]\w*)/g))if(!(match[1] in globals.T))throw Error('Missing Hebrew string: '+match[1]);
 const names=['index.html','manifest.webmanifest','assets/cockpit.jpg','icons/icon-192.png','icons/icon-512.png','icons/apple-touch-icon.png'];
-names.push('assets/sortie-horizon.jpg','assets/sortie-journal.jpg','assets/sortie-terrain.jpg');
+names.push('assets/sortie-adir.jpg','assets/sortie-sufa.jpg','assets/sortie-raam.jpg','assets/sortie-journal.jpg','assets/badge.png');
 for(const match of html.matchAll(/(?:src|href)="((?:js|css)\/[^"?]+)(?:\?[^\"]*)?"/g))names.push(match[1]);
 const files={};for(const name of [...new Set(names)].sort()){if(name.endsWith('.js'))new vm.Script(read(name).toString(),{filename:name});files['./'+name]=crypto.createHash('sha256').update(read(name)).digest('hex');}
 const expected=JSON.stringify({version,files},null,2)+'\n';

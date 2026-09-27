@@ -44,7 +44,7 @@ All rows below are implemented locally. The evidence column identifies regressio
 
 | Area | Current candidate |
 |---|---|
-| Notebook | One-tap access from the top bar; folders, priorities, pinning, search, autosave, page download, conflict-copy recovery and full JSON backup. Updated to the shared cockpit palette, a collapsible RTL folder sidebar and one expandable page-options menu. Storage format unchanged by this redesign. |
+| Notebook | One-tap access from its bottom tab (and the top bar while writing a brief or debrief); folders, priorities, pinning, search, autosave, page download, conflict-copy recovery and full JSON backup. Updated to the shared cockpit palette, a collapsible RTL folder sidebar and one expandable page-options menu. Storage format unchanged by this redesign. |
 | Course journey | Course-specific recorded syllabus coverage, section progress, catalogue solo/night markers, personal milestones and a polished image/text sharing preview. No public progress website or cross-device sync. |
 | Feedback | In-app form, retained offline draft, optional disclosed diagnostics and Formspree delivery. A real local-preview test reached the provider and Yish confirmed email receipt. No flights or notebook pages are attached automatically. |
 | What's New | Hebrew grouped highlights, once per stable version after sign-in/PIN at Home, plus Settings access. Preview builds do not consume the stable release acknowledgment. |
@@ -66,6 +66,6 @@ All rows below are implemented locally. The evidence column identifies regressio
 
 ## Verification
 
-`node tools/build-release.cjs` and `node tools/test.cjs`: **456 checks across 16 suites**, plus release manifest/script/string/access-mapping validation (27 shell files). This includes 39 instructor report checks, 40 notebook checks at 320–412px, light/dark themes, enlarged text, touch and keyboard sidebar use, and preservation when renaming/removing folders, navigating, pinning and deleting pages. The 37 frontend checks add all three themes across 16 screens, profile migration/backup/save-failure checks, enlarged text, access screens, filtering, section search and sharing. The older 20-check and pre-course 31-check upgrade suites were also rerun after MIG 5; this report/artwork change adds no migration.
+`node tools/build-release.cjs` and `node tools/test.cjs`: **490 checks across 17 suites**, plus release manifest/script/string/access-mapping validation (30 shell files; the worker suite checks each file). This includes 39 instructor report checks, 40 notebook checks at 320–412px, light/dark themes, enlarged text, touch and keyboard sidebar use, and preservation when renaming/removing folders, navigating, pinning and deleting pages. The 37 frontend checks add all three themes across 16 screens, profile migration/backup/save-failure checks, enlarged text, access screens, filtering, section search and sharing. The older 20-check and pre-course 31-check upgrade suites were also rerun after MIG 5; this report/artwork change adds no migration.
 
 Latest local evidence: `C:\Dev\artifacts\sortie-v23\instructor-report-tests.log`, `frontend-*.png`, `report-*.png` and `mobile-notebook-*.png`. Full deployment gates are in [RELEASE-CHECKLIST.md](RELEASE-CHECKLIST.md). No test result promises protection against device loss, manual data deletion or OS storage eviction.

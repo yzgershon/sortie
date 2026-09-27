@@ -23,6 +23,7 @@ function existingFields(actual,template){if(Array.isArray(template)){assert.equa
  for(const key of ['flights','questions','draft','debrief','course'])ok('v22 upgrade preserves '+key,existingFields(after[key],before[key]),before[key]);
  ok('v22 goal content and identity preserved',after.goals.map(({id,text,cats,from,status})=>({id,text,cats,from,status})),before.goals.map(({id,text,cats,from,status})=>({id,text,cats,from,status})));
  ok('v22 first-run dismissal preserved',await b.ev('Store.settings().startDismissed'),true);
+ ok('v22 logged minutes appear as flight hours on the new home',await b.ev("document.querySelector('.flightcard__v .odo').textContent"),'2.1');
  await b.ev("window.noteId=Workspace.saveNote({title:'חדש',body:'נשמר אחרי שדרוג',priority:2}).id;Workspace.milestone({title:'אבן דרך',course:'mitkadem'});window.newDocument=true");
  const workspace=await b.ev('localStorage.getItem("sortie:workspace")');
  mode='old';await b.send('Page.reload');await b.until("typeof newDocument==='undefined' && typeof Features==='undefined' && document.body.dataset.route==='home'");

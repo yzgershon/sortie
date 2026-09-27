@@ -84,7 +84,7 @@
     }));
     s.focus = rank(Array.from(focus.values()).filter(function (x) { return x.n > 1; }));
     s.exercises = rank(Array.from(exercises.values()));
-    s.courses = Array.from(courses); s.hours = (s.minutes / 60).toFixed(1);
+    s.courses = Array.from(courses); s.hours = (Math.round(s.minutes / 6) / 10).toFixed(1);   // six-minute tenths, as on Home
     s.from = rows.length ? rows[0].flownAt : ''; s.to = rows.length ? rows[rows.length - 1].flownAt : '';
     s.dateRange = s.from === s.to ? date(s.from) : date(s.from) + ' – ' + date(s.to);
     return s;

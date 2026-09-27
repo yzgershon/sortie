@@ -10,7 +10,7 @@ The current development branch is `release/next-update`, build `v23-preview`. Th
 - Debrief the same flight: enter minutes, assess goals, write exercise notes and set next-flight goals.
 - Goals carry forward within their course/category context. Editing an older debrief preserves newer work.
 - Search/filter flights; review trends and goal history. Prepare an instructor report for this week, last week, a date/course range or manually selected flights. Preview the exact short/full report, optionally include your name/callsign, export a document, copy rich text or use Print/Save as PDF.
-- Open the notebook from the top bar, organize pages into folders, set priorities, pin important pages and search.
+- Open the notebook from its tab, organize pages into folders, set priorities, pin important pages and search.
 - See recorded syllabus coverage by course/section, add personal milestones, and preview an image before sharing it.
 - Customize questions while retaining definitions needed to read historical answers.
 - Personalize the journal with an optional name, callsign and current focus. Home puts unfinished work before statistics and course coverage.
@@ -66,8 +66,11 @@ The tracked tests are Node programs, not browser-accessible seed pages. Never pu
 | `js/workspace.js` | Local notebook, folders, milestones and feedback draft |
 | `js/features.js` | Profile, notebook, progress/share, feedback, release notes and recovery screens |
 | `js/summary.js` | Read-only instructor report model and standalone document output |
+| `js/visuals.js` | Read-only procedural SVG: mission charts, the data-driven course route, the sign-in scope, the app mark and aircraft silhouettes |
+| `js/motion.js` | Read-only interface motion: ambient light, arrival animation gate, tap ripples, greeting decode, card tilt, save fly-by |
+| `js/tour.js` | Read-only guided tour: spotlights each new part of Home with a caption; keyboard, focus and reduced-motion aware |
 | `js/app.js` | Router, original screens, forms and update coordination |
-| `css/app.css`, `css/features.css`, `css/frontend.css`, `css/editorial.css` | Shared design, quiet theme, mobile refinements, artwork and report styling |
+| `css/app.css`, `css/features.css` | Design system and three themes; frame, forms and core screens in `app.css`; notebook, course journey, report and secondary screens in `features.css` |
 | `assets/sortie-*.jpg`, `assets/ARTWORK.md` | Three original aviation images, prompts and provenance; local and available offline |
 | `sw.js`, `release-manifest.json` | Verified network-first offline shell |
 | `tools/`, `tests/` | Local maintenance and reproducible checks |

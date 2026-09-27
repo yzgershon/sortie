@@ -237,6 +237,18 @@
     };
   }
 
+  /* Display preferences added after MIG 5. They are optional: absent means the
+     default (no manual hours, motion by the phone, haptics on, every home
+     section shown), so no migration writes them and no record changes. */
+  var HOME_PARTS = ['focus', 'quick', 'goals', 'recent'];
+  var PREFS = {
+    // minutes added to (or taken from) the logged total, never a flight
+    hoursAdjust: function (v) { return typeof v === 'number' && isFinite(v) && Math.abs(v) <= 600000 && Math.round(v) === v; },
+    motion: function (v) { return ['auto', 'full', 'reduced', 'off'].indexOf(v) !== -1; },
+    haptics: function (v) { return typeof v === 'boolean'; },
+    homeHide: function (v) { return Array.isArray(v) && v.every(function (x) { return HOME_PARTS.indexOf(x) !== -1; }); }
+  };
+
   /** The active course, always a real one. */
   function course() {
     var C = global.Courses;
@@ -682,7 +694,8 @@
       app: 'tahkir', schema: SCHEMA, backupVersion: 1, exportedAt: new Date().toISOString(),
       questions: settings.questions, nextGoals: settings.nextGoals, flights: cache,
       preferences: { course: settings.course, theme: settings.theme, startDismissed: settings.startDismissed,
-        installDismissed: settings.installDismissed, releaseSeen: settings.releaseSeen, pilotProfile: settings.pilotProfile },
+        installDismissed: settings.installDismissed, releaseSeen: settings.releaseSeen, pilotProfile: settings.pilotProfile,
+        hoursAdjust: settings.hoursAdjust, motion: settings.motion, haptics: settings.haptics, homeHide: settings.homeHide },
       drafts: draftEntries(), workspace: readJSON('sortie:workspace', null), feedbackDraft: readJSON('sortie:feedback-draft', null), trash: readArray(LS_TRASH)
     }, null, 2);
   }
@@ -761,6 +774,10 @@
     }
     if (restore && data.preferences) ['course', 'theme', 'startDismissed', 'installDismissed', 'releaseSeen', 'pilotProfile'].forEach(function (k) {
       if (data.preferences[k] !== undefined) settings[k] = data.preferences[k];
+    });
+    if (restore && data.preferences) Object.keys(PREFS).forEach(function (k) {
+      var v = data.preferences[k];
+      if (v !== undefined && PREFS[k](v)) settings[k] = clone(v);
     });
     if (Array.isArray(data.nextGoals)) {
       var shelf = cache.length ? settings.nextGoals.slice() : [], seenGoals = {};
@@ -1225,7 +1242,11 @@
 
     /* --- settings --- */
     settings: function () { return settings; },
-    set: function (k, v) { var old = settings[k]; settings[k] = v; if (!saveSettings()) { settings[k] = old; return false; } return true; },
+    set: function (k, v) {
+      if (PREFS[k] && v !== undefined && !PREFS[k](v)) return false;
+      var old = settings[k]; settings[k] = v; if (!saveSettings()) { settings[k] = old; return false; } return true;
+    },
+    homeParts: HOME_PARTS.slice(),
     storageMode: function () { return dbHealthy ? 'indexeddb' : 'local'; },
 
     setPin: function (pin) {
