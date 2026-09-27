@@ -6,7 +6,7 @@
 (function (global) {
   'use strict';
 
-  var BUILD = 'v23';   // keep in step with VERSION in sw.js
+  var BUILD = 'v24-preview';   // keep in step with VERSION in sw.js
 
   var appEl, viewEl, topbarEl, tabbarEl, toasterEl, sheetEl, lockEl;
   var route = { name: 'home', param: null };
@@ -245,7 +245,7 @@
   function go(p) { location.hash = '#/' + p; }
 
   var ROUTES = ['home', 'brief', 'debrief', 'log', 'flight', 'trends', 'settings', 'summary', 'syllabus',
-    'notebook', 'progress', 'feedback', 'whatsnew', 'recovery', 'profile'];
+    'notebook', 'progress', 'feedback', 'whatsnew', 'recovery', 'profile', 'cloud', 'instructor'];
 
   function navigate() {
     // leaving a form saves what is in it, including via the back button
@@ -311,6 +311,7 @@
         return '<button class="iconbtn' + (a.lit ? ' iconbtn--lit' : '') + '" data-topact="' + a.id +
           '" aria-label="' + esc(a.label) + '">' + icon(a.ic) + '</button>';
       }).join('') +
+      (root && global.Cloud && Cloud.enabled() ? '<a class="iconbtn" href="#/cloud" aria-label="' + esc(T.cloudTitle) + '">' + icon('layers') + '</a>' : '') +
       (root ? '<a class="iconbtn" href="#/settings" aria-label="' + esc(T.settings) + '">' + icon('settings') + '</a>' : '');
     on(topbarEl, '[data-back]', 'click', function () {
       if (navCount > 1) history.back(); else go(c.backTo || '');
@@ -326,13 +327,14 @@
     formFlush = null;
     document.body.dataset.route = route.name;
     var formish = route.name === 'brief' || route.name === 'debrief' || route.name === 'profile';
-    tabbarEl.hidden = formish;
-    viewEl.classList.toggle('view--noTabs', formish);
+    tabbarEl.hidden = formish || route.name === 'instructor';
+    viewEl.classList.toggle('view--noTabs', formish || route.name === 'instructor');
     if (!formish) renderTabs();
     var screens = { home: screenHome, brief: screenForm, debrief: screenForm, log: screenLog,
        flight: screenDetail, trends: screenTrends, settings: screenSettings,
        summary: screenSummary, syllabus: screenSyllabus };
-    if (screens[route.name]) screens[route.name]();
+    if (route.name === 'cloud' || route.name === 'instructor') Instructor.render(route, { view: viewEl, topbar: renderTopbar, toast: toast, go: go });
+    else if (screens[route.name]) screens[route.name]();
     else Features.render(route, { view: viewEl, topbar: renderTopbar, toast: toast, sheet: openSheet, confirm: confirmSheet,
       go: go, build: BUILD, progress: syllabusProgress, clock: courseClock, saveFile: saveFile, tour: startTour, setFlush: function (fn) { formFlush = fn; } });
     var notebookEditor = route.name === 'notebook' && !!viewEl.querySelector('.notebook--editor');
@@ -2657,6 +2659,9 @@
       '<section class="stack"><h2 class="h-sect">' + esc(T.trainingTools) + '</h2><div class="group">' + item('notebook', T.notebookTitle, T.onDeviceOnly, 'notebook') +
         item('trending', T.courseProgress, T.progressSub, 'progress') + item('pencil', T.feedback, T.feedbackSub, 'feedback') +
         item('flag', T.whatsNew, BUILD, 'whatsnew') + '</div></section>' +
+      (global.Cloud && Cloud.enabled() ? '<section class="stack"><h2 class="h-sect">' + esc(T.cloudTitle) + '</h2><div class="group">' +
+        item('layers', T.cloudTitle, T.cloudScope, 'cloud') +
+        (Cloud.status().role === 'instructor' ? item('layers', T.instructorTitle, T.instructorSub, 'instructor') : '') + '</div></section>' : '') +
 
       '<details class="settings-disclosure" id="questionEditor"' + (questionEditorOpen ? ' open' : '') + '><summary>' + icon('list3') + '<span><b>' + esc(T.questionEditor) + '</b><small>' + esc(T.questionCount(qs.length)) + '</small></span>' + icon('chevDown') + '</summary><section class="stack">' +
         '<p class="fineprint">' + esc(T.questionsHint) + '</p>' +
@@ -2695,7 +2700,7 @@
         item('lock', s.pin ? T.changeCode : T.setCode,
              Store.cryptoReady() ? (s.pin ? T.codeOn : T.codeOff) : T.needsHttps, 'pin-set') +
         (s.pin ? item('x', T.removeCode, '', 'pin-off') : '') + '</div>' +
-        '<p class="fineprint">' + esc(T.privacyNote) + '</p></section>' +
+        '<p class="fineprint">' + esc(global.Cloud && Cloud.enabled() ? T.cloudPrivacy : T.privacyNote) + '</p></section>' +
 
       '<details class="advanced-settings"><summary>' + esc(T.advancedSettings) + '</summary><div class="group"><button class="item item--danger" data-clear>' +
         '<span class="item__ic">' + icon('trash') + '</span><span class="item__b">' +
@@ -2796,7 +2801,7 @@
 
     on(viewEl, '[data-act]', 'click', function (e) {
       var a = e.currentTarget.dataset.act;
-      if (['notebook', 'progress', 'feedback', 'whatsnew', 'recovery', 'profile'].indexOf(a) !== -1) { go(a); return; }
+      if (['notebook', 'progress', 'feedback', 'whatsnew', 'recovery', 'profile', 'cloud', 'instructor'].indexOf(a) !== -1) { go(a); return; }
       if (a === 'export-csv') {
         if (!Store.count()) return toast(T.noFlights, 'alert');
         saveFile('tahkir-' + stamp() + '.csv', Store.toCSV(), 'text/csv');
@@ -2843,7 +2848,7 @@
       confirmSheet({
         title: T.confirmSignOut, text: T.confirmSignOutBody, confirmLabel: T.signOut,
         icon: 'lock',
-        onConfirm: function () { Auth.signOut(); location.reload(); }
+        onConfirm: function () { Promise.resolve(Auth.signOut()).then(function () { location.reload(); }, function () { toast(T.cloudSignoutError, 'alert'); }); }
       });
     });
 
@@ -3400,6 +3405,7 @@
     });
 
     function start() {
+      if (global.Cloud) Cloud.start();
       global.addEventListener('hashchange', navigate);
       if (Store.settings().pin) { openLock('unlock'); navigate(); }
       else { appEl.hidden = false; navigate(); }

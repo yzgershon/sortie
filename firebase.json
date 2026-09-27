@@ -1,4 +1,5 @@
 {
+  "firestore": { "rules": "firestore.rules", "indexes": "firestore.indexes.json" },
   "hosting": {
     "public": ".",
     "ignore": [
@@ -6,6 +7,11 @@
       "**/.*",
       "**/node_modules/**",
       "dev/**",
+      "tests/**",
+      "tools/**",
+      "package*.json",
+      "firebase.test.json",
+      "firestore.*",
       "*.md",
       "icons/make-icons.ps1"
     ],

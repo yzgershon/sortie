@@ -1,0 +1,7 @@
+{
+  "indexes": [],
+  "fieldOverrides": [
+    { "collectionGroup": "flights", "fieldPath": "payload", "indexes": [] },
+    { "collectionGroup": "revisions", "fieldPath": "payload", "indexes": [] }
+  ]
+}

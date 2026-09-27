@@ -4,7 +4,8 @@ const assert=require('assert/strict'),path=require('path'),{store,browser,root}=
 let b,checks=0;
 // values from the vm-hosted store are normalized, so arrays compare across contexts
 function ok(label,actual,expected){assert.deepEqual(JSON.parse(JSON.stringify(actual===undefined?null:actual)),JSON.parse(JSON.stringify(expected===undefined?null:expected)),label);checks++;console.log('PASS '+label);}
-const released=(file,data)=>path.relative(root,file).replace(/\\/g,'/')==='js/app.js'?data.toString().replace("'v23-preview'","'v23'"):data;
+// Use a fixed stable fixture build even when the checked-out candidate is a preview.
+const released=(file,data)=>path.relative(root,file).replace(/\\/g,'/')==='js/app.js'?data.toString().replace(/var BUILD = '[^']+'/,"var BUILD = 'v23'"):data;
 (async()=>{
  /* --- storage: additive preferences, validated, carried by a full backup --- */
  const a=store();await a.S.init();
@@ -76,6 +77,10 @@ const released=(file,data)=>path.relative(root,file).replace(/\\/g,'/')==='js/ap
  ok('the tour starts on the flight card with the app inert beneath it',await b.ev("[document.querySelector('.tour__title').textContent,document.querySelector('#app').inert,document.querySelector('#sheet').open,Store.settings().releaseSeen]"),[await b.ev('T.tourSteps[0][1]'),true,false,'v23']);
  await b.ev("Promise.all(document.querySelector('.tour__spot').getAnimations().filter(a=>a.effect.getTiming().iterations!==Infinity).map(a=>a.finished))");
  ok('the spotlight sits on its element',await b.ev("(()=>{const s=document.querySelector('.tour__spot').getBoundingClientRect(),t=document.querySelector('.flightcard').getBoundingClientRect();return Math.abs(s.top-(t.top-8))<3&&Math.abs(s.height-(t.height+16))<3;})()"),true);
+ await b.ev("window.oldTourTarget=document.querySelector('.flightcard');const install=new Event('beforeinstallprompt',{cancelable:true});install.prompt=async()=>{};install.userChoice=Promise.resolve({outcome:'dismissed'});dispatchEvent(install)");
+ await b.until("!oldTourTarget.isConnected&&!!document.querySelector('.tour')&&!document.querySelector('.tour').classList.contains('is-moving')",8000);
+ await b.ev("Promise.all(document.querySelector('.tour__spot').getAnimations().filter(a=>a.effect.getTiming().iterations!==Infinity).map(a=>a.finished))");
+ ok('tour follows the replacement card after install prompt redraw',await b.ev("(()=>{const s=document.querySelector('.tour__spot').getBoundingClientRect(),t=document.querySelector('.flightcard').getBoundingClientRect();return Math.abs(s.top-(t.top-8))<3&&Math.abs(s.height-(t.height+16))<3;})()"),true);
  ok('focus is on the next step',await b.ev("document.activeElement===document.querySelector('.tour [data-t=next]')"),true);
  await b.send('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});await b.send('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
  await b.until("!document.querySelector('.tour')");

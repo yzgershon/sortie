@@ -1,0 +1,16 @@
+{
+  "name": "sortie",
+  "private": true,
+  "scripts": {
+    "build:cloud": "node tools/build-cloud.cjs",
+    "test:cloud": "node tests/cloud.cjs",
+    "test:rules": "node tools/test-cloud-emulators.cjs"
+  },
+  "dependencies": { "firebase": "12.19.0" },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "5.0.2",
+    "esbuild": "0.28.2",
+    "firebase-admin": "14.5.0",
+    "firebase-tools": "15.31.0"
+  }
+}

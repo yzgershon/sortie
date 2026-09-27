@@ -1,11 +1,23 @@
 # Sortie handoff
 
-Updated 2026-09-26. Read this and the actual git status before editing. Preserve other agents' or Yish's work. User instructions take precedence over old agent briefings.
+Updated 2026-09-27. Read this and the actual git status before editing. Preserve other agents' or Yish's work. User instructions take precedence over old agent briefings.
+
+## Instructor cloud work (current)
+
+- Branch feature/instructor-cloud, based on 81f3dfa (v23). Candidate v24-preview / sortie-v24-preview, 35-file hashed shell. No production app deployment or real cadet upload was made.
+- Yish states he is the instructor and has the cadets' permission. He selected saved training records only; notebooks and unfinished drafts remain on-device. He chose a separate Sortie Firebase project. This supersedes the old no-cloud-sync constraint below.
+- Local implementation: Firebase Google credential bridge, resumable saved-record mirror, immutable revisions/conflict retention, server-enforced cadet/instructor rules, trusted enrollment tool, and mobile read-only instructor dashboard with filters, histories, syllabus coverage and reports. SCHEMA=4 and MIG=5 remain unchanged. Cloud reads never mutate Store.
+- Integration is disabled in js/cloud-config.js. The old OAuth client is in Google Cloud project aios-498412 and must remain untouched. Separate-project setup is waiting for the owner to complete the Firebase CLI OAuth flow opened in the sidebar. No new project was created yet; the console wizard is on its Analytics step. See CLOUD-SETUP.md. Real project sign-in and phone acceptance remain required before activation.
+- Synthetic preview: node tools/preview-instructor.cjs, http://127.0.0.1:8984/#/instructor, opened in sidebar. Clearly labeled, no Firebase connection or feedback sending.
+- New pinned npm tooling builds only the self-hosted Firebase adapter and runs emulators. Deployed app remains static globals. Rebuild with npm run build:cloud after tools/firebase-adapter.mjs changes, then node tools/build-release.cjs.
+- New tests: 24 cloud preservation, 9 auth bridge, 24 synthetic browser, 28 Firestore authorization, 11 actual SDK/emulator checks passed. Existing 52 private auth checks passed. The pre-existing tour spotlight race was subsequently fixed: it now reselects replaced Home targets, cancels stale placement callbacks and observes redraws. All 30 settings/release checks, including a deterministic install-prompt redraw, pass. Final full-suite log: cloud-ready-regression-20260927.log. Evidence: C:/Dev/artifacts/sortie-v23/cloud-*20260927.log.
+- Release tests now force a stable fixture build regardless of the checked-out preview number. Product preview announcement suppression is unchanged.
+- Server enrollment is separate from the public client allowlist. Revoke cloud access with access/{uid}.active=false. Raw roster/credentials never belong in tracked files.
 
 ## Current state
 
-- Workspace: `C:\Dev\sortie`; branch `release/next-update`; baseline `005e762` (v22).
-- Local candidate: `v23-preview` in both app and worker. No production push/deployment was made during this work.
+- Workspace: `C:\Dev\sortie`; current branch/build are in the instructor cloud section above; preceding frontend baseline is `81f3dfa` (v23).
+- The following notes describe existing v23 features; the instructor cloud section takes precedence for current work.
 - Yish authorized the audit fixes, notebook, progress/sharing, feedback and release announcement. He selected on-device notebook storage with full backup and image/text sharing, not a public progress link.
 - The new code is implemented locally and tested. The release is **not ready to deploy** until the service/device/content acceptance items in `RELEASE-CHECKLIST.md` are addressed.
 - Local preview: `node tools/preview.cjs`, `http://127.0.0.1:8980/`. Auth is overridden in the local server response, never in the production file. A clearly labeled example notebook page was created in that preview only.
@@ -24,7 +36,7 @@ Updated 2026-09-26. Read this and the actual git status before editing. Preserve
 
 Yish builds the app for his brother Evyatar (ראשוני). Yish uses Samsung Galaxy S24 / Chrome; Evyatar uses an installed iPhone Safari PWA. The source allowlist currently has 36 accounts; Yish reports 50+ users. These are different facts, not a measured usage count.
 
-- Static PWA, plain globals, no framework or bundler, no analytics or flight cloud sync.
+- Static PWA, plain globals, no framework or analytics. Instructor sharing is authorized; notebooks/drafts stay local. Only the Firebase SDK adapter has a development-time bundle step.
 - Hebrew RTL UI strings belong in `js/strings.js`. Preserve supplied course wording. Avoid em dashes in UI copy.
 - Keep the cockpit character, monospaced readouts and restrained geometry. The original dark theme retains cyan/amber; Yish also requested the quieter charcoal/sage dark option. All screens and the notebook share semantic theme tokens; do not restore the rejected cream notebook palette.
 - Do not push without Yish's authorization: main deploys GitHub Pages to real cadets.

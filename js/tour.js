@@ -93,7 +93,7 @@
     skip.textContent = o.skip || '';
     back.textContent = o.back || '';
 
-    var placed = false;
+    var placed = false, target = null, stepRun = 0, observer = null;
     function place(el) {
       var r = el.getBoundingClientRect(), vw = doc.documentElement.clientWidth, vh = g.innerHeight, pad = 8;
       // the first light comes up where it is; later ones travel between parts
@@ -127,7 +127,8 @@
         if (!list.length) return end();
         return show(Math.min(k, list.length - 1));
       }
-      idx = k;
+      idx = k; target = el;
+      var run = ++stepRun;
       count.textContent = o.step ? o.step(k + 1, list.length) : (k + 1) + '/' + list.length;
       title.textContent = s.title;
       body.textContent = s.body;
@@ -137,7 +138,9 @@
       root.classList.add('is-moving');
       bring(el, function () {
         settle(el, function () {
-          if (ended || idx !== k) return;
+          if (ended || idx !== k || run !== stepRun) return;
+          // Home may have redrawn while scrolling or waiting for its entrance.
+          if (doc.querySelector(s.sel) !== el || !el.isConnected) return show(k);
           place(el);
           root.classList.remove('is-moving');
           spot.classList.remove('is-scan'); void spot.offsetWidth; spot.classList.add('is-scan');
@@ -149,7 +152,9 @@
 
     function end() {
       if (ended) return;
-      ended = true;
+      ended = true; stepRun++;
+      if (observer) observer.disconnect();
+      if (moveRaf) g.cancelAnimationFrame(moveRaf);
       current = null;
       doc.removeEventListener('keydown', onKey, true);
       g.removeEventListener('resize', onMove);
@@ -182,6 +187,15 @@
         var el = doc.querySelector(list[idx].sel);
         if (visible(el)) place(el);
       });
+    }
+
+    if (g.MutationObserver && o.inert) {
+      observer = new g.MutationObserver(function () {
+        if (ended || idx < 0) return;
+        if (doc.querySelector(list[idx].sel) !== target) show(idx);
+        else onMove();
+      });
+      observer.observe(o.inert, { childList: true, subtree: true });
     }
 
     next.addEventListener('click', function () { if (idx >= list.length - 1) end(); else show(idx + 1); });

@@ -1004,6 +1004,23 @@
 
     /* --- flights --- */
     all: function () { return cache; },
+    // Read-only cloud projection source. Never read workspace, drafts, PIN or auth.
+    trainingSnapshot: function () {
+      var records = Object.create(null), deleted = Object.create(null), savedSettings = readJSON(LS_SETTINGS, settings);
+      var definitions = savedSettings && Array.isArray(savedSettings.questions) ? savedSettings.questions : Store.questions(true);
+      cache.concat(readArray(LS_MIRROR)).forEach(function (r) {
+        if (!records[r.id] || +r.updatedAt >= +records[r.id].updatedAt) records[r.id] = r;
+      });
+      readArray(LS_TRASH).forEach(function (t) {
+        if (t.kind === 'flight' && t.record && (!deleted[t.id] || +t.updatedAt > +deleted[t.id].updatedAt)) deleted[t.id] = t;
+      });
+      return Array.from(new Set(Object.keys(records).concat(Object.keys(deleted)))).map(function (id) {
+        var r = records[id], t = deleted[id];
+        return t && (!r || +t.updatedAt >= +r.updatedAt)
+          ? { record: clone(t.record), questions: clone(definitions), deletedAt: t.updatedAt }
+          : { record: clone(r), questions: clone(definitions), deletedAt: null };
+      });
+    },
     count: function () { return cache.length; },
     get: function (id) {
       for (var i = 0; i < cache.length; i++) if (cache[i].id === id) return cache[i];
@@ -1335,6 +1352,17 @@
       try { return action.apply(Store, arguments); }
       catch (e) { settings = before; throw e; }
       finally { settingsMutation = false; }
+    };
+  });
+  // Notify only after a successful saved-record mutation, never on draft autosave.
+  ['save', 'remove', 'restore', 'clearAll', 'importJSON'].forEach(function (name) {
+    var action = Store[name];
+    if (!action) return;
+    Store[name] = function () {
+      return Promise.resolve(action.apply(Store, arguments)).then(function (result) {
+        if (global.dispatchEvent && global.CustomEvent) global.dispatchEvent(new CustomEvent('sortie:training-saved'));
+        return result;
+      });
     };
   });
   global.Store = Store;

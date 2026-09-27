@@ -500,3 +500,53 @@
     ]
   });
 })(window);
+
+// Instructor sharing. Saved training records only; notebook and drafts stay local.
+Object.assign(window.T, {
+  cloudTitle: 'שיתוף עם המדריך',
+  cloudScope: 'תדריכים ותחקירים שנשמרו בלבד',
+  cloudPrivacy: 'הטיסות נשמרות במכשיר. לאחר חיבור החשבון, תדריכים ותחקירים שנשמרו מסונכרנים עם המדריך שהוקצה לך. המחברת והטיוטות אינן נשלחות. גיבוי JSON נשאר זמין. קוד הנעילה אינו מצפין את הנתונים.',
+  cloudDisabled: 'השיתוף עם המדריך עדיין לא הופעל. הנתונים ממשיכים להישמר במכשיר.',
+  cloudConnect: 'חיבור החשבון לשיתוף',
+  cloudLink: 'חיבור הרשומות השמורות לחשבון זה',
+  cloudLinkBody: 'יש לוודא שזה החשבון שלך לפני חיבור הטיסות שבמכשיר. הרשומות יישארו במכשיר ועותק יישלח למדריך. המחברת והטיוטות יישארו פרטיות.',
+  cloudLinked: 'חיבור הרשומות נשמר. הסנכרון ימשיך כשיש חיבור לרשת.',
+  cloudRefresh: 'רענון',
+  cloudLastSync: 'סנכרון מלא אחרון',
+  cloudNever: 'טרם התקבל סנכרון מלא',
+  cloudPending: 'רשומות ממתינות',
+  cloudConflicts: 'רשומות עם גרסאות שונות',
+  cloudReadOnly: 'תצוגה לקריאה בלבד',
+  cloudLoading: 'טעינת הרשומות השמורות…',
+  cloudLoadError: 'לא ניתן לטעון את הנתונים כעת. יש לבדוק את החיבור ולנסות שוב.',
+  cloudSignoutError: 'היציאה מהחשבון בענן לא הושלמה. יש לנסות שוב.',
+  cloudStates: {
+    disabled: 'השיתוף עדיין לא הופעל', signin: 'נדרש חיבור חשבון Google',
+    connecting: 'בדיקת החשבון והרשאות הגישה', unlinked: 'החשבון מחובר, הטיסות עדיין לא שותפו',
+    'account-mismatch': 'החשבון המחובר אינו תואם לרשומות שבמכשיר. יש להתחבר לחשבון המקורי.',
+    'not-enrolled': 'החשבון עדיין לא נוסף לרשימת הצוערים אצל המדריך',
+    offline: 'אין חיבור לרשת. הרשומות נשמרות במכשיר.', syncing: 'שליחת רשומות שנשמרו',
+    synced: 'כל הרשומות השמורות סונכרנו', conflict: 'נמצאו גרסאות שונות. אף גרסה לא נמחקה. יש לפנות למדריך לבדיקה.',
+    error: 'הסנכרון לא הושלם. הרשומות נשמרות במכשיר, וניתן לנסות שוב.', instructor: 'חשבון מדריך מחובר'
+  },
+  instructorTitle: 'מרכז המדריך',
+  course: 'קורס',
+  instructorSub: 'הטיסות, היעדים וההתקדמות של הצוערים שלך',
+  instructorDenied: 'התצוגה זמינה רק לחשבון מדריך שהוגדר במערכת.',
+  instructorSearch: 'חיפוש צוער', instructorSearchFlight: 'חיפוש בתוכן הטיסות',
+  instructorAllCourses: 'כל הקורסים', instructorAllStages: 'כל המצבים',
+  instructorEmpty: 'עדיין אין צוערים המשויכים לחשבון זה.',
+  instructorNoFlights: 'טרם התקבלו רשומות שמורות מהצוער.',
+  instructorAsOf: 'מוצגות הרשומות שהתקבלו עד הרענון האחרון. עבודה ללא חיבור תופיע לאחר סנכרון.',
+  instructorFrom: 'מתאריך', instructorTo: 'עד תאריך', instructorClear: 'איפוס מסננים',
+  instructorBack: 'לרשימת הצוערים', instructorHours: 'שעות בטיסות שתוחקרו',
+  instructorDone: 'טיסות שתוחקרו', instructorBriefs: 'ממתינות לתחקיר',
+  instructorCoverage: 'כיסוי הסילבוס המתועד בקורס',
+  instructorCoverageNote: 'לפי טיסות שתוחקרו בכל התאריכים. אינו אישור רשמי להשלמת הקורס.',
+  instructorHistory: 'גרסאות שמורות', instructorDeleted: 'רשומה שנמחקה במכשיר',
+  instructorShowDeleted: 'הצגת רשומות שנמחקו',
+  instructorReport: 'דוח למדריך', instructorDownload: 'הורדת הדוח',
+  instructorDataError: 'חלק מהרשומות לא ניתנות להצגה. העותקים בענן נשמרו.',
+  instructorWeek: 'השבוע', instructorReceived: 'התקבל בתאריך',
+  instructorFilters: 'סינון הטיסות'
+});

@@ -1,0 +1,49 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function verified() {
+      return request.auth != null && request.auth.token.email_verified == true
+        && request.auth.token.firebase.sign_in_provider == 'google.com';
+    }
+    function member() { return get(/databases/$(database)/documents/access/$(request.auth.uid)).data; }
+    function active() { return verified() && member().active == true; }
+    function owner(uid) { return active() && request.auth.uid == uid && member().role == 'cadet'; }
+    function instructor(uid) {
+      return active() && member().role == 'instructor'
+        && get(/databases/$(database)/documents/cadets/$(uid)).data.instructorId == request.auth.uid;
+    }
+    function envelope() {
+      return request.resource.data.keys().hasOnly(['payload', 'digest', 'receivedAt'])
+        && request.resource.data.payload is string
+        && request.resource.data.payload.size() <= 700000
+        && request.resource.data.digest is string
+        && request.resource.data.digest.matches('^[a-f0-9]{64}$')
+        && request.resource.data.receivedAt == request.time;
+    }
+    // Provisioned through the Admin SDK only. A client cannot enroll itself,
+    // change its instructor, reactivate access or promote itself.
+    match /access/{uid} {
+      allow get: if verified() && request.auth.uid == uid;
+      allow list, write: if false;
+    }
+    match /cadets/{uid} {
+      allow read: if active() && (request.auth.uid == uid
+        || (member().role == 'instructor' && resource.data.instructorId == request.auth.uid));
+      allow update: if owner(uid)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastSyncAt'])
+        && request.resource.data.lastSyncAt == request.time;
+      allow create, delete: if false;
+      match /flights/{flightId} {
+        allow read: if owner(uid) || instructor(uid);
+        allow create, update: if owner(uid) && envelope()
+          && getAfter(/databases/$(database)/documents/cadets/$(uid)/flights/$(flightId)/revisions/$(request.resource.data.digest)).data.payload == request.resource.data.payload;
+        allow delete: if false;
+        match /revisions/{revisionId} {
+          allow read: if owner(uid) || instructor(uid);
+          allow create: if owner(uid) && envelope() && revisionId == request.resource.data.digest;
+          allow update, delete: if false;
+        }
+      }
+    }
+  }
+}

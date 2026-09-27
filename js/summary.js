@@ -5,8 +5,9 @@
   function text(v) { return String(v == null ? '' : v).trim(); }
   function date(iso) { return iso ? iso.slice(8, 10) + '.' + iso.slice(5, 7) + '.' + iso.slice(0, 4) : ''; }
   function course(id) { var c = g.Courses.get(id); return c ? c.label : g.T.reportUnassigned; }
-  function role(r, name) { var q = g.Store.questionFor(r, name); return q ? r.answers[q.id] : null; }
-  function field(r, type) { return g.Store.questions(true).find(function (q) { return q.type === type && r.answers[q.id] !== undefined; }); }
+  function role(r, name, store) { var q = (store || g.Store).questionFor(r, name); return q ? r.answers[q.id] : null; }
+  function questions(r, store) { return store.questionsFor ? store.questionsFor(r) : store.questions(true); }
+  function field(r, type, store) { return questions(r, store || g.Store).find(function (q) { return q.type === type && r.answers[q.id] !== undefined; }); }
   function lines(v) { return g.Store.linesOf(v).filter(Boolean); }
   function arr(v) { return Array.isArray(v) ? v : []; }
   function answerLines(q, value) {
@@ -18,7 +19,8 @@
     });
     return lines(value);
   }
-  function build(records) {
+  function build(records, sourceStore) {
+    var store = sourceStore || g.Store;
     var rows = records.filter(function (r) { return r.stage === 'done'; }).slice().sort(function (a, b) {
       return a.flownAt.localeCompare(b.flownAt) || (+a.createdAt || 0) - (+b.createdAt || 0) || a.id.localeCompare(b.id);
     });
@@ -32,16 +34,16 @@
       return row;
     }
     rows.forEach(function (r, index) {
-      var cats = g.Store.categoriesOf(r).slice().sort(), cid = r.course || '', subject = text(role(r, 'subject'));
+      var cats = store.categoriesOf(r).slice().sort(), cid = r.course || '', subject = text(role(r, 'subject', store));
       var source = { id: r.id, date: r.flownAt, subject: subject, course: cid, cats: cats };
       var key = function (value) { return JSON.stringify([cid, cats, text(value).replace(/\s+/g, ' ')]); };
-      var mq = field(r, 'minutes'), minutes = mq ? Number(r.answers[mq.id]) : NaN;
+      var mq = field(r, 'minutes', store), minutes = mq ? Number(r.answers[mq.id]) : NaN;
       var validMinutes = mq && text(r.answers[mq.id]) !== '' && Number.isFinite(minutes) && minutes >= 0;
       if (validMinutes) s.minutes += minutes; else s.durationMissing++;
       courses.add(course(cid));
-      var sq = g.Store.questionFor(r, 'solo'), solo = sq && text(r.answers[sq.id]);
+      var sq = store.questionFor(r, 'solo'), solo = sq && text(r.answers[sq.id]);
       if (solo) { s.solo.total++; if (solo === ((sq.options || [])[0] || 'כן')) s.solo.yes++; }
-      arr(role(r, 'goals')).forEach(function (item) {
+      arr(role(r, 'goals', store)).forEach(function (item) {
         var value = text(item.text); if (!value) return;
         var row = collect(goals, key(value), value, source);
         if (!row.met) { row.met = []; row.missed = []; }
@@ -52,27 +54,27 @@
         } else s.openCount++;
         row.latest = verdict; row.latestIndex = index;
       });
-      arr(role(r, 'goalsNext')).forEach(function (item) {
+      arr(role(r, 'goalsNext', store)).forEach(function (item) {
         var value = text(item.text || item); if (!value) return;
         var row = collect(next, key(value), value, source); row.key = key(value); row.latestIndex = index;
       });
-      var xq = field(r, 'syllabus'), xs = xq ? arr(r.answers[xq.id]) : [];
+      var xq = field(r, 'syllabus', store), xs = xq ? arr(r.answers[xq.id]) : [];
       xs.forEach(function (x) {
         if (text(x.text) && text(x.notes)) collect(exercises, key(x.text), text(x.text), source);
         if (text(x.focus)) collect(focus, key(x.focus), text(x.focus), source);
       });
-      var points = lines(role(r, 'points')); if (points.length) s.points.push({ source: source, lines: points });
+      var points = lines(role(r, 'points', store)); if (points.length) s.points.push({ source: source, lines: points });
       var safety = lines(r.answers.q_safety_d); if (safety.length) s.safety.push({ source: source, lines: safety });
       var used = ['q_safety_d'];
       ['subject', 'instructor', 'points', 'goals', 'goalsNext'].forEach(function (name) {
-        var q = g.Store.questionFor(r, name); if (q) used.push(q.id);
+        var q = store.questionFor(r, name); if (q) used.push(q.id);
       });
       if (mq) used.push(mq.id); if (xq) used.push(xq.id);
-      var extras = g.Store.questions(true).filter(function (q) {
+      var extras = questions(r, store).filter(function (q) {
         return r.answers[q.id] !== undefined && used.indexOf(q.id) === -1;
       }).map(function (q) { return { label: q.label, stage: q.stage, lines: answerLines(q, r.answers[q.id]) }; }).filter(function (q) { return q.lines.length; });
-      s.details.push({ record: r, source: source, subject: subject, instructor: text(role(r, 'instructor')), minutes: validMinutes ? minutes : null,
-        goals: arr(role(r, 'goals')), next: arr(role(r, 'goalsNext')), exercises: xs, points: points, safety: safety, extras: extras });
+      s.details.push({ record: r, source: source, subject: subject, instructor: text(role(r, 'instructor', store)), minutes: validMinutes ? minutes : null,
+        goals: arr(role(r, 'goals', store)), next: arr(role(r, 'goalsNext', store)), exercises: xs, points: points, safety: safety, extras: extras });
     });
     var rank = function (list) { return list.sort(function (a, b) { return b.n - a.n || a.t.localeCompare(b.t, 'he'); }); };
     var allGoals = Array.from(goals.values());

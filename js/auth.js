@@ -29,7 +29,10 @@
   var DAY = 86400000;
 
   function cfg() { return g.AUTH_CONFIG || {}; }
-  function clientId() { return String(cfg().clientId || '').trim(); }
+  function clientId() {
+    var cloud = g.CLOUD_CONFIG;
+    return String(cloud && cloud.enabled && cloud.googleClientId ? cloud.googleClientId : cfg().clientId || '').trim();
+  }
   function enabled() { return !!clientId(); }
   function sessionDays() { var d = +cfg().sessionDays; return d > 0 ? d : 30; }
   function redirectUri() {
@@ -136,6 +139,7 @@
   }
   function signOut() {
     try { localStorage.removeItem(LS_SESSION); localStorage.removeItem(LS_PENDING); } catch (e) {}
+    return g.Cloud ? g.Cloud.signOut() : Promise.resolve();
   }
 
   /* --------------------------------------------------------------- signin */
@@ -205,11 +209,11 @@
     if (!/(^|\.)accounts\.google\.com$/.test(String(c.iss || '').replace(/^https?:\/\//, '')))
       return { ok: false, why: 'wrong-issuer' };
     if (!(+c.exp * 1000 > Date.now())) return { ok: false, why: 'expired' };
-    if (pending.nonce && String(c.nonce || '') !== pending.nonce) return { ok: false, why: 'nonce' };
+    if ((g.Cloud && g.Cloud.enabled() && !pending.nonce) || (pending.nonce && String(c.nonce || '') !== pending.nonce)) return { ok: false, why: 'nonce' };
     if (c.email_verified === false || c.email_verified === 'false')
       return { ok: false, why: 'unverified-email' };
     if (!normEmail(c.email)) return { ok: false, why: 'no-email' };
-    return { ok: true, email: normEmail(c.email) };
+    return { ok: true, email: normEmail(c.email), token: p.id_token };
   }
 
   /* ------------------------------------------------------------------ api */
@@ -255,7 +259,9 @@
         return isAllowed(back.email).then(function (yes) {
           if (!yes) return { state: 'denied', email: back.email };
           writeSession(back.email);
-          return { state: 'ok', email: back.email };
+          return (g.Cloud ? g.Cloud.acceptGoogle(back.token) : Promise.resolve()).then(function () {
+            return { state: 'ok', email: back.email };
+          });
         });
       }
 

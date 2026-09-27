@@ -10,7 +10,7 @@ async function ok(label,expression,expected){assert.deepEqual(await b.ev(express
  assert.deepEqual(Object.keys(requests[0]).sort(),['category','message','submission_id']);checks++;console.log('PASS no flight, notebook, account or diagnostics attached by default');
  fail=false;await b.ev("document.querySelector('#feedbackSend').click();document.querySelector('#feedbackSend').click()");await b.until("document.querySelector('#feedbackState').textContent===T.feedbackSent");await ok('accepted feedback clears its draft',"Workspace.feedbackDraft()",null);assert.equal(requests.length,2);checks++;console.log('PASS repeated click sends only one request');
  await b.route('whatsnew','[data-understood]');await b.click('[data-understood]');await b.until("document.body.dataset.route==='home'");await ok('preview acknowledgment does not consume released-version notice',"Store.settings().releaseSeen==='v23-preview'",false);
- b.close();b=await browser({source:(file,data)=>path.relative(root,file).replace(/\\/g,'/')==='js/app.js'?data.toString().replace("'v23-preview'","'v23'"):data});
+ b.close();b=await browser({source:(file,data)=>path.relative(root,file).replace(/\\/g,'/')==='js/app.js'?data.toString().replace(/var BUILD = '[^']+'/,"var BUILD = 'v23'"):data});
  await ok('a first-time user is not told what changed',"[document.querySelector('#sheet').open,Store.settings().releaseSeen]",[false,'v23']);
  await b.ev("(async()=>{await Store.save({id:'had',stage:'done',answers:{q_subject:'AW 1'}});Store.set('releaseSeen','v22');return 1;})()");
  await b.ev('window.beforeReload=true');await b.send('Page.reload');await b.until("typeof beforeReload==='undefined'&&document.querySelector('#sheet').open");
