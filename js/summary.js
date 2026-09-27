@@ -10,17 +10,17 @@
   function field(r, type, store) { return questions(r, store || g.Store).find(function (q) { return q.type === type && r.answers[q.id] !== undefined; }); }
   function lines(v) { return g.Store.linesOf(v).filter(Boolean); }
   function arr(v) { return Array.isArray(v) ? v : []; }
-  function answerLines(q, value) {
+  function answerLines(q, value, T) {
     if (q.type === 'goals' && Array.isArray(value)) return value.filter(function (x) { return text(x.text); }).map(function (x) {
-      return x.text + ' · ' + (x.status === 'met' ? g.T.goalMet : x.status === 'missed' ? g.T.goalMissed : g.T.reportNotGraded);
+      return x.text + ' · ' + (x.status === 'met' ? T.goalMet : x.status === 'missed' ? T.goalMissed : T.reportNotGraded);
     });
     if (q.type === 'syllabus' && Array.isArray(value)) return value.map(function (x) {
-      return [text(x.text), text(x.focus) ? g.T.reportBriefFocus + ': ' + x.focus : '', text(x.notes) || g.T.reportNoExerciseNote].filter(Boolean).join('\n');
+      return [text(x.text), text(x.focus) ? T.reportBriefFocus + ': ' + x.focus : '', text(x.notes) || T.reportNoExerciseNote].filter(Boolean).join('\n');
     });
     return lines(value);
   }
-  function build(records, sourceStore) {
-    var store = sourceStore || g.Store;
+  function build(records, sourceStore, options) {
+    var store = sourceStore || g.Store, o = options || {}, T = o.strings || g.T, courseName = o.courseLabel || course;
     var rows = records.filter(function (r) { return r.stage === 'done'; }).slice().sort(function (a, b) {
       return a.flownAt.localeCompare(b.flownAt) || (+a.createdAt || 0) - (+b.createdAt || 0) || a.id.localeCompare(b.id);
     });
@@ -40,7 +40,7 @@
       var mq = field(r, 'minutes', store), minutes = mq ? Number(r.answers[mq.id]) : NaN;
       var validMinutes = mq && text(r.answers[mq.id]) !== '' && Number.isFinite(minutes) && minutes >= 0;
       if (validMinutes) s.minutes += minutes; else s.durationMissing++;
-      courses.add(course(cid));
+      courses.add(courseName(cid));
       var sq = store.questionFor(r, 'solo'), solo = sq && text(r.answers[sq.id]);
       if (solo) { s.solo.total++; if (solo === ((sq.options || [])[0] || 'כן')) s.solo.yes++; }
       arr(role(r, 'goals', store)).forEach(function (item) {
@@ -72,7 +72,7 @@
       if (mq) used.push(mq.id); if (xq) used.push(xq.id);
       var extras = questions(r, store).filter(function (q) {
         return r.answers[q.id] !== undefined && used.indexOf(q.id) === -1;
-      }).map(function (q) { return { label: q.label, stage: q.stage, lines: answerLines(q, r.answers[q.id]) }; }).filter(function (q) { return q.lines.length; });
+      }).map(function (q) { return { label: store.labelFor ? store.labelFor(q) : q.label, stage: q.stage, lines: answerLines(q, r.answers[q.id], T) }; }).filter(function (q) { return q.lines.length; });
       s.details.push({ record: r, source: source, subject: subject, instructor: text(role(r, 'instructor', store)), minutes: validMinutes ? minutes : null,
         goals: arr(role(r, 'goals', store)), next: arr(role(r, 'goalsNext', store)), exercises: xs, points: points, safety: safety, extras: extras });
     });
@@ -95,18 +95,20 @@
     return [date(x.date), x.subject, course(x.course)].filter(Boolean).join(' · ');
   }
   function documentHTML(s, options) {
-    var T = g.T, o = options || {};
-    function list(values) { return '<ul>' + values.map(function (v) { return '<li>' + esc(v).replace(/\n/g, '<br>') + '</li>'; }).join('') + '</ul>'; }
+    var o = options || {}, T = o.strings || g.T, english = o.lang === 'en' && o.dir === 'ltr';
+    function native(v) { if (v == null || v === '') return ''; return '<bdi dir="auto">' + esc(v) + '</bdi>'; }
+    function sourceHTML(x) { return [esc(date(x.date)), native(x.subject), esc((o.courseLabel || course)(x.course))].filter(Boolean).join(' · '); }
+    function list(values) { return '<ul>' + values.map(function (v) { return '<li dir="auto">' + esc(v).replace(/\n/g, '<br>') + '</li>'; }).join('') + '</ul>'; }
     function section(title, body) { return body ? '<section><h2>' + esc(title) + '</h2>' + body + '</section>' : ''; }
     function ranked(values, kind) {
-      return values.map(function (v) { return '<article><p><b>' + esc(v.t) + '</b>' + (v.n > 1 ? ' · ' + esc(T.inNFlights(v.n)) : '') +
+      return values.map(function (v) { return '<article><p><b>' + native(v.t) + '</b>' + (v.n > 1 ? ' · ' + esc(T.inNFlights(v.n)) : '') +
         (kind === 'missed' && v.latest === 'met' || kind === 'next' && v.resolved ? ' <span class="resolved">' + esc(T.reportLaterMet) + '</span>' : '') +
-        '</p><p class="source">' + esc(v.sources.map(sourceLabel).join(' / ')) + '</p></article>'; }).join('');
+        '</p><p class="source">' + v.sources.map(sourceHTML).join(' / ') + '</p></article>'; }).join('');
     }
-    function dated(values) { return values.map(function (v) { return '<article><p class="source">' + esc(sourceLabel(v.source)) + '</p>' + list(v.lines) + '</article>'; }).join(''); }
+    function dated(values) { return values.map(function (v) { return '<article><p class="source">' + sourceHTML(v.source) + '</p>' + list(v.lines) + '</article>'; }).join(''); }
     var h = '<header><p class="eyebrow">' + esc(T.app) + ' / ' + esc(T.reportEyebrow) + '</p><h1>' + esc(T.reportTitle) + '</h1>' +
       '<p class="range">' + esc(s.dateRange) + '</p><p>' + esc(s.courses.join(' · ')) + '</p>' +
-      (text(o.identity) ? '<p class="identity">' + esc(T.reportCadet) + ': ' + esc(o.identity) + '</p>' : '') + '</header>';
+      (text(o.identity) ? '<p class="identity">' + esc(T.reportCadet) + ': ' + native(o.identity) + '</p>' : '') + '</header>';
     h += '<table class="stats"><tr><th>' + esc(T.rFlights) + '</th><th>' + esc(T.rHours) + '</th><th>' + esc(T.reportGoalsRate) + '</th></tr><tr><td>' + s.flights + '</td><td>' + s.hours + '</td><td>' + (s.graded ? Math.round(s.metCount / s.graded * 100) + '%' : esc(T.reportNoGrade)) + '</td></tr></table>';
     h += '<p class="source">' + esc(T.reportGraded(s.metCount, s.graded, s.openCount)) + ' · ' + s.minutes + ' ' + esc(T.rMinutes) + '</p>';
     if (s.durationMissing) h += '<p class="source">' + esc(T.reportMissingMinutes(s.durationMissing)) + '</p>';
@@ -119,23 +121,23 @@
     h += section(T.secPoints, dated(s.points));
     h += section(T.secSafety, s.safety.length ? dated(s.safety) : '<p class="source">' + esc(T.reportNoSafety) + '</p>');
     if (!o.compact) h += section(T.secFlights, s.details.map(function (d, i) {
-      var body = '<article class="flight"><h3>' + String(i + 1).padStart(2, '0') + ' · ' + esc(sourceLabel(d.source)) + '</h3><p class="source">' +
-        esc([d.instructor, d.minutes !== null ? d.minutes + ' ' + T.rMinutes : ''].filter(Boolean).join(' · ')) + '</p>';
+      var body = '<article class="flight"><h3>' + String(i + 1).padStart(2, '0') + ' · ' + sourceHTML(d.source) + '</h3><p class="source">' +
+        [native(d.instructor), d.minutes !== null ? d.minutes + ' ' + esc(T.rMinutes) : ''].filter(Boolean).join(' · ') + '</p>';
       if (d.goals.length) body += '<h4>' + esc(T.secGoals) + '</h4>' + list(d.goals.filter(function (x) { return text(x.text); }).map(function (x) { return x.text + ' · ' + (x.status === 'met' ? T.goalMet : x.status === 'missed' ? T.goalMissed : T.reportNotGraded); }));
       var told = d.exercises.filter(function (x) { return text(x.notes); }), planned = d.exercises.filter(function (x) { return text(x.text) && !text(x.notes); });
-      if (told.length) body += '<h4>' + esc(T.documentedExercises) + '</h4>' + told.map(function (x) { return '<p><b>' + esc(x.text) + '</b></p>' + (text(x.focus) ? '<p class="source">' + esc(T.reportBriefFocus) + ': ' + esc(x.focus) + '</p>' : '') + '<p class="reflection">' + esc(x.notes).replace(/\n/g, '<br>') + '</p>'; }).join('');
+      if (told.length) body += '<h4>' + esc(T.documentedExercises) + '</h4>' + told.map(function (x) { return '<p><b>' + native(x.text) + '</b></p>' + (text(x.focus) ? '<p class="source">' + esc(T.reportBriefFocus) + ': ' + native(x.focus) + '</p>' : '') + '<p class="reflection" dir="auto">' + esc(x.notes).replace(/\n/g, '<br>') + '</p>'; }).join('');
       if (planned.length) body += '<h4>' + esc(T.plannedExercises.trim()) + '</h4>' + list(planned.map(function (x) {
         return x.text + (text(x.focus) ? '\n' + T.reportBriefFocus + ': ' + x.focus : '');
       }));
       if (d.points.length) body += '<h4>' + esc(T.secPoints) + '</h4>' + list(d.points);
       if (d.safety.length) body += '<h4>' + esc(T.secSafety) + '</h4>' + list(d.safety);
       if (d.next.length) body += '<h4>' + esc(T.reportNext) + '</h4>' + list(d.next.map(function (x) { return x.text || x; }));
-      d.extras.forEach(function (q) { body += '<h4>' + esc(q.label) + ' <span class="source">(' + esc(q.stage === 'brief' ? T.briefTitle : T.debriefTitle) + ')</span></h4>' + list(q.lines); });
+      d.extras.forEach(function (q) { body += '<h4>' + native(q.label) + ' <span class="source">(' + esc(q.stage === 'brief' ? T.briefTitle : T.debriefTitle) + ')</span></h4>' + list(q.lines); });
       return body + '</article>';
     }).join(''));
     h += '<footer>' + esc(T.reportBasis) + '</footer>';
-    return '<!DOCTYPE html><html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + esc(T.reportTitle) + '</title><style>' +
-      '@page{size:A4;margin:18mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;direction:rtl;text-align:right;color:#202821;background:#fff;line-height:1.65;font-size:11pt;margin:0 auto;max-width:760px;padding:28px}header{border-top:4px solid #53644c;padding-top:18px;margin-bottom:24px}h1{font-size:26pt;line-height:1.2;margin:8px 0}h2{font-size:14pt;border-bottom:1px solid #cbd3c8;padding-bottom:6px;margin:24px 0 10px}h3{font-size:12pt;margin:16px 0 4px}h4{font-size:11pt;margin:12px 0 4px}p{margin:4px 0}ul{padding-inline-start:22px;margin:6px 0 12px}li{margin:4px 0}article{margin-bottom:12px}.eyebrow,.source,footer{font-size:9.5pt;color:#566151}.range{font-size:14pt}.stats{border-collapse:collapse;width:100%;table-layout:fixed;background:#f3f5f0;margin-bottom:12px}.stats th,.stats td{text-align:right;padding:10px 12px;border:1px solid #d3dacd}.stats th{font-size:10pt;font-weight:normal}.stats td{font-size:21pt}.resolved{font-size:9pt;color:#365b3c}.reflection{white-space:pre-wrap;overflow-wrap:anywhere}footer{border-top:1px solid #cbd3c8;padding-top:14px;margin-top:28px}h2,h3,h4{break-after:avoid}.stats{break-inside:avoid}@media print{body{padding:0;max-width:none}a{color:inherit;text-decoration:none}}' +
+    return '<!DOCTYPE html><html lang="' + (english ? 'en' : 'he') + '" dir="' + (english ? 'ltr' : 'rtl') + '"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + esc(T.reportTitle) + '</title><style>' +
+      '@page{size:A4;margin:18mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;direction:' + (english ? 'ltr' : 'rtl') + ';text-align:' + (english ? 'left' : 'right') + ';color:#202821;background:#fff;line-height:1.65;font-size:11pt;margin:0 auto;max-width:760px;padding:28px}header{border-top:4px solid #53644c;padding-top:18px;margin-bottom:24px}h1{font-size:26pt;line-height:1.2;margin:8px 0}h2{font-size:14pt;border-bottom:1px solid #cbd3c8;padding-bottom:6px;margin:24px 0 10px}h3{font-size:12pt;margin:16px 0 4px}h4{font-size:11pt;margin:12px 0 4px}p{margin:4px 0}ul{padding-inline-start:22px;margin:6px 0 12px}li{margin:4px 0;overflow-wrap:anywhere;unicode-bidi:plaintext;text-align:start}article{margin-bottom:12px}.eyebrow,.source,footer{font-size:9.5pt;color:#566151}.range{font-size:14pt}.stats{border-collapse:collapse;width:100%;table-layout:fixed;background:#f3f5f0;margin-bottom:12px}.stats th,.stats td{text-align:' + (english ? 'left' : 'right') + ';padding:10px 12px;border:1px solid #d3dacd}.stats th{font-size:10pt;font-weight:normal}.stats td{font-size:21pt}.resolved{font-size:9pt;color:#365b3c}.reflection{white-space:pre-wrap;unicode-bidi:plaintext;text-align:start;overflow-wrap:anywhere}footer{border-top:1px solid #cbd3c8;padding-top:14px;margin-top:28px}h2,h3,h4{break-after:avoid}.stats{break-inside:avoid}@media print{body{padding:0;max-width:none}a{color:inherit;text-decoration:none}}' +
       '</style></head><body>' + h + '</body></html>';
   }
   function plain(html) {

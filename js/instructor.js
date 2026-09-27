@@ -1,11 +1,20 @@
 /* Instructor views are read-only. Never load another cadet into the local Store. */
 (function (g) {
   'use strict';
-  var epoch = 0;
+  var epoch = 0, I = g.T.instructorEnglish;
+  function isEnglish(route) {
+    return route.name === 'instructor' || route.name === 'cloud' && (route.param === 'instructor' || g.Cloud.status().role === 'instructor');
+  }
+  function courseLabel(id) { return I.courseLabels[id] || I.reportUnassigned; }
+  function labelFor(q) {
+    var known = I.questionLabels[q.id];
+    // A renamed/default or new custom question is cadet-authored text.
+    return known && q.label === known[0] ? known[1] : q.label;
+  }
   function esc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
-  function when(v) {
+  function when(v, english) {
     var date = v && typeof v.toDate === 'function' ? v.toDate() : v ? new Date(v.seconds ? v.seconds * 1000 : v) : null;
-    return date && !isNaN(date.getTime()) ? date.toLocaleString('he-IL') : g.T.cloudNever;
+    return date && !isNaN(date.getTime()) ? date.toLocaleString(english === false ? 'he-IL' : 'en-GB') : (english === false ? g.T : I).cloudNever;
   }
   function decode(row) {
     var p = JSON.parse(row.payload);
@@ -25,8 +34,8 @@
   function answer(q, value) {
     if (Array.isArray(value)) return value.map(function (x) {
       if (typeof x !== 'object' || !x) return String(x);
-      return [x.text, x.focus ? g.T.reportBriefFocus + ': ' + x.focus : '', x.notes,
-        q.type === 'goals' ? (x.status === 'met' ? g.T.goalMet : x.status === 'missed' ? g.T.goalMissed : g.T.reportNotGraded) : ''].filter(Boolean).join('\n');
+      return [x.text, x.focus ? I.reportBriefFocus + ': ' + x.focus : '', x.notes,
+        q.type === 'goals' ? (x.status === 'met' ? I.goalMet : x.status === 'missed' ? I.goalMissed : I.reportNotGraded) : ''].filter(Boolean).join('\n');
     }).join('\n\n');
     return value == null ? '' : typeof value === 'object' ? JSON.stringify(value) : String(value);
   }
@@ -43,6 +52,7 @@
   function report(rows) {
     var payloads = new Map(rows.map(function (p) { return [p.record, p]; }));
     var data = {
+      labelFor: labelFor,
       questionsFor: function (r) { return payloads.get(r).questions; },
       questionFor: function (r, role) { return question(payloads.get(r), role); },
       categoriesOf: function (r) {
@@ -50,21 +60,22 @@
         return Array.from(new Set(g.Courses.all().flatMap(function (c) { return g.Store.categoriesInText(subject(payloads.get(r)), c.id); })));
       }
     };
-    return g.Summary.build(rows.filter(function (p) { return !p.deletedAt; }).map(function (p) { return p.record; }), data);
+    return g.Summary.build(rows.filter(function (p) { return !p.deletedAt; }).map(function (p) { return p.record; }), data, { strings: I, courseLabel: courseLabel });
   }
   function details(p, history) {
     return '<details class="cloud-flight"><summary><span><b dir="auto">' + esc(subject(p) || p.record.flownAt) + '</b><small>' +
-      esc(p.record.flownAt) + ' · ' + esc(p.record.stage === 'done' ? g.T.stageDebrief : g.T.stageBrief) +
-      (p.deletedAt ? ' · ' + esc(g.T.instructorDeleted) : '') + '</small></span>' + g.icon('chevDown') + '</summary>' +
+      esc(p.record.flownAt) + ' · ' + esc(p.record.stage === 'done' ? I.stageDebrief : I.stageBrief) +
+      (p.deletedAt ? ' · ' + esc(I.instructorDeleted) : '') + '</small></span>' + g.icon('chevDown') + '</summary>' +
       '<div class="cloud-flight__body">' + p.questions.map(function (q) {
         var value = answer(q, p.record.answers[q.id]);
-        return value ? '<section><h3>' + esc(q.label) + '</h3><p dir="auto">' + esc(value) + '</p></section>' : '';
-      }).join('') + '<p class="fineprint">' + esc(g.T.instructorReceived) + ': ' + esc(when(p.receivedAt)) + '</p>' +
-      (history ? '<button class="btn btn--quiet" data-history="' + esc(p.cloudId) + '">' + esc(g.T.instructorHistory) + '</button><div data-versions="' + esc(p.cloudId) + '"></div>' : '') + '</div></details>';
+        return value ? '<section><h3 dir="auto">' + esc(labelFor(q)) + '</h3><p dir="auto">' + esc(value) + '</p></section>' : '';
+      }).join('') + '<p class="fineprint">' + esc(I.instructorReceived) + ': ' + esc(when(p.receivedAt)) + '</p>' +
+      (history ? '<button class="btn btn--quiet" data-history="' + esc(p.cloudId) + '">' + esc(I.instructorHistory) + '</button><div data-versions="' + esc(p.cloudId) + '"></div>' : '') + '</div></details>';
   }
   function statusPanel(ctx) {
-    var T = g.T, s = g.Cloud.status();
-    ctx.topbar({ title: T.cloudTitle, back: true, backTo: 'settings' });
+    var s = g.Cloud.status(), english = isEnglish(g.Instructor.route || { name: 'cloud' }), T = english ? I : g.T;
+    if (ctx.language) ctx.language(english);
+    ctx.topbar({ title: T.cloudTitle, back: true, backLabel: T.back, backTo: english ? 'instructor' : 'settings' });
     ctx.view.innerHTML = '<section class="cloud-panel stack"><h1>' + esc(T.cloudTitle) + '</h1><p>' + esc(T.cloudScope) + '</p><p class="cloud-state" role="status">' +
       esc(T.cloudStates[s.phase] || T.cloudStates.error) + '</p><p dir="auto">' + esc(s.email || '') + '</p>' +
       (g.Cloud.enabled() ? '<p class="fineprint">' + esc(T.cloudPrivacy) + '</p>' : '<p>' + esc(T.cloudDisabled) + '</p>') +
@@ -72,23 +83,29 @@
       (s.phase === 'unlinked' ? '<p>' + esc(T.cloudLinkBody) + '</p><button class="btn btn--lit" data-cloud-link>' + esc(T.cloudLink) + ' (' + g.Store.count() + ')</button>' : '') +
       (s.role === 'instructor' ? '<a class="btn btn--lit" href="#/instructor">' + esc(T.instructorTitle) + '</a>' : '') +
       (s.role === 'cadet' && s.phase !== 'unlinked' ? '<dl class="cloud-sync-stats"><dt>' + esc(T.cloudPending) + '</dt><dd>' + (+s.pending || 0) + '</dd><dt>' +
-        esc(T.cloudConflicts) + '</dt><dd>' + (+s.conflicts || 0) + '</dd><dt>' + esc(T.cloudLastSync) + '</dt><dd>' + esc(when(s.lastSync)) + '</dd></dl>' : '') +
-      (g.Cloud.enabled() ? '<button class="btn btn--quiet" data-cloud-retry>' + esc(T.cloudRefresh) + '</button>' : '') + '</section>';
+        esc(T.cloudConflicts) + '</dt><dd>' + (+s.conflicts || 0) + '</dd><dt>' + esc(T.cloudLastSync) + '</dt><dd>' + esc(when(s.lastSync, english)) + '</dd></dl>' : '') +
+      (g.Cloud.enabled() ? '<button class="btn btn--quiet" data-cloud-retry>' + esc(T.cloudRefresh) + '</button>' : '') +
+      (english && s.role === 'instructor' ? '<button class="btn btn--quiet" data-cloud-signout>' + esc(T.signOut) + '</button>' : '') + '</section>';
     var button = ctx.view.querySelector('[data-cloud-signin]'); if (button) button.onclick = g.Auth.signIn;
     button = ctx.view.querySelector('[data-cloud-link]'); if (button) button.onclick = function () {
       Promise.resolve().then(g.Cloud.link).catch(function () { ctx.toast(T.cloudStates.error, 'alert'); });
     };
     button = ctx.view.querySelector('[data-cloud-retry]'); if (button) button.onclick = g.Cloud.retry;
+    button = ctx.view.querySelector('[data-cloud-signout]'); if (button) button.onclick = async function () {
+      button.disabled = true;
+      try { await g.Auth.signOut(); location.reload(); }
+      catch (_) { button.disabled = false; ctx.toast(T.cloudSignoutError, 'alert'); }
+    };
   }
   async function render(route, ctx) {
-    var run = ++epoch, T = g.T;
+    var run = ++epoch, T = I;
     if (route.name === 'cloud') { statusPanel(ctx); return; }
-    ctx.topbar({ title: T.instructorTitle, back: true, backTo: 'cloud' });
+    ctx.topbar({ title: T.instructorTitle, back: true, backLabel: T.back, backTo: 'cloud/instructor', actions: [{ id: 'connection', ic: 'settings', label: T.cloudTitle, run: function () { ctx.go('cloud/instructor'); } }] });
     if (g.Cloud.enabled() && g.Cloud.status().phase === 'connecting') {
       ctx.view.innerHTML = '<p role="status" data-cloud-pending>' + esc(T.cloudStates.connecting) + '</p>'; return;
     }
     if (g.Cloud.status().role !== 'instructor') {
-      ctx.view.innerHTML = '<section class="empty"><h1>' + esc(T.instructorTitle) + '</h1><p>' + esc(g.Cloud.enabled() ? T.instructorDenied : T.cloudDisabled) + '</p><a class="btn" href="#/cloud">' + esc(T.cloudTitle) + '</a></section>'; return;
+      ctx.view.innerHTML = '<section class="empty"><h1>' + esc(T.instructorTitle) + '</h1><p>' + esc(g.Cloud.enabled() ? T.instructorDenied : T.cloudDisabled) + '</p><a class="btn" href="#/cloud/instructor">' + esc(T.cloudTitle) + '</a></section>'; return;
     }
     ctx.view.innerHTML = '<p role="status">' + esc(T.cloudLoading) + '</p>';
     function current() { return run === epoch && document.body.dataset.route === 'instructor' && g.Cloud.status().role === 'instructor'; }
@@ -108,28 +125,28 @@
       ctx.view.querySelector('button').onclick = function () { render(route, ctx); };
     }
   }
-  function courseOptions() { return '<option value="">' + esc(g.T.instructorAllCourses) + '</option>' + g.Courses.all().map(function (c) { return '<option value="' + esc(c.id) + '">' + esc(c.label) + '</option>'; }).join(''); }
+  function courseOptions() { return '<option value="">' + esc(I.instructorAllCourses) + '</option>' + g.Courses.all().map(function (c) { return '<option value="' + esc(c.id) + '">' + esc(courseLabel(c.id)) + '</option>'; }).join(''); }
   function showRoster(rows, ctx) {
-    var T = g.T;
+    var T = I;
     ctx.view.innerHTML = '<div class="stack instructor"><header><span class="chip">' + esc(T.cloudReadOnly) + '</span><h1>' + esc(T.instructorTitle) + '</h1><p>' + esc(T.instructorSub) + '</p></header>' +
-      '<div class="cloud-filters"><label>' + esc(T.instructorSearch) + '<input type="search" data-cadet-search></label><label>' + esc(T.course) + '<select data-course-filter>' + courseOptions() + '</select></label></div>' +
+      '<div class="cloud-filters"><label>' + esc(T.instructorSearch) + '<input type="search" dir="auto" data-cadet-search></label><label>' + esc(T.course) + '<select data-course-filter>' + courseOptions() + '</select></label></div>' +
       '<p class="fineprint">' + esc(T.instructorAsOf) + '</p><div data-roster class="cloud-roster"></div><button class="btn btn--quiet" data-refresh-roster>' + esc(T.cloudRefresh) + '</button></div>';
     function paint() {
       var q = ctx.view.querySelector('[data-cadet-search]').value.trim().toLocaleLowerCase(), c = ctx.view.querySelector('select').value;
       ctx.view.querySelector('[data-roster]').innerHTML = rows.filter(function (r) { return (!c || r.course === c) && (!q || (r.name + ' ' + (r.email || '')).toLocaleLowerCase().includes(q)); })
-        .sort(function (a, b) { return String(a.name).localeCompare(String(b.name), 'he'); }).map(function (r) {
-          return '<a class="cloud-cadet" href="#/instructor/' + encodeURIComponent(r.id) + '"><span class="cloud-avatar" aria-hidden="true">' + esc(String(r.name || '').slice(0, 1)) + '</span><span><b dir="auto">' + esc(r.name || r.id) + '</b><small>' + esc(g.Courses.label(r.course)) + '</small><small>' + esc(T.cloudLastSync) + ': ' + esc(when(r.lastSyncAt)) + '</small></span>' + g.icon('chevLeft') + '</a>';
+        .sort(function (a, b) { return String(a.name).localeCompare(String(b.name), 'en'); }).map(function (r) {
+          return '<a class="cloud-cadet" href="#/instructor/' + encodeURIComponent(r.id) + '"><span class="cloud-avatar" aria-hidden="true">' + esc(String(r.name || '').slice(0, 1)) + '</span><span><b dir="auto">' + esc(r.name || r.id) + '</b><small>' + esc(courseLabel(r.course)) + '</small><small>' + esc(T.cloudLastSync) + ': ' + esc(when(r.lastSyncAt)) + '</small></span>' + g.icon('chevRight') + '</a>';
         }).join('') || '<p>' + esc(T.instructorEmpty) + '</p>';
     }
     ctx.view.querySelector('input').oninput = paint; ctx.view.querySelector('select').onchange = paint;
     ctx.view.querySelector('[data-refresh-roster]').onclick = function () { render({ name: 'instructor' }, ctx); }; paint();
   }
   function showCadet(cadet, rows, invalid, ctx, current) {
-    var T = g.T, cover = coverage(rows, cadet.course), reportURL;
-    ctx.view.innerHTML = '<div class="stack instructor"><a href="#/instructor">' + esc(T.instructorBack) + '</a><header><span class="chip">' + esc(T.cloudReadOnly) + '</span><h1 dir="auto">' + esc(cadet.name) + '</h1><p>' + esc(g.Courses.label(cadet.course)) + ' · ' + esc(T.cloudLastSync) + ': ' + esc(when(cadet.lastSyncAt)) + '</p></header>' +
+    var T = I, cover = coverage(rows, cadet.course), reportURL;
+    ctx.view.innerHTML = '<div class="stack instructor"><a href="#/instructor">' + esc(T.instructorBack) + '</a><header><span class="chip">' + esc(T.cloudReadOnly) + '</span><h1 dir="auto">' + esc(cadet.name) + '</h1><p>' + esc(courseLabel(cadet.course)) + ' · ' + esc(T.cloudLastSync) + ': ' + esc(when(cadet.lastSyncAt)) + '</p></header>' +
       '<p class="fineprint">' + esc(T.instructorAsOf) + '</p>' + (invalid ? '<p role="alert">' + esc(T.instructorDataError) + '</p>' : '') +
       '<section class="cloud-progress"><h2>' + esc(T.instructorCoverage) + '</h2><strong dir="ltr">' + cover.done + ' / ' + cover.total + '</strong><progress max="' + (cover.total || 1) + '" value="' + cover.done + '"></progress><p class="fineprint">' + esc(T.instructorCoverageNote) + '</p></section>' +
-      '<div data-cadet-stats class="cloud-stats"></div><details class="cloud-filter-panel"><summary>' + esc(T.instructorFilters) + '</summary><div class="cloud-filters"><label>' + esc(T.instructorFrom) + '<input type="date" data-from></label><label>' + esc(T.instructorTo) + '<input type="date" data-to></label><label class="cloud-filter-wide">' + esc(T.instructorSearchFlight) + '<input type="search" data-flight-search></label><label>' + esc(T.course) + '<select data-record-course>' + courseOptions() + '</select></label><label>' + esc(T.instructorAllStages) + '<select data-stage><option value="">' + esc(T.instructorAllStages) + '</option><option value="brief">' + esc(T.stageBrief) + '</option><option value="done">' + esc(T.stageDebrief) + '</option></select></label></div>' +
+      '<div data-cadet-stats class="cloud-stats"></div><details class="cloud-filter-panel"><summary>' + esc(T.instructorFilters) + '</summary><div class="cloud-filters"><label>' + esc(T.instructorFrom) + '<input type="date" data-from></label><label>' + esc(T.instructorTo) + '<input type="date" data-to></label><label class="cloud-filter-wide">' + esc(T.instructorSearchFlight) + '<input type="search" dir="auto" data-flight-search></label><label>' + esc(T.course) + '<select data-record-course>' + courseOptions() + '</select></label><label>' + esc(T.instructorAllStages) + '<select data-stage><option value="">' + esc(T.instructorAllStages) + '</option><option value="brief">' + esc(T.stageBrief) + '</option><option value="done">' + esc(T.stageDebrief) + '</option></select></label></div>' +
       '<div class="cloud-actions"><button class="btn btn--quiet" data-week>' + esc(T.instructorWeek) + '</button><button class="btn btn--quiet" data-clear-filters>' + esc(T.instructorClear) + '</button></div>' +
       '<label class="cloud-checkbox"><input type="checkbox" data-deleted>' + esc(T.instructorShowDeleted) + '</label></details>' +
       '<div class="cloud-actions"><button class="btn" data-report>' + esc(T.instructorReport) + '</button><button class="btn btn--quiet" data-refresh-cadet>' + esc(T.cloudRefresh) + '</button></div><div data-report-preview></div><div data-cloud-flights class="stack"></div></div>';
@@ -161,7 +178,7 @@
     $('[data-clear-filters]').onclick = function () { ctx.view.querySelectorAll('input,select').forEach(function (el) { el.value = ''; if (el.type === 'checkbox') el.checked = false; }); paint(); };
     $('[data-refresh-cadet]').onclick = function () { render({ name: 'instructor', param: cadet.id }, ctx); };
     $('[data-report]').onclick = function () {
-      var html = g.Summary.documentHTML(report(selected), { compact: false, identity: cadet.name });
+      var html = g.Summary.documentHTML(report(selected), { compact: false, identity: cadet.name, strings: I, lang: 'en', dir: 'ltr', courseLabel: courseLabel });
       var preview = $('[data-report-preview]'); preview.innerHTML = '<a class="btn btn--quiet" data-report-download download="sortie-instructor-report.doc">' + esc(T.instructorDownload) + '</a><iframe class="cloud-report" sandbox title="' + esc(T.instructorReport) + '"></iframe>';
       preview.querySelector('iframe').srcdoc = html;
       if (reportURL) URL.revokeObjectURL(reportURL);
@@ -178,6 +195,6 @@
       render({ name: 'instructor', param: param ? decodeURIComponent(param) : null }, g.Instructor.context);
     }
   });
-  g.Instructor = { render: function (route, ctx) { g.Instructor.context = ctx; return render(route, ctx); },
-    decode: decode, coverage: coverage, report: report };
+  g.Instructor = { render: function (route, ctx) { g.Instructor.context = ctx; g.Instructor.route = route; return render(route, ctx); },
+    isEnglish: isEnglish, labelFor: labelFor, decode: decode, coverage: coverage, report: report };
 })(window);

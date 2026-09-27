@@ -301,7 +301,7 @@
     var formish = route.name === 'brief' || route.name === 'debrief';
     topbarEl.classList.toggle('topbar--root', root);
     topbarEl.innerHTML =
-      (c.back ? '<button class="iconbtn iconbtn--flip" data-back aria-label="' + esc(T.back) + '">' + icon('chevLeft') + '</button>' : '') +
+      (c.back ? '<button class="iconbtn iconbtn--flip" data-back aria-label="' + esc(c.backLabel || T.back) + '">' + icon('chevLeft') + '</button>' : '') +
       (root ? '<span class="topbar__mark" aria-hidden="true">' + BADGE + '</span>' : '') +
       '<div class="topbar__title">' + esc(c.title || '') + '</div>' +
       /* A brief is often written next to notes from the last flight. The tab
@@ -322,6 +322,20 @@
     });
   }
 
+  function instructorLanguage() {
+    return /^#\/(instructor(?:\/|$)|cloud\/instructor(?:\/|$))/.test(location.hash) || Instructor.isEnglish(route);
+  }
+  function screenLanguage(english) {
+    var strings = english ? T.instructorEnglish : T;
+    document.documentElement.lang = english ? 'en' : 'he';
+    document.documentElement.dir = english ? 'ltr' : 'rtl';
+    document.title = english ? strings.instructorTitle + ' | Sortie' : T.app;
+    $('#skipContent').textContent = strings.skipContent;
+    var noTabs = english || ['brief', 'debrief', 'profile'].indexOf(route.name) !== -1;
+    tabbarEl.hidden = noTabs;
+    viewEl.classList.toggle('view--noTabs', noTabs);
+  }
+
   function render() {
     // the outgoing screen's draft hook dies with its DOM
     formFlush = null;
@@ -333,7 +347,8 @@
     var screens = { home: screenHome, brief: screenForm, debrief: screenForm, log: screenLog,
        flight: screenDetail, trends: screenTrends, settings: screenSettings,
        summary: screenSummary, syllabus: screenSyllabus };
-    if (route.name === 'cloud' || route.name === 'instructor') Instructor.render(route, { view: viewEl, topbar: renderTopbar, toast: toast, go: go });
+    screenLanguage(Instructor.isEnglish(route));
+    if (route.name === 'cloud' || route.name === 'instructor') Instructor.render(route, { view: viewEl, topbar: renderTopbar, toast: toast, go: go, language: screenLanguage });
     else if (screens[route.name]) screens[route.name]();
     else Features.render(route, { view: viewEl, topbar: renderTopbar, toast: toast, sheet: openSheet, confirm: confirmSheet,
       go: go, build: BUILD, progress: syllabusProgress, clock: courseClock, saveFile: saveFile, tour: startTour, setFlush: function (fn) { formFlush = fn; } });
@@ -3180,9 +3195,10 @@
   /* ================================================================= lock */
 
   function renderKeypad() {
+    var T = instructorLanguage() ? global.T.instructorEnglish : global.T;
     var keys = ['1','2','3','4','5','6','7','8','9','cancel','0','del'];
     $('#keypad').innerHTML = keys.map(function (k) {
-      if (k === 'del') return '<button class="key key--fn" data-key="del" aria-label="מחיקה">' + icon('delete') + '</button>';
+      if (k === 'del') return '<button class="key key--fn" data-key="del" aria-label="' + esc(T.delete) + '">' + icon('delete') + '</button>';
       if (k === 'cancel') return '<button class="key key--fn" data-key="cancel"></button>';
       return '<button class="key" data-key="' + k + '">' + k + '</button>';
     }).join('');
@@ -3205,6 +3221,7 @@
     if (pinBuffer.length === 4) setTimeout(submitPin, 140);
   }
   function submitPin() {
+    var T = instructorLanguage() ? global.T.instructorEnglish : global.T;
     var e = pinBuffer; pinBuffer = '';
     if (pinMode === 'unlock') {
       Store.checkPin(e).then(function (ok) {
@@ -3223,6 +3240,9 @@
     }
   }
   function openLock(mode, hint) {
+    var english = instructorLanguage(), T = english ? global.T.instructorEnglish : global.T;
+    screenLanguage(english);
+    lockEl.querySelector('.lock__title').textContent = english ? T.instructorTitle : T.app;
     pinMode = mode; pinBuffer = ''; pinFirst = '';
     lockEl.hidden = false; appEl.hidden = mode === 'unlock';
     renderKeypad(); drawPin(); lockHint(hint || T.enterCode);
@@ -3239,8 +3259,11 @@
    *  client id — with none, `Auth.resolve()` answers 'off' and this never runs,
    *  so a half-finished setup cannot lock anyone out of their own flights. */
   function showGate(a) {
+    var english = instructorLanguage(), T = english ? global.T.instructorEnglish : global.T;
+    screenLanguage(english);
     var gate = document.getElementById('authGate');
     appEl.hidden = true; lockEl.hidden = true; gate.hidden = false;
+    gate.querySelector('.lock__title').textContent = english ? T.instructorTitle : T.app;
 
     var body, note, acts;
     if (a.state === 'denied') {
@@ -3394,6 +3417,8 @@
           showCoursePicker(null, function () { Store.applyCourse(); start(); });
         });
     }).then(null, function (err) {
+      var english = instructorLanguage(), T = english ? global.T.instructorEnglish : global.T;
+      screenLanguage(english);
       appEl.hidden = false;
       viewEl.innerHTML = '<section class="empty"><h1>' + esc(T.startupError) + '</h1><p>' + esc(T.startupErrorBody) + '</p><button class="btn" id="retryBoot">' + esc(T.retry) + '</button><button class="btn" id="emergencyExport">' + esc(T.rawRecovery) + '</button></section>';
       $('#retryBoot').onclick = function () { location.reload(); };

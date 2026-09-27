@@ -4,6 +4,9 @@ Updated 2026-09-27. Read this and the actual git status before editing. Preserve
 
 ## Instructor cloud work (current)
 
+- Latest verification: all 20 local suites pass, including 43 instructor browser checks and 39 summary checks, plus 28 Firestore rule and 11 actual SDK emulator checks. Logs: instructor-english-regression-20260927.log and cloud-access-emulators-20260927.log under C:/Dev/artifacts/sortie-v23. Live owner roster/account navigation verified in the sidebar with no console errors.
+- Current task: English instructor experience implemented, including dashboard/report labels, default question labels, account controls, sign-in and PIN. User input/custom labels remain in their original language with automatic direction. Cadet routes/reports remain Hebrew. No Store/migration/projection/rules changes. The owner is the only active instructor and the only human IAM principal; live rules readback matches, no inherited organization access, anonymous read denied. All 34 assignments verified; still zero flight documents. See CLOUD-SETUP.md for current audit boundaries and evidence.
+- Sharing consent/authorization is already settled. The user objected to “pilot approval” wording: a one-cadet pilot is a technical verification step, not another permission process. This turn changes the local dashboard; it does not push the cadet app. The connected dashboard is open in the sidebar at http://localhost:8985/index.html#/instructor; it depends on the owner-only local server. Firebase data is cloud-hosted, not local-only or end-to-end encrypted.
 - Branch feature/instructor-cloud, based on 81f3dfa (v23). Candidate v24-preview / sortie-v24-preview, 35-file hashed shell. No production app deployment or real cadet upload was made.
 - Yish states he is the instructor and has the cadets' permission. He selected saved training records only; notebooks and unfinished drafts remain on-device. He chose a separate Sortie Firebase project. This supersedes the old no-cloud-sync constraint below.
 - Local implementation: Firebase Google credential bridge, resumable saved-record mirror, immutable revisions/conflict retention, server-enforced cadet/instructor rules, trusted enrollment tool, and mobile read-only instructor dashboard with filters, histories, syllabus coverage and reports. SCHEMA=4 and MIG=5 remain unchanged. Cloud reads never mutate Store.
@@ -37,7 +40,7 @@ Updated 2026-09-27. Read this and the actual git status before editing. Preserve
 Yish builds the app for his brother Evyatar (ראשוני). Yish uses Samsung Galaxy S24 / Chrome; Evyatar uses an installed iPhone Safari PWA. The source allowlist currently has 37 accounts; Yish reports 50+ users. These are different facts, not a measured usage count.
 
 - Static PWA, plain globals, no framework or analytics. Instructor sharing is authorized; notebooks/drafts stay local. Only the Firebase SDK adapter has a development-time bundle step.
-- Hebrew RTL UI strings belong in `js/strings.js`. Preserve supplied course wording. Avoid em dashes in UI copy.
+- UI strings belong in `js/strings.js`: cadet UI is Hebrew/RTL; instructor UI/reports are English/LTR with original-language cadet input. Preserve supplied course wording. Avoid em dashes in UI copy.
 - Keep the cockpit character, monospaced readouts and restrained geometry. The original dark theme retains cyan/amber; Yish also requested the quieter charcoal/sage dark option. All screens and the notebook share semantic theme tokens; do not restore the rejected cream notebook palette.
 - Do not push without Yish's authorization: main deploys GitHub Pages to real cadets.
 - Commit with configured `yzgershon` identity, no identity overrides or co-author trailer.

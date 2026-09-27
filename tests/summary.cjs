@@ -28,7 +28,7 @@ function equal(label,actual,expected){assert.deepEqual(actual,expected,label);pa
  equal('export uses fixed dates and retains safety, future goals and exercise notes',[full.includes('20.09.2026'),full.includes('תיעוד בטיחות לבדיקה'),full.includes('יעד להמשך'),full.includes('הערת תחקיר')],[true,true,true,true]);
  equal('user HTML is escaped in exported document',[full.includes('<script>example'),full.includes('&lt;script&gt;example')],[false,true]);
  equal('short report omits flight appendix without dropping safety or next goals',[short.includes('class="flight"'),short.includes('תיעוד בטיחות לבדיקה'),short.includes('יעד להמשך')],[false,true,true]);
- equal('planned exercises keep their focus under a separate label',[full.includes(env.g.T.plannedExercises.trim()+'</h4><ul><li>תרגיל מתוכנן'),full.includes('תרגיל מתוכנן<br>'+env.g.T.reportBriefFocus+': דגש חוזר')],[true,true]);
+ equal('planned exercises keep their focus under a separate label',[full.includes(env.g.T.plannedExercises.trim()+'</h4><ul><li dir="auto">תרגיל מתוכנן'),full.includes('תרגיל מתוכנן<br>'+env.g.T.reportBriefFocus+': דגש חוזר')],[true,true]);
  await env.S.save(fixtures[0]);const archived=env.S.updateQuestion('q_instructor',{type:'textarea'});fixtures[1].answers[archived.id]='מדריך חדש';
  const custom=env.S.addQuestion({label:'שאלה אישית לבדיקה',type:'textarea',stage:'debrief'});fixtures[1].answers[custom.id]='תשובה אישית שנשמרה';
  const changed=env.g.Summary.documentHTML(env.g.Summary.build(fixtures));
