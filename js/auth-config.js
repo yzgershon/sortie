@@ -74,7 +74,10 @@
       '6c4e2f2c745c185e12826631a4b915a06542406765ab583bd35d66e92b245d37',   // 33 Rotem
       '349b0cf94ff53caeecec9ba8d7895aae092a070a68ea1e9be57e44ee538055ff',   // 34 Amit
       'd82f6f5232669fe381cff285ffc87c3ac5da68569da27905487e3ee96015ec60',   // 35 Alon Lavi
-      'ce6cc33f87bf40cfd419966845e21c8b1d353d2eadc5a1beb4bf608a3e732431'    // 36 Guy M
+      'ce6cc33f87bf40cfd419966845e21c8b1d353d2eadc5a1beb4bf608a3e732431',   // 36 Guy M
+
+      /* --- test account, added 2026-09-26 ------------------------------ */
+      '317bb01e75d2d4e366ab0cc4c3f7b5512d2651ab40d2f5b15b4284e53f6c9b01'    // 37 Tester
     ],
 
     /* Which course each address is on. EVERY address is listed, on purpose:
@@ -119,7 +122,8 @@
       '6c4e2f2c745c185e12826631a4b915a06542406765ab583bd35d66e92b245d37': 'mitkadem',   // 33 Rotem G
       '349b0cf94ff53caeecec9ba8d7895aae092a070a68ea1e9be57e44ee538055ff': 'mitkadem',   // 34 Amit E
       'd82f6f5232669fe381cff285ffc87c3ac5da68569da27905487e3ee96015ec60': 'mitkadem',   // 35 Alon Lavi
-      'ce6cc33f87bf40cfd419966845e21c8b1d353d2eadc5a1beb4bf608a3e732431': 'mitkadem'    // 36 Guy M
+      'ce6cc33f87bf40cfd419966845e21c8b1d353d2eadc5a1beb4bf608a3e732431': 'mitkadem',   // 36 Guy M
+      '317bb01e75d2d4e366ab0cc4c3f7b5512d2651ab40d2f5b15b4284e53f6c9b01': 'rishoni'    // 37 Tester
     },
 
     /* How long a sign-in lasts before Google is asked again. Long on purpose:
