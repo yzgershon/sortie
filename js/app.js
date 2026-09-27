@@ -6,7 +6,7 @@
 (function (global) {
   'use strict';
 
-  var BUILD = 'v24-preview';   // keep in step with VERSION in sw.js
+  var BUILD = 'v24';   // keep in step with VERSION in sw.js
 
   var appEl, viewEl, topbarEl, tabbarEl, toasterEl, sheetEl, lockEl;
   var route = { name: 'home', param: null };
@@ -369,6 +369,8 @@
       !!(w && ((w.notes || []).length || (w.milestones || []).length));
   }
   function maybeRelease() {
+    // This release intentionally has no announcement or connection prompt.
+    if (BUILD === 'v24') return;
     if (releasePrompted || /preview/.test(BUILD) || appEl.hidden || !lockEl.hidden || route.name !== 'home' || Store.settings().releaseSeen === BUILD) return;
     releasePrompted = true;
     if (!hasHistory()) { Store.set('releaseSeen', BUILD); return; }

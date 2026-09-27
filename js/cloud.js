@@ -2,8 +2,26 @@
 (function (g) {
   'use strict';
   var adapter, engine, access, user, started = false, timer, generation = 0;
+  var ownerIssue = false, ownerKey = 'sortie:cloud-local-owner';
   var state = { phase: 'disabled', pending: 0, conflicts: 0 };
   function enabled() { var c = g.CLOUD_CONFIG; return !!(c && c.enabled && c.firebase && c.firebase.projectId && c.firebase.apiKey); }
+  // Remember the account attached to pre-cloud local history before sign-out or
+  // a Google return replaces it. This private hint never leaves this device.
+  function rememberLocalOwner(email) {
+    if (!enabled() || !email || !g.Store || !g.Store.count()) return;
+    try {
+      if (!localStorage.getItem('sortie:cloud-binding') && !localStorage.getItem(ownerKey))
+        localStorage.setItem(ownerKey, JSON.stringify(String(email).trim().toLowerCase()));
+    } catch (_) { ownerIssue = true; }
+  }
+  function localOwnerMatches(email) {
+    if (ownerIssue) throw Error('LOCAL_OWNER_UNAVAILABLE');
+    var raw = localStorage.getItem(ownerKey);
+    if (!raw) return true;
+    var owner = JSON.parse(raw);
+    if (typeof owner !== 'string' || !owner) throw Error('LOCAL_OWNER_DAMAGED');
+    return owner === email;
+  }
   function changed(next) {
     state = Object.assign({}, next, { role: access && access.role });
     g.dispatchEvent(new CustomEvent('sortie:cloud-status'));
@@ -31,9 +49,10 @@
       access = membership;
       if (membership.role === 'instructor') { changed({ phase: 'instructor', email: next.email }); return; }
       if (membership.role !== 'cadet') throw Error('INVALID_ROLE');
-      engine.identity(next); await engine.sync();
+      if (!localOwnerMatches(next.email)) { changed({ phase: 'account-mismatch', email: next.email }); return; }
+      engine.identity(next); await engine.link();
     } catch (err) {
-      if (run === generation) changed({ phase: navigator.onLine === false ? 'offline' : 'error', error: String(err.code || err.message) });
+      if (run === generation) changed({ phase: err.message === 'ACCOUNT_MISMATCH' ? 'account-mismatch' : navigator.onLine === false ? 'offline' : 'error', error: String(err.code || err.message) });
     }
   }
   function schedule() {
@@ -62,7 +81,7 @@
     }, 60000);
   }
   g.Cloud = {
-    enabled: enabled, start: start, status: function () { return Object.assign({}, state); },
+    enabled: enabled, start: start, rememberLocalOwner: rememberLocalOwner, status: function () { return Object.assign({}, state); },
     acceptGoogle: async function (token) {
       if (!enabled()) return;
       var timeout;
@@ -82,7 +101,7 @@
       if (!access || access.role !== 'cadet') return Promise.reject(Error('NOT_ENROLLED'));
       return engine.link();
     },
-    retry: function () { return access && access.role === 'cadet' ? engine.sync() : identify(user); },
+    retry: function () { return identify(user); },
     roster: function () {
       if (!access || access.role !== 'instructor') return Promise.reject(Error('INSTRUCTOR_REQUIRED'));
       return api().roster(user.uid);

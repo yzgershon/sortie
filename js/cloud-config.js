@@ -1,7 +1,7 @@
 /* Public Firebase web configuration only. Never put credentials here.
- * Disabled until the release and real-device Google sign-in are verified. */
+ * Saved records connect automatically after verified Google sign-in. */
 window.CLOUD_CONFIG = {
-  enabled: false,
+  enabled: true,
   googleClientId: '', // Keep the existing Sortie Google client, safelisted in Firebase.
   firebase: {
     apiKey: 'AIzaSyAKrKu00GF_NY2NyPD97wmQKQETzeV5gm0',

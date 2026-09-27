@@ -79,9 +79,10 @@ window.FirebaseAdapter=function(){return {
  check('instructor viewing does not change local data',await b.ev("JSON.stringify({flights:Store.all(),settings:Store.settings(),workspace:Workspace.all(),draft:Store.readDraft()})")===before);
  check('instructor never uploads local records',await b.ev("!cloudMock.calls.some(c=>c[0]==='write')"));
  await b.ev("cloudMock.role='cadet';localStorage.setItem('sortie:auth',JSON.stringify({email:'a@example.test',exp:Date.now()+1000000}));cloudMock.notify({uid:'cadet-a',email:'a@example.test',verified:true})");
- await b.until("Cloud.status().phase==='unlinked'");await b.route('cloud','[data-cloud-link]');
+ await b.until("Cloud.status().phase==='synced'");await b.route('cloud','.cloud-panel');
+ check('verified cadet connects automatically without a link button',await b.ev("!!localStorage.getItem('sortie:cloud-binding')&&!document.querySelector('[data-cloud-link]')"));
  check('cadet sharing remains Hebrew',await b.ev("document.documentElement.lang==='he'&&document.querySelector('.cloud-panel h1').textContent===T.cloudTitle"));
- await b.ev("Store.save({flownAt:'2026-09-27',stage:'brief',answers:{q_subject:'SAVED TRAINING'}})");await b.click('[data-cloud-link]');await b.until("Cloud.status().phase==='synced'");
+ await b.ev("Store.save({flownAt:'2026-09-27',stage:'brief',answers:{q_subject:'SAVED TRAINING'}})");await b.until("Cloud.status().phase==='synced'&&cloudMock.calls.some(c=>c[0]==='write')");
  check('only saved record reaches upload adapter',await b.ev("cloudMock.calls.filter(c=>c[0]==='write').length===1&&cloudMock.calls.find(c=>c[0]==='write')[2].includes('SAVED TRAINING')"));
  check('notebook and unfinished draft never reach upload adapter',await b.ev("!JSON.stringify(cloudMock.calls).includes('PRIVATE')"));
  await b.route('instructor','.empty');check('cadet cannot open instructor view',await b.ev("document.querySelector('.empty').textContent.includes(T.instructorEnglish.instructorDenied)"));

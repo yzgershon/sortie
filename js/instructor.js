@@ -80,16 +80,12 @@
       esc(T.cloudStates[s.phase] || T.cloudStates.error) + '</p><p dir="auto">' + esc(s.email || '') + '</p>' +
       (g.Cloud.enabled() ? '<p class="fineprint">' + esc(T.cloudPrivacy) + '</p>' : '<p>' + esc(T.cloudDisabled) + '</p>') +
       (['signin', 'account-mismatch'].includes(s.phase) ? '<button class="btn btn--lit" data-cloud-signin>' + esc(T.cloudConnect) + '</button>' : '') +
-      (s.phase === 'unlinked' ? '<p>' + esc(T.cloudLinkBody) + '</p><button class="btn btn--lit" data-cloud-link>' + esc(T.cloudLink) + ' (' + g.Store.count() + ')</button>' : '') +
       (s.role === 'instructor' ? '<a class="btn btn--lit" href="#/instructor">' + esc(T.instructorTitle) + '</a>' : '') +
       (s.role === 'cadet' && s.phase !== 'unlinked' ? '<dl class="cloud-sync-stats"><dt>' + esc(T.cloudPending) + '</dt><dd>' + (+s.pending || 0) + '</dd><dt>' +
         esc(T.cloudConflicts) + '</dt><dd>' + (+s.conflicts || 0) + '</dd><dt>' + esc(T.cloudLastSync) + '</dt><dd>' + esc(when(s.lastSync, english)) + '</dd></dl>' : '') +
       (g.Cloud.enabled() ? '<button class="btn btn--quiet" data-cloud-retry>' + esc(T.cloudRefresh) + '</button>' : '') +
       (english && s.role === 'instructor' ? '<button class="btn btn--quiet" data-cloud-signout>' + esc(T.signOut) + '</button>' : '') + '</section>';
     var button = ctx.view.querySelector('[data-cloud-signin]'); if (button) button.onclick = g.Auth.signIn;
-    button = ctx.view.querySelector('[data-cloud-link]'); if (button) button.onclick = function () {
-      Promise.resolve().then(g.Cloud.link).catch(function () { ctx.toast(T.cloudStates.error, 'alert'); });
-    };
     button = ctx.view.querySelector('[data-cloud-retry]'); if (button) button.onclick = g.Cloud.retry;
     button = ctx.view.querySelector('[data-cloud-signout]'); if (button) button.onclick = async function () {
       button.disabled = true;

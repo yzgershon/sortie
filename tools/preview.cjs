@@ -7,6 +7,7 @@ http.createServer((req,res)=>{
  const pathname=decodeURIComponent(new URL(req.url,'http://127.0.0.1').pathname);
  if(pathname==='/sw.js'||/^\/(?:dev|tests|tools|\.)/.test(pathname)){res.writeHead(404);res.end();return;}
  res.setHeader('Cache-Control','no-store');
+ if(pathname==='/js/cloud-config.js'){res.setHeader('Content-Type','text/javascript');res.end('window.CLOUD_CONFIG={enabled:false};');return;}
  if(pathname==='/js/auth-config.js'){res.setHeader('Content-Type','text/javascript');res.end('window.AUTH_CONFIG={clientId:"",allow:[],courses:{}};');return;}
  const target=path.resolve(root,'.'+(pathname==='/'?'/index.html':pathname));
  if(!target.startsWith(root+path.sep)){res.writeHead(403);res.end();return;}

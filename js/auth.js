@@ -137,7 +137,12 @@
     catch (e) {}
     return s;
   }
+  function rememberLocalOwner() {
+    var previous = rawSession();
+    if (previous && g.Cloud && g.Cloud.rememberLocalOwner) g.Cloud.rememberLocalOwner(previous.email);
+  }
   function signOut() {
+    rememberLocalOwner();
     try { localStorage.removeItem(LS_SESSION); localStorage.removeItem(LS_PENDING); } catch (e) {}
     return g.Cloud ? g.Cloud.signOut() : Promise.resolve();
   }
@@ -253,6 +258,7 @@
     resolve: function () {
       if (!enabled()) return Promise.resolve({ state: 'off' });
 
+      rememberLocalOwner();
       var back = consumeRedirect();
       if (back && !back.ok) return Promise.resolve({ state: 'error', why: back.why });
       if (back && back.ok) {

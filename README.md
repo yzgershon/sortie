@@ -2,7 +2,7 @@
 
 Hebrew, right-to-left flight briefing and debriefing PWA for two training courses: ראשוני and מתקדם. Plain HTML, CSS and JavaScript, with on-device storage. Works in Android Chrome and iOS Safari; it can be installed to the home screen.
 
-The current development branch is `release/next-update`, build `v23-preview`. This is a local release candidate, not a deployed update.
+v24 adds automatic instructor sharing after verified Google sign-in. Saved flights remain on the device; notebooks and unfinished drafts are excluded. The instructor dashboard is English and preserves cadet input in its original language. See [CLOUD-SETUP.md](CLOUD-SETUP.md) for access, deployment and verification details.
 
 ## Daily use
 

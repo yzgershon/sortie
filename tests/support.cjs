@@ -11,6 +11,7 @@ async function browser(options={}) {
  const server=http.createServer((req,res)=>{
   const p=new URL(req.url,'http://127.0.0.1').pathname;
   if(options.respond && options.respond(req,res,p))return;
+  if(p==='/js/cloud-config.js'&&!options.worker){res.setHeader('Content-Type','text/javascript');res.end('window.CLOUD_CONFIG={enabled:false};');return;}
   if(p==='/sw.js'&&!options.worker){res.writeHead(404);res.end();return;}
   if(p==='/js/auth-config.js'){res.setHeader('Content-Type','text/javascript');res.end('window.AUTH_CONFIG={clientId:"",allow:[],courses:{}};');return;}
   // Worker tests need exact manifest-hashed bytes; their outbound Formspree
@@ -36,7 +37,7 @@ async function browser(options={}) {
  const route=async(name,selector)=>{if(name==='home')selector='[href="#/progress"]';await ev('location.hash='+JSON.stringify('#/'+name));await until('document.body.dataset.route==='+JSON.stringify(name.split('/')[0]||'home')+'&&!!document.querySelector('+JSON.stringify(selector)+')');};
  const shot=async name=>{await ev('Promise.all(document.getAnimations().filter(a=>a.effect.getTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{})))');const r=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});const dir=path.resolve(root,'../artifacts/sortie-v23');fs.mkdirSync(dir,{recursive:true});fs.writeFileSync(path.join(dir,name+'.png'),Buffer.from(r.data,'base64'));};
  await send('Page.enable');await send('Runtime.enable');await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
- await send('Network.enable');await send('Network.setBlockedURLs',{urls:['https://formspree.io/f/*']});
+ await send('Network.enable');await send('Network.setBlockedURLs',{urls:['https://formspree.io/f/*','https://identitytoolkit.googleapis.com/*','https://securetoken.googleapis.com/*','https://firestore.googleapis.com/*']});
  await send('Page.navigate',{url:base});await until("typeof Store!=='undefined' && !!document.querySelector('[data-coursego]')");await click('[data-coursego]');await until("!document.querySelector('#app').hidden && document.body.dataset.route==='home'");
  return {base,ev,send,until,click,type,route,shot,errors,close:()=>{ws.close();chrome.kill();server.close();}};
 }

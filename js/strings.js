@@ -38,7 +38,7 @@
     recent: 'טיסות אחרונות',
     viewAll: 'הכל',
     noFlights: 'אין עדיין טיסות',
-    noFlightsHint: 'הטיסה הראשונה תופיע כאן. הכל נשמר במכשיר הזה בלבד.',
+    noFlightsHint: 'הטיסה הראשונה ששמרת תופיע כאן.',
 
     /* readouts */
     rMinutes: 'דקות',     capMinutes: 'MINUTES',
@@ -86,7 +86,7 @@
 
     /* backup */
     backupNow: 'ייצוא גיבוי',
-    backupHomeTitle: 'הטיסות שלך קיימות רק בטלפון הזה.',
+    backupHomeTitle: 'כדאי לשמור גיבוי מלא.',
     backupHomeBody: 'ייצא קובץ גיבוי ושמור אותו איפשהו. לוקח שתי שניות.',
 
     /* drafts */
@@ -219,7 +219,7 @@
     backupTitle: 'כדאי לגבות.',
     backupNever: 'עוד לא ייצאת גיבוי.',
     backupDays: function (n) { return 'הגיבוי האחרון היה לפני ' + n + ' ימים.'; },
-    backupBody: 'הכל קיים רק בטלפון הזה. ייצא קובץ ושמור אותו במקום בטוח.',
+    backupBody: 'גיבוי JSON שומר גם את המחברת והטיוטות. ייצא קובץ ושמור אותו במקום בטוח.',
 
     installTitle: 'הוספה למסך הבית',
     installBodyIOS: 'לחץ על כפתור השיתוף ואז "הוסף למסך הבית". האפליקציה תיפתח במסך מלא ותעבוד גם בלי קליטה.',
@@ -399,7 +399,7 @@
       ['המשוב שלך', 'מסך משוב חדש בהגדרות, עם שמירת טיוטה גם ללא חיבור.']
     ],
     understood: 'הבנתי', previewBuild: 'גרסת תצוגה מקדימה', backupRecovery: 'גיבוי ושחזור',
-    backupRecoveryBody: 'הכניסה עם Google אינה מגבה את הנתונים. גיבוי JSON כולל טיסות, שאלות, יעדים, טיוטות, מחברת ואבני דרך.',
+    backupRecoveryBody: 'שיתוף עם המדריך אינו תחליף לגיבוי מלא. גיבוי JSON כולל טיסות, שאלות, יעדים, טיוטות, מחברת ואבני דרך.',
     recovery: 'שחזור ופריטים שנמחקו', recentlyDeleted: 'נמחקו לאחרונה', recoveryDrafts: 'טיוטות שמורות',
     recoveryEmpty: 'אין פריטים לשחזור', restore: 'שחזור', restored: 'שוחזר', recoveryCopy: 'הורדת עותק השחזור האחרון',
     archivedQuestions: 'שאלות בארכיון', archiveRestore: 'החזרת השאלה לטפסים', recoveryRaw: 'הורדת נתונים לבדיקה',
@@ -505,7 +505,7 @@
 Object.assign(window.T, {
   cloudTitle: 'שיתוף עם המדריך',
   cloudScope: 'תדריכים ותחקירים שנשמרו בלבד',
-  cloudPrivacy: 'הטיסות נשמרות במכשיר. לאחר חיבור החשבון, תדריכים ותחקירים שנשמרו מסונכרנים עם המדריך שהוקצה לך. המחברת והטיוטות אינן נשלחות. גיבוי JSON נשאר זמין. קוד הנעילה אינו מצפין את הנתונים.',
+  cloudPrivacy: 'הטיסות נשמרות במכשיר. לאחר כניסה עם Google, תדריכים ותחקירים שנשמרו מסונכרנים אוטומטית עם המדריך שהוקצה לך. המחברת והטיוטות אינן נשלחות. גיבוי JSON נשאר זמין. קוד הנעילה אינו מצפין את הנתונים.',
   cloudDisabled: 'השיתוף עם המדריך עדיין לא הופעל. הנתונים ממשיכים להישמר במכשיר.',
   cloudConnect: 'חיבור החשבון לשיתוף',
   cloudLink: 'חיבור הרשומות השמורות לחשבון זה',
@@ -522,7 +522,7 @@ Object.assign(window.T, {
   cloudSignoutError: 'היציאה מהחשבון בענן לא הושלמה. יש לנסות שוב.',
   cloudStates: {
     disabled: 'השיתוף עדיין לא הופעל', signin: 'נדרש חיבור חשבון Google',
-    connecting: 'בדיקת החשבון והרשאות הגישה', unlinked: 'החשבון מחובר, הטיסות עדיין לא שותפו',
+    connecting: 'בדיקת החשבון והרשאות הגישה', unlinked: 'השלמת חיבור החשבון',
     'account-mismatch': 'החשבון המחובר אינו תואם לרשומות שבמכשיר. יש להתחבר לחשבון המקורי.',
     'not-enrolled': 'החשבון עדיין לא נוסף לרשימת הצוערים אצל המדריך',
     offline: 'אין חיבור לרשת. הרשומות נשמרות במכשיר.', syncing: 'שליחת רשומות שנשמרו',
@@ -575,7 +575,7 @@ window.T.instructorEnglish = {
   cloudSignoutError: 'Sign-out did not finish. Please try again.',
   cloudStates: {
     disabled: 'Sharing is not enabled', signin: 'Connect your Google account',
-    connecting: 'Checking your account and access', unlinked: 'Account connected; saved records are not linked yet',
+    connecting: 'Checking your account and access', unlinked: 'Completing account connection',
     'account-mismatch': 'This account does not match the records on this device. Sign in with the original account.',
     'not-enrolled': 'This account has not been enrolled', offline: 'Offline. Saved records remain on this device.',
     syncing: 'Uploading saved records', synced: 'All saved records are synced',
