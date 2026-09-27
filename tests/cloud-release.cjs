@@ -1,8 +1,9 @@
-// Current live v23 -> v24 on one disposable origin. No real account or cloud calls.
+// An older release -> current build on one disposable origin. No real cloud calls.
 const assert=require('node:assert/strict'),cp=require('child_process'),path=require('path');
 const {browser,root}=require('./support.cjs');let b,mode='old',checks=0;
-const old={};for(const name of cp.execFileSync('git',['ls-tree','-r','--name-only','81f3dfa'],{cwd:root,encoding:'utf8'}).trim().split('\n')){
- if(/^(js\/|css\/|index.html$)/.test(name))old[name]=cp.execFileSync('git',['show','81f3dfa:'+name],{cwd:root,maxBuffer:10*1024*1024});
+const baseline=process.env.SORTIE_UPGRADE_FROM||'81f3dfa';
+const old={};for(const name of cp.execFileSync('git',['ls-tree','-r','--name-only',baseline],{cwd:root,encoding:'utf8'}).trim().split('\n')){
+ if(/^(js\/|css\/|index.html$)/.test(name))old[name]=cp.execFileSync('git',['show',baseline+':'+name],{cwd:root,maxBuffer:10*1024*1024});
 }
 function check(name,value){assert.ok(value,name);console.log('PASS '+name);checks++;}
 const fixture=`window.releaseCloud={notify:null,role:'cadet',active:true,rows:[],calls:0};window.FirebaseAdapter=function(){return{
@@ -29,8 +30,8 @@ const fixture=`window.releaseCloud={notify:null,role:'cadet',active:true,rows:[]
  })()`);
  const state="JSON.stringify({flights:Store.all(),questions:Store.questions(true),goals:Store.nextGoals(),draft:Store.readDraft(),workspace:Workspace.all(),settings:Store.settings()})";
  const before=await b.ev(state);mode='new';await b.send('Page.reload');await b.until("typeof preUpgrade==='undefined'&&typeof Cloud!=='undefined'&&Cloud.status().phase==='signin'");
- check('v23 upgrade preserves every saved record and private workspace',await b.ev(state)===before);
- check('v24 shows no announcement, tour or connection modal',await b.ev("!document.querySelector('#sheet').open&&!document.querySelector('.tour')&&document.body.dataset.route==='home'"));
+ check('upgrade from '+baseline+' preserves every saved record and private workspace',await b.ev(state)===before);
+ check('sharing update shows no announcement, tour or connection modal',await b.ev("!document.querySelector('#sheet').open&&!document.querySelector('.tour')&&document.body.dataset.route==='home'"));
  check('existing local Google session remains usable without a forced sign-out',await b.ev("!document.querySelector('#app').hidden&&Auth.session().email==='a@example.test'"));
  check('pre-cloud history remembers its original local account',await b.ev("JSON.parse(localStorage.getItem('sortie:cloud-local-owner'))==='a@example.test'"));
  check('no upload before a verified cloud identity',await b.ev('releaseCloud.calls===0'));

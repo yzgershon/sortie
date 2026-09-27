@@ -18,6 +18,9 @@ window.FirebaseAdapter=function(){return {
   if(p==='/js/cloud-config.js'){res.setHeader('Content-Type','text/javascript');res.end('window.CLOUD_CONFIG={enabled:true,firebase:{projectId:"demo-sortie",apiKey:"fake"}}');return true;}
   if(p==='/js/firebase-adapter.js'){res.setHeader('Content-Type','text/javascript');res.end(fixture);return true;}
  }});
+ check('unverified session has no visible sharing shortcut',await b.ev("!Array.from(document.querySelectorAll('a[href=\"#/cloud\"]')).some(el=>el.checkVisibility())"));
+ await b.route('settings','#questionEditor');
+ check('settings hides sharing until instructor membership is verified',await b.ev("!Array.from(document.querySelectorAll('a[href=\"#/cloud\"],[data-act=\"cloud\"],[data-act=\"instructor\"]')).some(el=>el.checkVisibility())"));
  await b.route('instructor','[data-cloud-pending]');
  check('session restoration shows loading rather than false denial',await b.ev("!document.querySelector('#view').textContent.includes(T.instructorEnglish.instructorDenied)"));
  await b.ev(`cloudMock.holdAccess=true;localStorage.setItem('sortie:auth',JSON.stringify({email:'teacher@example.test',exp:Date.now()+1000000}));void cloudMock.notify({uid:'teacher',email:'teacher@example.test',verified:true});`);
@@ -25,6 +28,14 @@ window.FirebaseAdapter=function(){return {
  check('pending enrollment check keeps loading message',await b.ev("!!document.querySelector('[data-cloud-pending]')&&!document.querySelector('#view').textContent.includes(T.instructorEnglish.instructorDenied)"));
  await b.ev("cloudMock.holdAccess=false;cloudMock.resolveAccess()");
  await b.until("Cloud.status().role==='instructor'");
+ await b.route('settings','#questionEditor');
+ check('verified instructor sees sharing and dashboard entries',await b.ev("document.querySelector('#view [data-act=\"cloud\"]').checkVisibility()&&document.querySelector('#view [data-act=\"instructor\"]').checkVisibility()"));
+ await b.ev("window.settingsElement=document.querySelector('#questionEditor');void cloudMock.notify(null)");
+ await b.until("!Cloud.status().role");
+ check('loss of verified identity hides entries without rebuilding settings',await b.ev("settingsElement===document.querySelector('#questionEditor')&&!document.querySelector('#view [data-act=\"cloud\"]').checkVisibility()&&!document.querySelector('#view [data-act=\"instructor\"]').checkVisibility()"));
+ await b.ev("void cloudMock.notify({uid:'teacher',email:'teacher@example.test',verified:true})");
+ await b.until("Cloud.status().role==='instructor'");
+ check('restoring instructor membership reveals entries without navigation',await b.ev("settingsElement===document.querySelector('#questionEditor')&&document.querySelector('#view [data-act=\"cloud\"]').checkVisibility()&&document.querySelector('#view [data-act=\"instructor\"]').checkVisibility()"));
  await b.ev(`(()=>{
  const qs=Store.questions(true).concat([{id:'custom_old',label:'שאלה היסטורית',type:'textarea',archived:true}]);
  const records=[
@@ -76,10 +87,18 @@ window.FirebaseAdapter=function(){return {
  check('instructor connection panel stays English with sign-out',await b.ev("document.documentElement.lang==='en'&&document.querySelector('.cloud-panel h1').textContent==='Account and connection'&&document.querySelector('[data-cloud-signout]').textContent==='Sign out'&&document.querySelector('#tabbar').hidden"));
  await b.route('home','[href="#/progress"]');
  check('returning to cadet screens restores Hebrew RTL',await b.ev("document.documentElement.lang==='he'&&document.documentElement.dir==='rtl'&&document.querySelector('#skipContent').textContent===T.skipContent&&!document.querySelector('#tabbar').hidden"));
+ check('instructor retains the top-bar sharing shortcut',await b.ev("document.querySelector('#topbar a[href=\"#/cloud\"]').checkVisibility()"));
  check('instructor viewing does not change local data',await b.ev("JSON.stringify({flights:Store.all(),settings:Store.settings(),workspace:Workspace.all(),draft:Store.readDraft()})")===before);
  check('instructor never uploads local records',await b.ev("!cloudMock.calls.some(c=>c[0]==='write')"));
  await b.ev("cloudMock.role='cadet';localStorage.setItem('sortie:auth',JSON.stringify({email:'a@example.test',exp:Date.now()+1000000}));cloudMock.notify({uid:'cadet-a',email:'a@example.test',verified:true})");
- await b.until("Cloud.status().phase==='synced'");await b.route('cloud','.cloud-panel');
+ await b.until("Cloud.status().phase==='synced'");
+ check('cadet identity hides the top-bar shortcut without navigation',await b.ev("!document.querySelector('#topbar a[href=\"#/cloud\"]').checkVisibility()"));
+ for(const course of ['rishoni','mitkadem']){
+  await b.ev(`Store.setCourse(${JSON.stringify(course)})`);
+  await b.route('home','[href="#/progress"]');await b.route('settings','#questionEditor');
+  check(course+' cadet sees neither sharing nor dashboard settings',await b.ev("!Array.from(document.querySelectorAll('a[href=\"#/cloud\"],[data-act=\"cloud\"],[data-act=\"instructor\"]')).some(el=>el.checkVisibility())"));
+ }
+ await b.route('cloud','.cloud-panel');
  check('verified cadet connects automatically without a link button',await b.ev("!!localStorage.getItem('sortie:cloud-binding')&&!document.querySelector('[data-cloud-link]')"));
  check('cadet sharing remains Hebrew',await b.ev("document.documentElement.lang==='he'&&document.querySelector('.cloud-panel h1').textContent===T.cloudTitle"));
  await b.ev("Store.save({flownAt:'2026-09-27',stage:'brief',answers:{q_subject:'SAVED TRAINING'}})");await b.until("Cloud.status().phase==='synced'&&cloudMock.calls.some(c=>c[0]==='write')");

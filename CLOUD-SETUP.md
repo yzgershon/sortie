@@ -2,6 +2,10 @@
 
 v24 / sortie-v24 is live on main. App release commit e9aa220 was deployed through GitHub Pages on 2026-09-27, upgrading the previous v23 commit 81f3dfa. Yish explicitly authorized deployment on 2026-09-27. He subsequently required automatic connection at ordinary Google sign-in with no announcement, message, separate link button or confirmation. Sharing consent and saved-record scope are already settled. This supersedes earlier pilot/approval and manual-link instructions.
 
+## v25 visibility follow-up
+
+The Settings sharing section and top-bar shortcut are restricted to the verified instructor role. Cadet and unresolved sessions do not see these navigation controls. They update when membership resolves without rerendering forms. Automatic saved-record syncing is unchanged. Direct own-account status and the existing privacy explanation remain available; hiding navigation does not replace Firebase access rules. v25 also suppresses the release announcement.
+
 ## Behavior and preservation
 
 Saved briefs/debriefs, their answers, course/catalogue identity and relevant historical/custom question definitions are shared. A verified Google identity and active server enrollment are required. Cadets connect automatically to their assigned instructor. Signing up in the app means using an already-enrolled Google account; clients cannot self-enroll.

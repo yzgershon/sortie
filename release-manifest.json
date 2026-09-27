@@ -1,5 +1,5 @@
 {
-  "version": "sortie-v24",
+  "version": "sortie-v25",
   "files": {
     "./assets/badge.png": "8433da55fbde01f22c3e40146be598705a37ca8897bd768638be423e87d52647",
     "./assets/cockpit.jpg": "34da089290b8117949e3b798173f9a97c08db6eacbcaec11144c11e94b6408c8",
@@ -13,7 +13,7 @@
     "./icons/icon-192.png": "6ab1cd5ffef9f8d8b8ac4b232350dc617f19546a7f19da55d6ce74d584fe4818",
     "./icons/icon-512.png": "4279f7124492f1698af374ea050cc519173651841c9f0a3db03038d205448295",
     "./index.html": "3b47690e9df21dad4f92cc0b4dffe6604bf37f7f7c5a8a7a48d9fb6d5ee17a29",
-    "./js/app.js": "2c42175614b3a74d0c14312dba30322916847a3ba30530b353195fcb2b8e29e6",
+    "./js/app.js": "ebde02535844bd13bd13d1401db029ff3eacf55e74da11eaa5ca0a8c5e9b80a4",
     "./js/auth-config.js": "c50c410046414cacc83c95466c069f985326ed9e95673e85182433e1dc70f2ce",
     "./js/auth.js": "e9af186836103d08c29386c5812878707ba52e271ec7c5f00b43d3362eb69cc8",
     "./js/cloud-config.js": "f32c89fdef437adbe6dee77b496c1faf77f0a75516a3da5c5e8361cdce585818",

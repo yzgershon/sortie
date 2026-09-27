@@ -6,7 +6,7 @@
 (function (global) {
   'use strict';
 
-  var BUILD = 'v24';   // keep in step with VERSION in sw.js
+  var BUILD = 'v25';   // keep in step with VERSION in sw.js
 
   var appEl, viewEl, topbarEl, tabbarEl, toasterEl, sheetEl, lockEl;
   var route = { name: 'home', param: null };
@@ -296,6 +296,10 @@
     if (at !== -1) lastTab = at;
   }
 
+  function instructorToolsVisible() {
+    return !!(global.Cloud && Cloud.enabled() && Cloud.status().role === 'instructor');
+  }
+
   function renderTopbar(c) {
     var root = ROOT_SCREENS.indexOf(route.name) !== -1 && !c.back;
     var formish = route.name === 'brief' || route.name === 'debrief';
@@ -311,7 +315,7 @@
         return '<button class="iconbtn' + (a.lit ? ' iconbtn--lit' : '') + '" data-topact="' + a.id +
           '" aria-label="' + esc(a.label) + '">' + icon(a.ic) + '</button>';
       }).join('') +
-      (root && global.Cloud && Cloud.enabled() ? '<a class="iconbtn" href="#/cloud" aria-label="' + esc(T.cloudTitle) + '">' + icon('layers') + '</a>' : '') +
+      (root && global.Cloud && Cloud.enabled() ? '<a class="iconbtn" data-instructor-only' + (instructorToolsVisible() ? '' : ' hidden') + ' href="#/cloud" aria-label="' + esc(T.cloudTitle) + '">' + icon('layers') + '</a>' : '') +
       (root ? '<a class="iconbtn" href="#/settings" aria-label="' + esc(T.settings) + '">' + icon('settings') + '</a>' : '');
     on(topbarEl, '[data-back]', 'click', function () {
       if (navCount > 1) history.back(); else go(c.backTo || '');
@@ -370,7 +374,7 @@
   }
   function maybeRelease() {
     // This release intentionally has no announcement or connection prompt.
-    if (BUILD === 'v24') return;
+    if (BUILD === 'v24' || BUILD === 'v25') return;
     if (releasePrompted || /preview/.test(BUILD) || appEl.hidden || !lockEl.hidden || route.name !== 'home' || Store.settings().releaseSeen === BUILD) return;
     releasePrompted = true;
     if (!hasHistory()) { Store.set('releaseSeen', BUILD); return; }
@@ -2676,9 +2680,9 @@
       '<section class="stack"><h2 class="h-sect">' + esc(T.trainingTools) + '</h2><div class="group">' + item('notebook', T.notebookTitle, T.onDeviceOnly, 'notebook') +
         item('trending', T.courseProgress, T.progressSub, 'progress') + item('pencil', T.feedback, T.feedbackSub, 'feedback') +
         item('flag', T.whatsNew, BUILD, 'whatsnew') + '</div></section>' +
-      (global.Cloud && Cloud.enabled() ? '<section class="stack"><h2 class="h-sect">' + esc(T.cloudTitle) + '</h2><div class="group">' +
+      (global.Cloud && Cloud.enabled() ? '<section class="stack" data-instructor-only' + (instructorToolsVisible() ? '' : ' hidden') + '><h2 class="h-sect">' + esc(T.cloudTitle) + '</h2><div class="group">' +
         item('layers', T.cloudTitle, T.cloudScope, 'cloud') +
-        (Cloud.status().role === 'instructor' ? item('layers', T.instructorTitle, T.instructorSub, 'instructor') : '') + '</div></section>' : '') +
+        item('layers', T.instructorTitle, T.instructorSub, 'instructor') + '</div></section>' : '') +
 
       '<details class="settings-disclosure" id="questionEditor"' + (questionEditorOpen ? ' open' : '') + '><summary>' + icon('list3') + '<span><b>' + esc(T.questionEditor) + '</b><small>' + esc(T.questionCount(qs.length)) + '</small></span>' + icon('chevDown') + '</summary><section class="stack">' +
         '<p class="fineprint">' + esc(T.questionsHint) + '</p>' +
@@ -3359,6 +3363,11 @@
     toasterEl = document.getElementById('toaster');
     sheetEl = document.getElementById('sheet');
     lockEl = document.getElementById('lockScreen');
+    // Membership resolves asynchronously. Update only these controls so a
+    // connection change never resets the screen or an unsaved settings field.
+    global.addEventListener('sortie:cloud-status', function () {
+      $$('[data-instructor-only]').forEach(function (el) { el.hidden = !instructorToolsVisible(); });
+    });
     sheetEl.addEventListener('click', function (e) { if (e.target === sheetEl) sheetEl.close(); });
     // the sign-in, course and PIN screens share one scope and mark, drawn once
     $$('.lock').forEach(function (el, i) { el.insertAdjacentHTML('afterbegin', Visuals.scope('lock' + i)); });

@@ -1,3 +1,13 @@
+# v25 visibility follow-up
+
+- [x] Sharing settings and top-bar shortcut visible only to verified instructors; both cadet courses and unresolved identities keep them hidden.
+- [x] Membership changes update controls without replacing the active settings screen.
+- [x] Saved-record sync, account boundaries, English dashboard, mobile layouts and excluded private data pass 53 cloud browser checks.
+- [x] Upgrade from v24 preserves saved flights, questions, goals, settings, notebook and drafts; all 18 checks pass.
+- [x] No v25 announcement or separate connection step.
+- [x] All 21 local suites passed; owner navigation verified in the connected local preview.
+- [ ] Live deployment verification pending.
+
 # v24 release checkpoint
 
 Released on the user’s explicit instruction on 2026-09-27, app commit e9aa220. The subsequent steering required no announcement or separate connection step; both requirements are implemented.
