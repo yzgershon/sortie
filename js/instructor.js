@@ -84,6 +84,9 @@
     var run = ++epoch, T = g.T;
     if (route.name === 'cloud') { statusPanel(ctx); return; }
     ctx.topbar({ title: T.instructorTitle, back: true, backTo: 'cloud' });
+    if (g.Cloud.enabled() && g.Cloud.status().phase === 'connecting') {
+      ctx.view.innerHTML = '<p role="status" data-cloud-pending>' + esc(T.cloudStates.connecting) + '</p>'; return;
+    }
     if (g.Cloud.status().role !== 'instructor') {
       ctx.view.innerHTML = '<section class="empty"><h1>' + esc(T.instructorTitle) + '</h1><p>' + esc(g.Cloud.enabled() ? T.instructorDenied : T.cloudDisabled) + '</p><a class="btn" href="#/cloud">' + esc(T.cloudTitle) + '</a></section>'; return;
     }

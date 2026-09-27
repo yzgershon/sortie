@@ -4,9 +4,9 @@ function check(name,value){assert.ok(value,name);console.log('PASS '+name);check
 const fixture=`
 window.cloudMock={who:null,role:'instructor',rows:[],calls:[],notify:null};
 window.FirebaseAdapter=function(){return {
- onUser:function(fn){cloudMock.notify=fn;fn(null);},
+ onUser:function(fn){cloudMock.notify=fn;},
  signIn:async function(){throw Error('no real sign in in fixture');},signOut:async function(){cloudMock.notify(null);},
- access:async function(){return {active:true,role:cloudMock.role};},
+ access:async function(){if(cloudMock.holdAccess)await new Promise(resolve=>cloudMock.resolveAccess=resolve);return {active:true,role:cloudMock.role};},
  roster:async function(){return [{id:'cadet-a',name:'צוער לדוגמה',course:'rishoni',instructorId:'teacher',lastSyncAt:{seconds:1790500000}},{id:'cadet-b',name:'צוער מתקדם',course:'mitkadem',instructorId:'teacher'}];},
  flights:async function(uid){cloudMock.calls.push(['read',uid]);return cloudMock.rows;},
  revisions:async function(){return cloudMock.rows.slice(0,1);},
@@ -17,7 +17,12 @@ window.FirebaseAdapter=function(){return {
   if(p==='/js/cloud-config.js'){res.setHeader('Content-Type','text/javascript');res.end('window.CLOUD_CONFIG={enabled:true,firebase:{projectId:"demo-sortie",apiKey:"fake"}}');return true;}
   if(p==='/js/firebase-adapter.js'){res.setHeader('Content-Type','text/javascript');res.end(fixture);return true;}
  }});
- await b.ev(`localStorage.setItem('sortie:auth',JSON.stringify({email:'teacher@example.test',exp:Date.now()+1000000}));cloudMock.notify({uid:'teacher',email:'teacher@example.test',verified:true});`);
+ await b.route('instructor','[data-cloud-pending]');
+ check('session restoration shows loading rather than false denial',await b.ev("!document.querySelector('#view').textContent.includes(T.instructorDenied)"));
+ await b.ev(`cloudMock.holdAccess=true;localStorage.setItem('sortie:auth',JSON.stringify({email:'teacher@example.test',exp:Date.now()+1000000}));void cloudMock.notify({uid:'teacher',email:'teacher@example.test',verified:true});`);
+ await b.until("!!cloudMock.resolveAccess");
+ check('pending enrollment check keeps loading message',await b.ev("!!document.querySelector('[data-cloud-pending]')&&!document.querySelector('#view').textContent.includes(T.instructorDenied)"));
+ await b.ev("cloudMock.holdAccess=false;cloudMock.resolveAccess()");
  await b.until("Cloud.status().role==='instructor'");
  await b.ev(`(()=>{
  const qs=Store.questions(true).concat([{id:'custom_old',label:'שאלה היסטורית',type:'textarea',archived:true}]);

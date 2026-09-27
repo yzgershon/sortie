@@ -45,6 +45,7 @@
     engine = g.CloudCore.create({ storage: localStorage, snapshot: g.Store.trainingSnapshot, hash: hash,
       adapter: api(), changed: changed, online: function () { return navigator.onLine !== false; },
       lock: navigator.locks ? function (fn) { return navigator.locks.request('sortie-training-sync', fn); } : null });
+    changed({ phase: 'connecting' });
     api().onUser(identify);
     g.addEventListener('sortie:training-saved', schedule);
     g.addEventListener('online', function () { identify(user); });
