@@ -1,4 +1,20 @@
-# v23 release checklist
+# v24 release checkpoint
+
+Released on the user’s explicit instruction on 2026-09-27, app commit e9aa220. The subsequent steering required no announcement or separate connection step; both requirements are implemented.
+
+- [x] Enrolled, verified Google sign-in automatically binds and syncs saved training records. Existing local sessions are not forcibly logged out.
+- [x] No v24 release announcement, tour or linking confirmation. No messages were sent to cadets.
+- [x] Saved flights, custom questions, notebooks, drafts, profile and goals preserved in a v23-to-v24 real-browser upgrade. Private data excluded from upload; wrong-account takeover refused; offline saved records retry automatically.
+- [x] All 21 local suites and 39 Firebase rule/SDK emulator checks passed. Logs: v24-release-tests.log and v24-access-tests.log under C:/Dev/artifacts/sortie-v23. Two final neutral copy corrections were followed by manifest, worker and release-upgrade checks.
+- [x] Pages build succeeded. All 35 live file hashes and exact worker matched v24; cloud enabled.
+- [x] Existing production Google client and pinned callback verified with real owner sign-in. Firebase instructor access loaded 34 cadets; reopening restored the session.
+- [x] Live rules equal checked-in rules; only owner enrolled as instructor and only human IAM principal; anonymous access denied.
+- [ ] Real cadet/device upload counts have not yet been observed. Android and installed iPhone behavior remains real-device follow-up; do not infer it from Chrome/emulator tests.
+- [ ] Independent managed cloud backups/PITR and broader cybersecurity hardening remain separate follow-up. No paid upgrade was performed.
+
+See CLOUD-SETUP.md and HANDOFF.md for current details. The checklist below records the earlier frontend release.
+
+## v23 release checklist
 
 Updated 2026-09-26. Branch `release/next-update`, rebased on `origin/main` (`1b7c257`), build `v23`. Released to `main` on Yish's instruction on 2026-09-26.
 

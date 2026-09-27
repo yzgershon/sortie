@@ -1,6 +1,6 @@
 # Instructor sharing
 
-Release candidate v24 / sortie-v24 on feature/instructor-cloud, based on the live v23 commit 81f3dfa. Yish explicitly authorized deployment on 2026-09-27. He subsequently required automatic connection at ordinary Google sign-in with no announcement, message, separate link button or confirmation. Sharing consent and saved-record scope are already settled. This supersedes earlier pilot/approval and manual-link instructions.
+v24 / sortie-v24 is live on main. App release commit e9aa220 was deployed through GitHub Pages on 2026-09-27, upgrading the previous v23 commit 81f3dfa. Yish explicitly authorized deployment on 2026-09-27. He subsequently required automatic connection at ordinary Google sign-in with no announcement, message, separate link button or confirmation. Sharing consent and saved-record scope are already settled. This supersedes earlier pilot/approval and manual-link instructions.
 
 ## Behavior and preservation
 
@@ -59,4 +59,12 @@ Enrollment: tools/provision-cloud.cjs --project sortie-7900c --roster dev/cloud-
 
 Regression evidence: C:/Dev/artifacts/sortie-v23/v24-release-tests.log; permission/SDK evidence: v24-access-tests.log. The v23-to-v24 real-browser upgrade test verifies exact local-history/workspace preservation, no announcement/forced logout, automatic verified-account binding, exclusion of private fields, offline save/retry, and account-switch denial. Other retained suites cover v22/pre-course data, worker interruption, conflicts and mobile instructor reports. Emulators use demo-sortie only, ports 8188/9198.
 
-Real Android/installed iPhone upload behavior remains unmeasured; browser/emulator results do not substitute for it. The original-client Firebase token exchange must be checked on the deployed owner flow. Do not claim cadet devices uploaded until actual records arrive. Deployment evidence is recorded in HANDOFF.md.
+Real Android/installed iPhone upload behavior remains unmeasured; browser/emulator results do not substitute for it. The deployed owner flow successfully exchanged a token from the original Google client for Firebase, loaded all 34 assigned cadets and restored the session on reopening. Do not claim cadet devices uploaded until actual records arrive. Deployment evidence is recorded in HANDOFF.md.
+
+## Live release verification
+
+GitHub Pages reported a successful build for e9aa2206f332147c6b9ed0571fbf648dab81784b at 2026-09-27T18:55:21Z. An independent HTTP check matched all 35 shell hashes and the exact worker, and confirmed cloud sharing enabled. Evidence: ignored dev/v24-live-verification.json.
+
+The sidebar’s existing v23 session updated to v24 through its normal worker flow. A Google account selection using the original 790989398891 client and pinned /sortie/index.html callback completed without a new app-level confirmation. The actual production SDK signed the owner into sortie-7900c and read 34 assigned cadets; a fresh opening restored the session. The browser tool briefly returned a stale-element error during Google’s callback, but the next snapshot confirmed successful sign-in. Google’s page also logged a Windows WebGPU powerPreference warning; neither was an app sign-in failure.
+
+Dashboard: https://yzgershon.github.io/sortie/index.html#/instructor. It requires the enrolled instructor account; the local preview remains available separately. Live access/assignment verification after sign-in still found one instructor, 34 cadets, zero saved flight documents and anonymous access denied. No cadet records were seeded, read from phones, or modified by the release procedure.
