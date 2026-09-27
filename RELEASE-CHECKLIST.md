@@ -6,7 +6,7 @@
 - [x] Upgrade from v24 preserves saved flights, questions, goals, settings, notebook and drafts; all 18 checks pass.
 - [x] No v25 announcement or separate connection step.
 - [x] All 21 local suites passed; owner navigation verified in the connected local preview.
-- [ ] Live deployment verification pending.
+- [x] ccaf4e0 deployed through Pages at 19:30:41Z on 2026-09-27; all 35 live shell hashes and worker matched. Owner browser updated normally from v24 and retained both Settings entries. Evidence: dev/v25-live-verification.json.
 
 # v24 release checkpoint
 

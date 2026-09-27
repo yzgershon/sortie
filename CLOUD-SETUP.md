@@ -1,6 +1,6 @@
 # Instructor sharing
 
-v24 / sortie-v24 is live on main. App release commit e9aa220 was deployed through GitHub Pages on 2026-09-27, upgrading the previous v23 commit 81f3dfa. Yish explicitly authorized deployment on 2026-09-27. He subsequently required automatic connection at ordinary Google sign-in with no announcement, message, separate link button or confirmation. Sharing consent and saved-record scope are already settled. This supersedes earlier pilot/approval and manual-link instructions.
+v25 / sortie-v25 is live on main, app commit ccaf4e0, with instructor-only sharing navigation. Pages completed at 19:30:41Z on 2026-09-27; all 35 live file hashes and worker matched, and the signed-in owner retained both Settings entries after the normal update. All 21 local suites and the extra v24 preservation upgrade passed. The prior v24 release e9aa220 introduced sharing, upgrading v23 commit 81f3dfa. Yish explicitly authorized deployment on 2026-09-27. He subsequently required automatic connection at ordinary Google sign-in with no announcement, message, separate link button or confirmation. Sharing consent and saved-record scope are already settled. This supersedes earlier pilot/approval and manual-link instructions.
 
 ## v25 visibility follow-up
 
