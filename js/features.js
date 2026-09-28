@@ -317,7 +317,7 @@
     ui.topbar({ title: T.whatsNew, back: true, backTo: 'settings' });
     ui.view.innerHTML = '<section class="release"><span class="release__version mono">' + esc(ui.build) + '</span><h1>' + esc(T.whatsNew) + '</h1><p>' + esc(T.releaseIntro) + '</p><div class="release__list">' + T.releaseItems.map(function (x, i) { return '<article><span class="mono">' + String(i + 1).padStart(2, '0') + '</span><div><h2>' + esc(x[0]) + '</h2><p>' + esc(x[1]) + '</p></div></article>'; }).join('') + '</div><div class="release__acts">' + button(T.releaseTour, 'data-starttour', 'plane', 'btn--lit btn--block btn--lg') +
       button(T.understood, 'data-understood', 'check', 'btn--quiet btn--block') + '</div></section>';
-    function seen() { return /preview/.test(ui.build) || Store.set('releaseSeen', ui.build); }
+    function seen() { return ui.acknowledgeRelease(); }
     $('[data-understood]').onclick = function () { if (seen()) ui.go(''); else ui.toast(T.saveFailedBody, 'alert'); };
     // the same guided look the update message offers, on demand
     $('[data-starttour]').onclick = function () { if (seen()) ui.tour(); else ui.toast(T.saveFailedBody, 'alert'); };

@@ -1,3 +1,12 @@
+# v26 missed-demo correction
+
+- [x] Reproduced the missing redesign demo on v25 for an already-signed-in existing user.
+- [x] Announcement acknowledgment is tied to content, so it can be caught up without repeating on maintenance releases.
+- [x] Current-build upgrade regression passes 21 checks: work preserved, restored sign-in, once-only offer, legacy acknowledgments, PIN/Home gating, manual replay, preview isolation and no sharing announcement.
+- [x] BUILD and worker bumped together; 35-file release manifest regenerated.
+- [x] All 22 suites passed; the frontend screenshot suite timed out in the combined run, then passed all 37 checks on its isolated rerun. Cause of timeout is unconfirmed.
+- [ ] Deployment verification pending.
+
 # v25 visibility follow-up
 
 - [x] Sharing settings and top-bar shortcut visible only to verified instructors; both cadet courses and unresolved identities keep them hidden.

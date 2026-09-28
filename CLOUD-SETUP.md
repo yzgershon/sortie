@@ -2,6 +2,10 @@
 
 v25 / sortie-v25 is live on main, app commit ccaf4e0, with instructor-only sharing navigation. Pages completed at 19:30:41Z on 2026-09-27; all 35 live file hashes and worker matched, and the signed-in owner retained both Settings entries after the normal update. All 21 local suites and the extra v24 preservation upgrade passed. The prior v24 release e9aa220 introduced sharing, upgrading v23 commit 81f3dfa. Yish explicitly authorized deployment on 2026-09-27. He subsequently required automatic connection at ordinary Google sign-in with no announcement, message, separate link button or confirmation. Sharing consent and saved-record scope are already settled. This supersedes earlier pilot/approval and manual-link instructions.
 
+## v26 demo correction
+
+The frontend redesign announcement uses its own content version instead of the deployment build. Existing users who missed it get the tour offer once at Home after auth/PIN, including already-signed-in local sessions. Acknowledged demos do not repeat with maintenance releases. This does not announce instructor sharing or require a new connection; instructor-only navigation and automatic saved-record sync are unchanged.
+
 ## v25 visibility follow-up
 
 The Settings sharing section and top-bar shortcut are restricted to the verified instructor role. Cadet and unresolved sessions do not see these navigation controls. They update when membership resolves without rerendering forms. Automatic saved-record syncing is unchanged. Direct own-account status and the existing privacy explanation remain available; hiding navigation does not replace Firebase access rules. v25 also suppresses the release announcement.

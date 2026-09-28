@@ -1,8 +1,16 @@
 # Sortie handoff
 
-Updated 2026-09-27. Read this and the actual git status before editing. Preserve other agents' or Yish's work. User instructions take precedence over old agent briefings.
+Updated 2026-09-28. Read this and the actual git status before editing. Preserve other agents' or Yish's work. User instructions take precedence over old agent briefings.
 
-## Instructor cloud work (current)
+## Current v26 demo fix
+
+- Prepared 2026-09-28 after the brother reported no demo while already signed in. Root cause: v24/v25 returned early from maybeRelease, suppressing the earlier frontend redesign announcement too. The previous tests replaced BUILD with v23 and did not catch this real upgrade path.
+- The announcement now has a content version (ANNOUNCEMENT=v23) separate from BUILD=v26. Existing users with saved work and no acknowledgment get the frontend tour offer at Home after auth/PIN, even with a restored local Google session and no Firebase sign-in. Silent maintenance/sharing releases do not repeat an acknowledged demo. Legacy v23/v24/v25 acknowledgments remain accepted; manual replay and preview isolation use the same helper. First installs without history retain the existing quiet behavior.
+- No cloud announcement, new connection prompt, sign-out, storage schema change, reset or data migration. Instructor-only navigation and automatic saved-record sharing are unchanged. Only the existing releaseSeen preference is written when the announcement is acknowledged (or skipped for a first install).
+- tests/tour-release.cjs reproduces actual v25-to-current behavior in disposable Chrome: 21 checks cover preserved records/drafts/notebook/settings, restored sign-in, deferred Home/PIN display, no sharing announcement, once-only acknowledgment, later maintenance builds, legacy markers, preview isolation and manual replay. All 22 suites passed, with the frontend screenshot suite passing its isolated rerun after the combined runner hit its 180-second timeout. No assertion failure or browser exception was observed in that run; timeout cause is unconfirmed. Logs: C:/Dev/artifacts/sortie-v23/v26-release-tests.log and v26-frontend-recheck.log. Deployment status to follow.
+- GatedSpace sidebar preview could not be opened: configured session reported closed/no workspace. Automated browser checks remain available; do not claim sidebar verification.
+
+## Instructor cloud work (prior release evidence)
 
 - v25 / sortie-v25 is live on main, app commit ccaf4e0, deployed 2026-09-27: Sharing with instructor in Settings and the root-screen top-bar shortcut are shown only after Firebase confirms the instructor role (currently the owner only). Unverified and cadet sessions keep both hidden, including while membership loads. Status changes toggle only these controls, without rebuilding the screen or losing an active edit. The instructor dashboard entry shares this gate. Cadet automatic sync and direct own-account connection status remain unchanged; this is navigation visibility, not a new security boundary. No data/schema/auth/backend changes. No v25 announcement. All 21 local suites passed (53 instructor browser checks); the additional e9aa220 (v24) upgrade passed all 18 preservation/sync checks. Owner Settings entries were also verified in the connected local sidebar. Logs: C:/Dev/artifacts/sortie-v23/v25-release-tests.log and v25-from-v24-tests.log. Pages built successfully at 19:30:41Z; all 35 live file hashes and exact worker matched at 19:31:21Z. The signed-in owner browser updated normally from v24 to v25 and retained both Settings entries. Private evidence: dev/v25-live-verification.json. Prior v24 rollout evidence follows.
 

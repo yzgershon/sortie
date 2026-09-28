@@ -6,7 +6,10 @@
 (function (global) {
   'use strict';
 
-  var BUILD = 'v25';   // keep in step with VERSION in sw.js
+  var BUILD = 'v26';   // keep in step with VERSION in sw.js
+  // The redesign announcement is independent of maintenance/sharing releases.
+  // Change this only when the announcement and tour content actually change.
+  var ANNOUNCEMENT = 'v23';
 
   var appEl, viewEl, topbarEl, tabbarEl, toasterEl, sheetEl, lockEl;
   var route = { name: 'home', param: null };
@@ -355,7 +358,7 @@
     if (route.name === 'cloud' || route.name === 'instructor') Instructor.render(route, { view: viewEl, topbar: renderTopbar, toast: toast, go: go, language: screenLanguage });
     else if (screens[route.name]) screens[route.name]();
     else Features.render(route, { view: viewEl, topbar: renderTopbar, toast: toast, sheet: openSheet, confirm: confirmSheet,
-      go: go, build: BUILD, progress: syllabusProgress, clock: courseClock, saveFile: saveFile, tour: startTour, setFlush: function (fn) { formFlush = fn; } });
+      go: go, build: BUILD, acknowledgeRelease: acknowledgeRelease, progress: syllabusProgress, clock: courseClock, saveFile: saveFile, tour: startTour, setFlush: function (fn) { formFlush = fn; } });
     var notebookEditor = route.name === 'notebook' && !!viewEl.querySelector('.notebook--editor');
     viewEl.classList.toggle('view--notebookEditor', notebookEditor);
     if (notebookEditor) tabbarEl.hidden = true;
@@ -372,19 +375,24 @@
     return Store.count() > 0 || !!Store.readDraft() || Store.nextGoals().length > 0 ||
       !!(w && ((w.notes || []).length || (w.milestones || []).length));
   }
+  function hasSeenRelease() {
+    // Earlier builds stored their build number for this same announcement.
+    var seen = /^v(\d+)$/.exec(Store.settings().releaseSeen || '');
+    return !!seen && +seen[1] >= +ANNOUNCEMENT.slice(1);
+  }
+  function acknowledgeRelease() {
+    return /preview/.test(BUILD) || hasSeenRelease() || Store.set('releaseSeen', ANNOUNCEMENT);
+  }
   function maybeRelease() {
-    // This release intentionally has no announcement or connection prompt.
-    if (BUILD === 'v24' || BUILD === 'v25') return;
-    if (releasePrompted || /preview/.test(BUILD) || appEl.hidden || !lockEl.hidden || route.name !== 'home' || Store.settings().releaseSeen === BUILD) return;
+    if (releasePrompted || /preview/.test(BUILD) || appEl.hidden || !lockEl.hidden || route.name !== 'home' || hasSeenRelease()) return;
     releasePrompted = true;
-    if (!hasHistory()) { Store.set('releaseSeen', BUILD); return; }
+    if (!hasHistory()) { acknowledgeRelease(); return; }
     releaseSheet();
   }
 
   /* The update message: what changed, in four lines, the reassurance that
      nothing saved was touched, and a way to be shown rather than told. */
   function releaseSheet() {
-    function seen() { return /preview/.test(BUILD) || Store.set('releaseSeen', BUILD); }
     openSheet({ title: T.whatsNew, text: T.releaseIntro, cls: 'sheet__panel--release',
       hero: '<div class="release-hero">' +
           '<div class="release-hero__art" aria-hidden="true">' +
@@ -398,10 +406,10 @@
         '<p class="release-safe">' + icon('checkCircle') + '<span>' + esc(T.releaseSafe) + '</span></p>',
       actions: [
         { label: T.releaseTour, cls: 'btn--lit btn--lg', icon: 'plane', keepOpen: true, run: function (sh) {
-            if (!seen()) return toast(T.saveFailedBody, 'alert');
+            if (!acknowledgeRelease()) return toast(T.saveFailedBody, 'alert');
             sh.close(); startTour();
           } },
-        { label: T.releaseLater, cls: 'btn--quiet', keepOpen: true, run: function (sh) { if (seen()) sh.close(); else toast(T.saveFailedBody, 'alert'); } },
+        { label: T.releaseLater, cls: 'btn--quiet', keepOpen: true, run: function (sh) { if (acknowledgeRelease()) sh.close(); else toast(T.saveFailedBody, 'alert'); } },
         { label: T.releaseDetails, cls: 'btn--quiet', run: function () { go('whatsnew'); } }
       ]
     });

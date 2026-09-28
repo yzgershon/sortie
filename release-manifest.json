@@ -1,5 +1,5 @@
 {
-  "version": "sortie-v25",
+  "version": "sortie-v26",
   "files": {
     "./assets/badge.png": "8433da55fbde01f22c3e40146be598705a37ca8897bd768638be423e87d52647",
     "./assets/cockpit.jpg": "34da089290b8117949e3b798173f9a97c08db6eacbcaec11144c11e94b6408c8",
@@ -13,14 +13,14 @@
     "./icons/icon-192.png": "6ab1cd5ffef9f8d8b8ac4b232350dc617f19546a7f19da55d6ce74d584fe4818",
     "./icons/icon-512.png": "4279f7124492f1698af374ea050cc519173651841c9f0a3db03038d205448295",
     "./index.html": "3b47690e9df21dad4f92cc0b4dffe6604bf37f7f7c5a8a7a48d9fb6d5ee17a29",
-    "./js/app.js": "ebde02535844bd13bd13d1401db029ff3eacf55e74da11eaa5ca0a8c5e9b80a4",
+    "./js/app.js": "ee162fae9db3a45b613d2892474ad1970855dc5dee4efe662b24f135aced36dc",
     "./js/auth-config.js": "c50c410046414cacc83c95466c069f985326ed9e95673e85182433e1dc70f2ce",
     "./js/auth.js": "e9af186836103d08c29386c5812878707ba52e271ec7c5f00b43d3362eb69cc8",
     "./js/cloud-config.js": "f32c89fdef437adbe6dee77b496c1faf77f0a75516a3da5c5e8361cdce585818",
     "./js/cloud-core.js": "34f07438f2eaea3b14bded2d02882c2251a16e7f599da103a7692127e791d97b",
     "./js/cloud.js": "2c88e4f9f26f7633aa5fc0522f901f735c27703fb515b56237d96555afce8cac",
     "./js/courses.js": "e71acc15de3e2c3e685e4459dbd0c62fd207ca839ea7ac1b0bbda2a52e192585",
-    "./js/features.js": "849f6a8e947ae5cc62e0811e42c787d65bc671a524b631abcddd039a43f6bd9e",
+    "./js/features.js": "59fae7f804278c6891396ddd635279f2baa85bb6bae674c01cb1244389502556",
     "./js/feedback-config.js": "1ef4fdb57940be85296dc0a3dd692e277a870d05fe461bc326cf6a77ee028f7b",
     "./js/firebase-adapter.js": "aa2e5abd0140bc4ea0120f820107b4a25449b7c091125637b6b55018d83e689a",
     "./js/icons.js": "c4affb78febbb1a73e9256c99a6b4ec384c04a17fd3cf6b383d88ecf51aa9c90",
