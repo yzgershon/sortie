@@ -17,6 +17,7 @@ const digest=s=>crypto.createHash('sha256').update(s).digest('hex');
  await auth.createUser({uid:'provisioned-cadet',email:'cadet-adapter@example.test',emailVerified:false});
  const user=await adapter.signIn(JSON.stringify({sub:'google-cadet',email:'cadet-adapter@example.test',email_verified:true}));
  assert.equal(user.uid,'provisioned-cadet');assert.equal(user.verified,true);pass('Google credential links to the pre-provisioned cadet UID');
+ assert.deepEqual(await adapter.restore(),user);pass('restored SDK identity matches the verified account');
  await db.doc('access/'+user.uid).set({active:true,role:'cadet'});
  await db.doc('cadets/'+user.uid).set({instructorId:'teacher-adapter',name:'Synthetic cadet',course:'rishoni'});
  assert.equal((await adapter.access(user.uid)).role,'cadet');pass('adapter loads server enrollment');
@@ -34,6 +35,7 @@ const digest=s=>crypto.createHash('sha256').update(s).digest('hex');
  await assert.rejects(()=>adapter.put('someone-else',one,null),/ACCOUNT_MISMATCH/);pass('adapter refuses an in-flight account mismatch');
  await db.doc('access/'+user.uid).update({active:false});await assert.rejects(()=>adapter.flights(user.uid));pass('server revocation applies to existing authenticated sessions');
  await adapter.signOut();assert.equal(getAuth(app).currentUser,null);pass('sign-out clears Firebase session');
+ assert.equal(await adapter.restore(),null);pass('signed-out SDK cannot restore a local identity');
  await terminate(getFirestore(app));await deleteApp(app);app=null;
  console.log(checks+' real SDK adapter checks passed (local emulators only)');
 })().catch(e=>{console.error(e);process.exitCode=1;}).finally(async()=>{

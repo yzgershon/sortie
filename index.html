@@ -2,6 +2,8 @@
 <html lang="he" dir="rtl" data-theme="dark">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' blob: https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://formspree.io/f/xgavlqlj; frame-src 'self' https://sortie-7900c.firebaseapp.com; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="description" content="תחקיר טיסה יומי. רושמים את הטיסה, היעדים עוברים לטיסה הבאה.">
 <title>תחקיר</title>
@@ -25,7 +27,7 @@
      signal the app sat blank waiting on a font it can live without: the CSS
      falls back to the system Hebrew face, and the service worker serves these
      from cache on every launch after the first. -->
-<link rel="stylesheet" media="print" onload="this.media='all';this.onload=null"
+<link id="appFonts" rel="stylesheet" media="print"
       href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700&family=Rubik:wght@500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap">
 <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700&family=Rubik:wght@500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap"></noscript>
 <link rel="stylesheet" href="css/app.css">

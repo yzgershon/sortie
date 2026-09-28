@@ -211,5 +211,5 @@
     return current;
   }
 
-  g.Tour = { start: start, active: function () { return !!current; } };
+  g.Tour = { start: start, stop: function () { if (current) current.end(); }, active: function () { return !!current; } };
 })(window);

@@ -7,7 +7,7 @@ const old={};for(const name of cp.execFileSync('git',['ls-tree','-r','--name-onl
 }
 function check(name,value){assert.ok(value,name);console.log('PASS '+name);checks++;}
 const fixture=`window.releaseCloud={notify:null,role:'cadet',active:true,rows:[],calls:0};window.FirebaseAdapter=function(){return{
- onUser:fn=>{releaseCloud.notify=fn;fn(null)},access:async()=>({role:releaseCloud.role,active:releaseCloud.active}),
+ restore:async()=>({uid:"a",email:"a@example.test",verified:true}),onUser:fn=>{releaseCloud.notify=fn},access:async()=>({role:releaseCloud.role,active:releaseCloud.active}),
  signOut:async()=>releaseCloud.notify(null),signIn:async()=>{throw Error('No real OAuth in this test')},
  put:async(uid,item)=>{releaseCloud.calls++;releaseCloud.rows.push({uid,payload:item.payload});return{conflict:false}},complete:async()=>{}
 }};`;
@@ -29,10 +29,10 @@ const fixture=`window.releaseCloud={notify:null,role:'cadet',active:true,rows:[]
  localStorage.setItem('sortie:auth',JSON.stringify({email:'a@example.test',exp:Date.now()+1000000}));window.preUpgrade=true;
  })()`);
  const state="JSON.stringify({flights:Store.all(),questions:Store.questions(true),goals:Store.nextGoals(),draft:Store.readDraft(),workspace:Workspace.all(),settings:Store.settings()})";
- const before=await b.ev(state);mode='new';await b.send('Page.reload');await b.until("typeof preUpgrade==='undefined'&&typeof Cloud!=='undefined'&&Cloud.status().phase==='signin'");
+ const before=await b.ev(state);mode='new';await b.send('Page.reload');await b.until("typeof preUpgrade==='undefined'&&typeof Cloud!=='undefined'&&Cloud.status().phase==='connecting'");
  check('upgrade from '+baseline+' preserves every saved record and private workspace',await b.ev(state)===before);
  check('sharing update shows no announcement, tour or connection modal',await b.ev("!document.querySelector('#sheet').open&&!document.querySelector('.tour')&&document.body.dataset.route==='home'"));
- check('existing local Google session remains usable without a forced sign-out',await b.ev("!document.querySelector('#app').hidden&&Auth.session().email==='a@example.test'"));
+ check('existing verified Firebase session remains usable without a forced sign-out',await b.ev("!document.querySelector('#app').hidden&&Auth.session().email==='a@example.test'"));
  check('pre-cloud history remembers its original local account',await b.ev("JSON.parse(localStorage.getItem('sortie:cloud-local-owner'))==='a@example.test'"));
  check('no upload before a verified cloud identity',await b.ev('releaseCloud.calls===0'));
  await b.ev("localStorage.setItem('sortie:auth',JSON.stringify({email:'b@example.test',exp:Date.now()+1000000}));void releaseCloud.notify({uid:'b',email:'b@example.test',verified:true})");await b.until("Cloud.status().phase==='account-mismatch'");
@@ -42,6 +42,9 @@ const fixture=`window.releaseCloud={notify:null,role:'cadet',active:true,rows:[]
  await b.ev("releaseCloud.active=true;void releaseCloud.notify({uid:'a',email:'a@example.test',verified:false})");await b.until("Cloud.status().phase==='account-mismatch'");
  check('unverified identity cannot auto-connect',await b.ev('releaseCloud.calls===0'));
  await b.ev("void releaseCloud.notify({uid:'a',email:'a@example.test',verified:true})");await b.until("Cloud.status().phase==='synced'");
+ // Denial intentionally gates the real app until reauthentication. The remaining
+ // checks exercise sync independently with this already verified mock identity.
+ await b.ev("document.querySelector('#authGate').hidden=true;document.querySelector('#app').hidden=false");
  check('verified enrolled sign-in connects and uploads all saved history automatically',await b.ev("releaseCloud.rows.length===2&&JSON.parse(localStorage.getItem('sortie:cloud-binding')).uid==='a'"));
  check('saved Hebrew answers and renamed questions retain their original text',await b.ev("releaseCloud.rows.some(x=>x.payload.includes('הערה שנשמרה')&&x.payload.includes('נושא אישי'))"));
  check('no notebook, unfinished draft, profile, shelf or milestone is uploaded',await b.ev("!JSON.stringify(releaseCloud.rows).includes('PRIVATE')"));

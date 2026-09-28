@@ -1,5 +1,7 @@
 # Instructor sharing
 
+The local v27 security candidate supersedes the legacy local-only admission behavior described in the historical release notes below. See SECURITY.md and the top of HANDOFF.md for current rollout state.
+
 v26 / sortie-v26 is live on main, app commit 057eeb9, deployed 2026-09-28. The missing frontend demo is restored separately from silent sharing releases; instructor-only navigation is unchanged. All 35 live shell hashes and the worker matched at 13:55:06Z. Previous v25 app commit ccaf4e0 introduced instructor-only sharing navigation. Pages completed at 19:30:41Z on 2026-09-27; all 35 live file hashes and worker matched, and the signed-in owner retained both Settings entries after the normal update. All 21 local suites and the extra v24 preservation upgrade passed. The prior v24 release e9aa220 introduced sharing, upgrading v23 commit 81f3dfa. Yish explicitly authorized deployment on 2026-09-27. He subsequently required automatic connection at ordinary Google sign-in with no announcement, message, separate link button or confirmation. Sharing consent and saved-record scope are already settled. This supersedes earlier pilot/approval and manual-link instructions.
 
 ## v26 demo correction
@@ -14,29 +16,30 @@ The Settings sharing section and top-bar shortcut are restricted to the verified
 
 Saved briefs/debriefs, their answers, course/catalogue identity and relevant historical/custom question definitions are shared. A verified Google identity and active server enrollment are required. Cadets connect automatically to their assigned instructor. Signing up in the app means using an already-enrolled Google account; clients cannot self-enroll.
 
-Existing local-only sessions continue working and are not forcibly signed out. Those devices connect on their next ordinary Google sign-in; a client-side local session is not a verified Firebase credential. Returning Firebase sessions resume automatically. v24 deliberately skips the What's New announcement, without consuming a future release acknowledgment. Settings retains accurate privacy and connection status text.
+With v27, legacy local-only sessions require one ordinary Google sign-in. Existing Firebase sessions restore automatically after identity/enrollment verification. Previously verified devices retain offline access; an explicit server denial invalidates that access. Saved work is preserved throughout. v24 deliberately skips the What's New announcement, without consuming a future release acknowledgment. Settings retains accurate privacy and connection status text.
 
 Nothing read from Firebase is written into Store. SCHEMA=4, MIG=5, IndexedDB, mirrors, drafts and notebooks remain unchanged. No reinstall, storage reset, inbound cloud restore or multi-device editing is introduced. Cloud failures do not block local saving. Saved records and per-account acknowledgments form a resumable outbox; offline work retries on reconnection and while the app is open.
 
-Notebooks, unfinished forms/Add-field buffers, profile/focus, goal shelf, PIN, feedback drafts and Google session data are excluded. Cloud membership/bindings are excluded from portable backups. Continue full JSON exports: instructor sharing is not a complete backup of the device. Immutable revisions are not independent backups against privileged project deletion. Firestore deletion protection is on; PITR/managed backups are not configured and no paid plan change was made.
+Notebooks, unfinished forms/Add-field buffers, profile/focus, goal shelf, PIN, feedback drafts and Google session data are excluded. Cloud membership/bindings and offline verification receipts are excluded from portable backups. Continue full JSON exports: instructor sharing is not a complete backup of the device. Immutable revisions are not independent backups against privileged project deletion. Firestore deletion protection is on; PITR/managed backups are not configured and no paid plan change was made.
 
-The first verified cadet connection creates sortie:cloud-binding {uid,email}. It cannot silently switch owners. Before sign-out or a Google callback replaces a legacy local session, sortie:cloud-local-owner retains its email when saved flights exist. A different account cannot automatically claim that history. Corrupt metadata/storage errors stop sharing without resetting local records. Instructor accounts never upload their own local records.
+The first verified cadet connection creates sortie:cloud-binding {uid,email}. It cannot silently switch owners. Before sign-out or a Google callback replaces a legacy local session, sortie:cloud-local-owner retains its email when saved flights, drafts, goals or notebook pages exist. A different account cannot automatically claim that history. Corrupt metadata/storage errors stop sharing without resetting local records. Instructor accounts never upload their own local records.
 
 ## Architecture and access
 
-- js/auth.js retains the existing Google OpenID full-page redirect, nonce and pinned callback. It passes the returned Google token to Firebase without storing the token. A 15-second bridge deadline keeps cloud trouble from blocking local startup.
+- js/auth.js retains the existing Google OpenID full-page redirect, nonce and pinned callback. It passes the returned Google token to Firebase without storing the token. New admission fails closed if verification cannot finish within the bounded request window. Previously verified devices can fall back during a transient outage.
 - js/cloud.js checks the verified identity against the local account and trusted enrollment, then automatically binds/syncs cadets. js/cloud-core.js projects only saved training fields, hashes payloads, resumes acknowledgments and retains conflicts.
 - tools/firebase-adapter.mjs uses the real Firebase SDK; npm run build:cloud produces the self-hosted js/firebase-adapter.js. The normal app remains static globals on GitHub Pages.
 - js/instructor.js provides read-only roster/record/history/filter/progress/report views. The instructor interface and exports are English/LTR; source answers, names and custom question labels retain their original language. Cadet screens/reports remain Hebrew/RTL.
 
 Firestore paths:
 
-    access/{uid}                         {active,role}
+    security/instructor                 {uid} (trusted owner pin)
+    access/{uid}                         {active,role,authNotBefore?}
     cadets/{uid}                         {instructorId,course,name,email,lastSyncAt}
     cadets/{uid}/flights/{sha256(id)}     {payload,digest,receivedAt}
     .../revisions/{sha256(payload)}      {payload,digest,receivedAt}
 
-Only trusted Admin provisioning can enroll, assign or grant roles. Deployed rules require verified Google identity and active membership. Cadets access their own records; instructors read only assigned cadets. Clients cannot enumerate access, self-promote, reassign, permanently delete records, change immutable revisions, or write notebook/draft paths. Revocation is access/{uid}.active=false; removing the old client allowlist hash alone is insufficient.
+Only trusted Admin provisioning can enroll, assign or grant roles. Deployed rules require verified Google identity and active membership. Cadets access their own records; only the exact pinned instructor account reads assigned cadets. A second instructor role alone is insufficient. Clients cannot enumerate access, self-promote, reassign, permanently delete records, change immutable revisions, or write notebook/draft paths. Revocation is access/{uid}.active=false; removing the old client allowlist hash alone is insufficient.
 
 Each upload transaction retains a revision before advancing the current document. A stale device cannot overwrite another digest; both conflict versions remain. Manual conflict reconciliation and cloud-to-device restore are future work.
 

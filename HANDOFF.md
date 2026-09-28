@@ -2,7 +2,17 @@
 
 Updated 2026-09-28. Read this and the actual git status before editing. Preserve other agents' or Yish's work. User instructions take precedence over old agent briefings.
 
-## Current v26 demo fix
+## v27 security work
+
+- User explicitly chose public app/syllabus files and offline access after verification; protect accounts and saved records. Do not promise zero risk. No hosting/repository privacy change, paid plan upgrade, cloud-sharing announcement, data/schema migration or reset.
+- Local v27 / sortie-v27 candidate, not yet deployed. See SECURITY.md for the exact boundaries and operator steps. New callbacks fail closed until Firebase verifies identity and enrollment; local-only legacy sessions need one ordinary sign-in. Restored Firebase sessions remain usable. Existing local history is bound to its original account, including private notebook/draft work. Offline receipts are private, UID-bound, cleared on sign-out/explicit denial, and not exported. They are not cryptographic protection against device control.
+- Firestore rules additionally pin the sole instructor UID in security/instructor and support access.authNotBefore (Unix seconds) for trusted session revocation. Deploy the policy with tools/secure-cloud.cjs BEFORE these rules. Dry-run verified the current owner; the owner pin has now been installed. The tested rules are deployed; frontend deployment/live verification are pending. Provisioning will not silently reactivate revoked accounts.
+- CSP now restricts scripts and network destinations; no inline script/event handlers. The Firebase adapter keeps the original persistence stores but omits the unused mobile popup resolver. Rebuild its bundle after adapter edits, then regenerate the release manifest. Preview bootstrap is external to respect CSP.
+- Server denial flushes open work and gates the app without clearing saved data. Checks occur at online launch/reconnect/foreground and every five visible minutes; server rules enforce every record request. Disconnected devices cannot receive revocations. Account/PIN/receipt state is not encryption.
+- All 23 app suites passed in the final combined run; the subsequent session-loss gate passed the four affected browser suites again (19 security, 18 sharing-upgrade, 21 tour and 53 instructor checks); emulator checks passed 37 rules, 13 actual Node SDK and 8 actual browser SDK checks. Logs under C:/Dev/artifacts/sortie-v27-security. The first combined run had a redundant worker on the successful-update step; its isolated rerun passed, and the final combined run passed every suite. Do not claim a product fix for that intermittent test result. Tests use disposable accounts/profiles only.
+- Google account passkey/2-Step Verification status was asked through the current GatedSpace card; answer pending. Do not claim MFA enabled or inspect password/security dialogs on the user's behalf.
+
+## Prior v26 demo fix
 
 - v26 / sortie-v26 is live on main, app commit 057eeb9, deployed 2026-09-28 after the brother reported no demo while already signed in. Root cause: v24/v25 returned early from maybeRelease, suppressing the earlier frontend redesign announcement too. The previous tests replaced BUILD with v23 and did not catch this real upgrade path.
 - The announcement now has a content version (ANNOUNCEMENT=v23) separate from BUILD=v26. Existing users with saved work and no acknowledgment get the frontend tour offer at Home after auth/PIN, even with a restored local Google session and no Firebase sign-in. Silent maintenance/sharing releases do not repeat an acknowledged demo. Legacy v23/v24/v25 acknowledgments remain accepted; manual replay and preview isolation use the same helper. First installs without history retain the existing quiet behavior.
@@ -84,7 +94,7 @@ The private advanced parser pipeline remains `node dev/mit-parse.js <PDF> --json
 
 ## Authentication and updates
 
-The Google gate is enabled in production configuration and was reported verified on Android and installed iOS in earlier work. Claims are checked; token signatures are not cryptographically verified. It is an access curtain, not protection for public static files. Sessions slide on use and permit offline expiry grace for still-allowed hashes. Keep the exact pinned redirect `https://yzgershon.github.io/sortie/index.html` unless coordinated with Google Cloud configuration.
+The Google gate is enabled. The v27 security work above supersedes the earlier unsigned local-gate behavior: Firebase validates new credentials and restored enrollment; only previously verified devices may use offline access. The public files remain public. Keep the exact pinned redirect `https://yzgershon.github.io/sortie/index.html` unless coordinated with Google Cloud configuration.
 
 For a behavior release, update app BUILD and worker VERSION together, then run `node tools/build-release.cjs`. The manifest is mandatory. The worker verifies all shell hashes before install; network-first requests accept only the matching release, otherwise use verified cached assets. Retain the previous Sortie shell and unrelated caches. Auth config is exempt from hash pinning for access-only updates.
 

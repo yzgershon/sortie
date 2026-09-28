@@ -27,16 +27,28 @@ async function account(address,name){
  try{return await auth.getUserByEmail(address);}catch(e){if(e.code!=='auth/user-not-found')throw e;}
  return auth.createUser({uid:'sortie-'+crypto.createHash('sha256').update(address).digest('hex').slice(0,40),email:address,displayName:name,emailVerified:false});
 }
+async function enroll(uid,role){
+ const ref=db.doc('access/'+uid);
+ await db.runTransaction(async tx=>{
+  const prior=await tx.get(ref);
+  if(prior.exists){
+   if(prior.data().role!==role)throw Error('Existing role differs; explicit review required');
+   // Never reactivate revoked users or erase session-revocation timestamps.
+   return;
+  }
+  tx.create(ref,{role,active:true});
+ });
+}
 (async()=>{
  const teacher=await account(instructor,roster.instructor.name);
- await db.doc('access/'+teacher.uid).set({role:'instructor',active:true});
+ await enroll(teacher.uid,'instructor');
  for(const row of rows){
   const cadet=await account(row.email,row.name);
   // Refuse to silently reassign an existing enrollment.
   const ref=db.doc('cadets/'+cadet.uid),prior=await ref.get();
   if(prior.exists&&prior.data().instructorId!==teacher.uid)throw Error('Existing instructor assignment differs; review before changing it');
   await ref.set({name:row.name,email:row.email,course:row.course,instructorId:teacher.uid}, {merge:true});
-  await db.doc('access/'+cadet.uid).set({role:'cadet',active:true});
+  await enroll(cadet.uid,'cadet');
  }
  console.log('Enrollment ready. No training records were uploaded, changed or deleted.');
 })().catch(e=>{console.error(e.message);process.exitCode=1;});

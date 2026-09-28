@@ -25,7 +25,7 @@ async function reload(ready) {
       const files = {
         '/js/auth-config.js': 'window.AUTH_CONFIG={clientId:"fixture",allow:["cadet@example.test"],courses:{}};',
         '/js/cloud-config.js': 'window.CLOUD_CONFIG={enabled:true,firebase:{projectId:"demo-sortie",apiKey:"fake"}};',
-        '/js/firebase-adapter.js': 'window.FirebaseAdapter=function(){return{onUser:fn=>fn(null),signIn:async()=>{throw Error("No real sign-in")}}};'
+        '/js/firebase-adapter.js': 'window.FirebaseAdapter=function(){return{restore:async()=>({uid:"cadet",email:"cadet@example.test",verified:true}),access:async()=>({active:true,role:"cadet"}),onUser:fn=>{},signIn:async()=>{throw Error("No real sign-in")}}};'
       };
       if (files[p]) { res.setHeader('Content-Type', 'text/javascript'); res.end(files[p]); return true; }
     }
@@ -45,7 +45,7 @@ async function reload(ready) {
   mode = 'current';
   await reload("document.querySelector('#sheet').open");
   check('the actual current build offers the missed redesign demo', await b.ev("document.querySelector('.sheet__title').textContent===T.whatsNew&&document.querySelector('#sheet [data-act=\"0\"]').textContent.trim()===T.releaseTour"));
-  check('a restored local Google session needs no new sign-in or cloud connection for the demo', await b.ev("Auth.session().email==='cadet@example.test'&&document.querySelector('#authGate').hidden&&Cloud.status().phase==='signin'"));
+  check('a restored verified Firebase session needs no new sign-in for the demo', await b.ev("Auth.session().email==='cadet@example.test'&&document.querySelector('#authGate').hidden&&Cloud.status().phase==='connecting'"));
   check('the demo offer contains no instructor-sharing announcement', await b.ev("!document.querySelector('#sheet').textContent.includes(T.cloudTitle)&&!document.querySelector('#sheet [data-cloud-signin]')"));
   check('upgrade and demo offer preserve all saved and unfinished work', await b.ev(state) === before);
   await b.click('#sheet [data-act="0"]');

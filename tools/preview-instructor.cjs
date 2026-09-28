@@ -21,6 +21,7 @@ http.createServer((req,res)=>{
  res.setHeader('Cache-Control','no-store');
  if(p==='/sw.js'||/^\/(?:dev|tests|tools|\.|node_modules)/.test(p)){res.writeHead(404);res.end();return;}
  const configs={
+  '/preview-bootstrap.js':'Store.coursePicked=function(){return true;};',
   '/js/auth-config.js':'window.AUTH_CONFIG={clientId:"",allow:[],courses:{}};',
   '/js/feedback-config.js':'window.FEEDBACK_CONFIG={endpoint:""};',
   '/js/cloud-config.js':'window.CLOUD_CONFIG={enabled:true,firebase:{projectId:"demo-sortie",apiKey:"fake"}};',
@@ -32,7 +33,7 @@ http.createServer((req,res)=>{
  fs.readFile(file,(err,data)=>{
   if(err){res.writeHead(404);res.end();return;}
   if(p==='/'||p==='/index.html') data=Buffer.from(data.toString().replace('<script src="js/app.js"></script>',
-   '<script>Store.coursePicked=function(){return true;};</script><script src="js/app.js"></script><div style="position:fixed;bottom:0;inset-inline:0;padding:8px;text-align:center;background:#122038;color:#fff;z-index:300;font-size:13px" dir="rtl">נתוני הדגמה בלבד. לא מחובר למערכת הצוערים.</div>'));
+   '<script src="/preview-bootstrap.js"></script><script src="js/app.js"></script><div style="position:fixed;bottom:0;inset-inline:0;padding:8px;text-align:center;background:#122038;color:#fff;z-index:300;font-size:13px" dir="rtl">נתוני הדגמה בלבד. לא מחובר למערכת הצוערים.</div>'));
   res.setHeader('Content-Type',({'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json','.png':'image/png','.jpg':'image/jpeg','.webmanifest':'application/manifest+json'})[path.extname(file)]+';charset=utf-8');res.end(data);
  });
 }).listen(port,'127.0.0.1',()=>console.log('Synthetic instructor preview: http://127.0.0.1:'+port+'/#/instructor'));

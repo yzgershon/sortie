@@ -1,25 +1,13 @@
 /* תחקיר — the Google sign-in gate.
  *
- * Worth being straight about what this is: a curtain, not a lock. The app is
- * static files on GitHub Pages, so anyone can fetch the JavaScript directly,
- * and anyone with devtools can write a session into localStorage. What it does
- * do is stop someone who lands on the URL from reading anything, and tie
- * getting in to a named Google account.
+ * Public app files are not confidential. New Google credentials are verified
+ * by Firebase before admission; restored sessions require SDK identity plus
+ * trusted enrollment. Prior verified devices can keep working offline.
+ * This is not encryption of local data or a boundary against device control.
  *
- * No SDK and no popup, both on purpose:
- *   - Firebase Auth's signInWithRedirect wants its handler served from the
- *     app's own domain, which GitHub Pages cannot do, and Safari's tracking
- *     prevention breaks the cross-domain fallback.
- *   - A popup is worse: an installed iOS PWA sends window.open to Safari and
- *     loses the opener, so the token never finds its way back.
- * A plain top-level redirect through Google's OpenID endpoint dodges both and
- * needs no library at all.
- *
- * The token's claims are checked — audience, issuer, expiry, nonce, verified
- * email — but its RSA signature is NOT. Verifying that needs Google's JWKS, and
- * untested crypto that could lock his brother out of his own logbook is worse
- * than none, given localStorage is editable either way. Do not read the checks
- * below as more than they are.
+ * Top-level Google OIDC redirects preserve installed iOS PWA compatibility.
+ * The SDK exchanges the returned credential without popups or cross-origin
+ * redirect handlers. Never change the pinned redirect in isolation.
  */
 (function (g) {
   'use strict';
@@ -54,7 +42,7 @@
     } catch (e) { return null; }
   }
 
-  /** The middle segment of a JWT. Signature untouched — see the note up top. */
+  /** Parse claims only. Firebase verifies the credential before admission. */
   function claimsOf(token) {
     var parts = String(token || '').split('.');
     if (parts.length !== 3) return null;
@@ -151,8 +139,8 @@
 
   function randomHex(n) {
     var a = new Uint8Array(n || 16);
-    if (g.crypto && g.crypto.getRandomValues) g.crypto.getRandomValues(a);
-    else for (var i = 0; i < a.length; i++) a[i] = Math.floor(Math.random() * 256);
+    if (!(g.crypto && g.crypto.getRandomValues)) throw Error('SECURE_RANDOM_UNAVAILABLE');
+    g.crypto.getRandomValues(a);
     return Array.prototype.map.call(a, function (b) { return ('0' + b.toString(16)).slice(-2); }).join('');
   }
 
@@ -161,14 +149,13 @@
    *  actually leaving the page — location.assign cannot be stubbed. */
   function authUrl() {
     if (!enabled()) return null;
-    var nonce = randomHex(16);
+    var nonce = randomHex(32);
     var here = String(location.hash || '');
-    try {
-      localStorage.setItem(LS_PENDING, JSON.stringify({
+    localStorage.setItem(LS_PENDING, JSON.stringify({
         nonce: nonce,
+        issuedAt: Date.now(),
         route: here.indexOf('id_token') === -1 ? here : ''
       }));
-    } catch (e) {}
     return 'https://accounts.google.com/o/oauth2/v2/auth' +
       '?client_id=' + encodeURIComponent(clientId()) +
       '&redirect_uri=' + encodeURIComponent(redirectUri()) +
@@ -203,7 +190,7 @@
     try { pending = JSON.parse(localStorage.getItem(LS_PENDING) || '{}') || {}; } catch (e) {}
     try { localStorage.removeItem(LS_PENDING); } catch (e) {}
 
-    var route = pending.route || '#/';
+    var route = typeof pending.route === 'string' && /^#\/[^?#\s]*$/.test(pending.route) ? pending.route : '#/';
     try { history.replaceState(null, '', location.pathname + location.search + route); }
     catch (e) { location.hash = route; }
 
@@ -211,11 +198,12 @@
     var c = claimsOf(p.id_token);
     if (!c) return { ok: false, why: 'bad-token' };
     if (String(c.aud || '') !== clientId()) return { ok: false, why: 'wrong-audience' };
-    if (!/(^|\.)accounts\.google\.com$/.test(String(c.iss || '').replace(/^https?:\/\//, '')))
+    if (c.iss !== 'https://accounts.google.com' && c.iss !== 'accounts.google.com')
       return { ok: false, why: 'wrong-issuer' };
-    if (!(+c.exp * 1000 > Date.now())) return { ok: false, why: 'expired' };
-    if ((g.Cloud && g.Cloud.enabled() && !pending.nonce) || (pending.nonce && String(c.nonce || '') !== pending.nonce)) return { ok: false, why: 'nonce' };
-    if (c.email_verified === false || c.email_verified === 'false')
+    if (!Number.isFinite(c.exp) || !(c.exp * 1000 > Date.now())) return { ok: false, why: 'expired' };
+    if (typeof pending.nonce !== 'string' || !pending.nonce || String(c.nonce || '') !== pending.nonce) return { ok: false, why: 'nonce' };
+    if (!Number.isFinite(pending.issuedAt) || pending.issuedAt > Date.now() + 30000 || Date.now() - pending.issuedAt > 10 * 60000) return { ok: false, why: 'signin-expired' };
+    if (c.email_verified !== true && c.email_verified !== 'true')
       return { ok: false, why: 'unverified-email' };
     if (!normEmail(c.email)) return { ok: false, why: 'no-email' };
     return { ok: true, email: normEmail(c.email), token: p.id_token };
@@ -245,15 +233,10 @@
      *   denied  a real Google account, but not one on the list
      *   error   the sign-in came back broken; say so and offer another go
      *
-     * The allowlist is re-checked against the stored session on every launch,
-     * so taking somebody off the list actually takes them off it. A launch that
-     * passes also pushes the expiry out — see touchSession.
-     *
-     * An EXPIRED session with no network is let through anyway, as long as the
-     * address is still on the list. Signing in needs Google, Google needs
-     * signal, and refusing here would mean a pilot with a full logbook on the
-     * device and no reception cannot open his own flights. The allowlist check
-     * is local and still runs, so this widens nothing except the clock.
+     * Every launch checks the local allowlist and the restored Firebase identity.
+     * Online launches check server enrollment; only previously verified devices
+     * can fall back during a network outage. An explicit denial never falls back.
+     * Offline receipts are not exported and are cleared on sign-out/revocation.
      */
     resolve: function () {
       if (!enabled()) return Promise.resolve({ state: 'off' });
@@ -262,24 +245,32 @@
       var back = consumeRedirect();
       if (back && !back.ok) return Promise.resolve({ state: 'error', why: back.why });
       if (back && back.ok) {
-        return isAllowed(back.email).then(function (yes) {
+        return isAllowed(back.email).then(async function (yes) {
           if (!yes) return { state: 'denied', email: back.email };
-          writeSession(back.email);
-          return (g.Cloud ? g.Cloud.acceptGoogle(back.token) : Promise.resolve()).then(function () {
+          try {
+            if (!(g.Cloud && g.Cloud.enabled())) throw Error('VERIFICATION_UNAVAILABLE');
+            var verified = await g.Cloud.acceptGoogle(back.token, back.email);
+            if (!verified || !verified.verified || verified.email !== back.email) throw Error('IDENTITY_MISMATCH');
+            writeSession(back.email);
             return { state: 'ok', email: back.email };
-          });
+          } catch (err) { return { state: 'error', why: err.message === 'LOCAL_ACCOUNT_MISMATCH' ? 'account-mismatch' : 'verification-failed' }; }
         });
       }
 
       var s = rawSession();
       if (!s) return Promise.resolve({ state: 'needed' });
-      return isAllowed(s.email).then(function (yes) {
-        if (!yes) { signOut(); return { state: 'denied', email: s.email }; }
-        if (!s.expired) { touchSession(s); return { state: 'ok', email: s.email }; }
-        if (g.navigator && g.navigator.onLine === false) {
-          return { state: 'ok', email: s.email, stale: true };
+      return isAllowed(s.email).then(async function (yes) {
+        if (!yes) { await signOut(); return { state: 'denied', email: s.email }; }
+        try {
+          if (!(g.Cloud && g.Cloud.enabled())) throw Error('VERIFICATION_UNAVAILABLE');
+          var restored = await g.Cloud.verifySession(s.email);
+          if (!restored || !restored.verified || restored.email !== s.email) throw Error('IDENTITY_MISMATCH');
+          touchSession(s);
+          return { state: 'ok', email: s.email, offline: !!restored.offline };
+        } catch (err) {
+          if (err.message === 'LOCAL_ACCOUNT_MISMATCH') return { state: 'error', why: 'account-mismatch' };
+          return { state: err.message === 'NOT_ENROLLED' ? 'denied' : 'needed', email: s.email };
         }
-        return { state: 'needed', email: s.email };
       });
     }
   };

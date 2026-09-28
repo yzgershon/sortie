@@ -6,10 +6,17 @@ service cloud.firestore {
         && request.auth.token.firebase.sign_in_provider == 'google.com';
     }
     function member() { return get(/databases/$(database)/documents/access/$(request.auth.uid)).data; }
-    function active() { return verified() && member().active == true; }
+    function fresh() {
+      return !('authNotBefore' in member()) || request.auth.token.auth_time > member().authNotBefore;
+    }
+    function active() { return verified() && member().active == true && fresh(); }
+    function soleInstructor() {
+      return active() && member().role == 'instructor'
+        && get(/databases/$(database)/documents/security/instructor).data.uid == request.auth.uid;
+    }
     function owner(uid) { return active() && request.auth.uid == uid && member().role == 'cadet'; }
     function instructor(uid) {
-      return active() && member().role == 'instructor'
+      return soleInstructor()
         && get(/databases/$(database)/documents/cadets/$(uid)).data.instructorId == request.auth.uid;
     }
     function envelope() {
@@ -23,12 +30,16 @@ service cloud.firestore {
     // Provisioned through the Admin SDK only. A client cannot enroll itself,
     // change its instructor, reactivate access or promote itself.
     match /access/{uid} {
-      allow get: if verified() && request.auth.uid == uid;
+      allow get: if verified() && request.auth.uid == uid && fresh();
+      allow list, write: if false;
+    }
+    match /security/instructor {
+      allow get: if soleInstructor();
       allow list, write: if false;
     }
     match /cadets/{uid} {
       allow read: if active() && (request.auth.uid == uid
-        || (member().role == 'instructor' && resource.data.instructorId == request.auth.uid));
+        || (soleInstructor() && resource.data.instructorId == request.auth.uid));
       allow update: if owner(uid)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastSyncAt'])
         && request.resource.data.lastSyncAt == request.time;

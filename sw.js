@@ -1,5 +1,5 @@
 /* Verified network-first shell. A partial release never replaces a working cache. */
-var VERSION = 'sortie-v26';
+var VERSION = 'sortie-v27';
 var SHELL = VERSION + '-shell';
 var FONTS = 'sortie-fonts';
 var manifestPromise;

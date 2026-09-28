@@ -6,7 +6,7 @@
 (function (global) {
   'use strict';
 
-  var BUILD = 'v26';   // keep in step with VERSION in sw.js
+  var BUILD = 'v27';   // keep in step with VERSION in sw.js
   // The redesign announcement is independent of maintenance/sharing releases.
   // Change this only when the announcement and tour content actually change.
   var ANNOUNCEMENT = 'v23';
@@ -251,6 +251,7 @@
     'notebook', 'progress', 'feedback', 'whatsnew', 'recovery', 'profile', 'cloud', 'instructor'];
 
   function navigate() {
+    if (!document.getElementById('authGate').hidden) return;
     // leaving a form saves what is in it, including via the back button
     if (formFlush) {
       var flushed = false; try { flushed = formFlush() !== false; } catch (e) {}
@@ -3286,7 +3287,7 @@
       acts = [{ label: T.gateOther, cls: 'btn--lit', run: Auth.signIn }];
     } else if (a.state === 'error') {
       body = T.gateFailed + (navigator.onLine === false ? ' ' + T.gateNoNet : '');
-      note = a.why ? String(a.why) : '';
+      note = a.why === 'account-mismatch' ? T.cloudStates['account-mismatch'] : '';
       acts = [{ label: T.gateRetry, cls: 'btn--lit', run: Auth.signIn }];
     } else {
       body = T.gateBody;
@@ -3305,7 +3306,8 @@
       if (!x) return;
       e.currentTarget.disabled = true;
       e.currentTarget.textContent = T.gateChecking;
-      x.run();
+      try { Promise.resolve(x.run()).catch(function () { showGate({ state: 'error' }); }); }
+      catch (_) { showGate({ state: 'error' }); }
     });
   }
 
@@ -3362,6 +3364,11 @@
   }
 
   function boot() {
+    var fonts = document.getElementById('appFonts');
+    if (fonts) {
+      if (fonts.sheet) fonts.media = 'all';
+      else fonts.addEventListener('load', function () { fonts.media = 'all'; }, { once: true });
+    }
     var skip = $('#skipContent'); skip.textContent = T.skipContent;
     skip.addEventListener('click', function (e) { e.preventDefault(); viewEl.focus(); });
     appEl = document.getElementById('app');
@@ -3376,6 +3383,17 @@
     global.addEventListener('sortie:cloud-status', function () {
       $$('[data-instructor-only]').forEach(function (el) { el.hidden = !instructorToolsVisible(); });
     });
+    function gateSession(event) {
+      if (!Auth.enabled()) return;
+      // Preserve the editor DOM even when a storage failure prevents its flush.
+      // A revoked session must not erase the work that was already on screen.
+      flushForm();
+      if (global.Tour && Tour.active()) Tour.stop();
+      if (sheetEl.open) sheetEl.close();
+      showGate({ state: event.type === 'sortie:access-denied' ? 'denied' : 'needed', email: (Auth.rawSession() || {}).email });
+    }
+    global.addEventListener('sortie:access-denied', gateSession);
+    global.addEventListener('sortie:session-ended', gateSession);
     sheetEl.addEventListener('click', function (e) { if (e.target === sheetEl) sheetEl.close(); });
     // the sign-in, course and PIN screens share one scope and mark, drawn once
     $$('.lock').forEach(function (el, i) { el.insertAdjacentHTML('afterbegin', Visuals.scope('lock' + i)); });
@@ -3435,7 +3453,11 @@
           }
           showCoursePicker(null, function () { Store.applyCourse(); start(); });
         });
-    }).then(null, function (err) {
+    }).then(null, async function (err) {
+      // Recovery exports contain private local work and require the same gate.
+      var admission;
+      try { admission = await Auth.resolve(); } catch (_) { admission = { state: 'error' }; }
+      if (admission.state !== 'off' && admission.state !== 'ok') { showGate(admission); return; }
       var english = instructorLanguage(), T = english ? global.T.instructorEnglish : global.T;
       screenLanguage(english);
       appEl.hidden = false;

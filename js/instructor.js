@@ -1,7 +1,9 @@
 /* Instructor views are read-only. Never load another cadet into the local Store. */
 (function (g) {
   'use strict';
-  var epoch = 0, I = g.T.instructorEnglish;
+  var epoch = 0, I = g.T.instructorEnglish, reportURL;
+  function discardReport() { if (reportURL) { URL.revokeObjectURL(reportURL); reportURL = null; } }
+  g.addEventListener('hashchange', discardReport);
   function isEnglish(route) {
     return route.name === 'instructor' || route.name === 'cloud' && (route.param === 'instructor' || g.Cloud.status().role === 'instructor');
   }
@@ -85,7 +87,9 @@
         esc(T.cloudConflicts) + '</dt><dd>' + (+s.conflicts || 0) + '</dd><dt>' + esc(T.cloudLastSync) + '</dt><dd>' + esc(when(s.lastSync, english)) + '</dd></dl>' : '') +
       (g.Cloud.enabled() ? '<button class="btn btn--quiet" data-cloud-retry>' + esc(T.cloudRefresh) + '</button>' : '') +
       (english && s.role === 'instructor' ? '<button class="btn btn--quiet" data-cloud-signout>' + esc(T.signOut) + '</button>' : '') + '</section>';
-    var button = ctx.view.querySelector('[data-cloud-signin]'); if (button) button.onclick = g.Auth.signIn;
+    var button = ctx.view.querySelector('[data-cloud-signin]'); if (button) button.onclick = function () {
+      try { g.Auth.signIn(); } catch (_) { ctx.toast(T.gateFailed, 'alert'); }
+    };
     button = ctx.view.querySelector('[data-cloud-retry]'); if (button) button.onclick = g.Cloud.retry;
     button = ctx.view.querySelector('[data-cloud-signout]'); if (button) button.onclick = async function () {
       button.disabled = true;
@@ -94,6 +98,7 @@
     };
   }
   async function render(route, ctx) {
+    discardReport();
     var run = ++epoch, T = I;
     if (route.name === 'cloud') { statusPanel(ctx); return; }
     ctx.topbar({ title: T.instructorTitle, back: true, backLabel: T.back, backTo: 'cloud/instructor', actions: [{ id: 'connection', ic: 'settings', label: T.cloudTitle, run: function () { ctx.go('cloud/instructor'); } }] });
@@ -138,7 +143,7 @@
     ctx.view.querySelector('[data-refresh-roster]').onclick = function () { render({ name: 'instructor' }, ctx); }; paint();
   }
   function showCadet(cadet, rows, invalid, ctx, current) {
-    var T = I, cover = coverage(rows, cadet.course), reportURL;
+    var T = I, cover = coverage(rows, cadet.course);
     ctx.view.innerHTML = '<div class="stack instructor"><a href="#/instructor">' + esc(T.instructorBack) + '</a><header><span class="chip">' + esc(T.cloudReadOnly) + '</span><h1 dir="auto">' + esc(cadet.name) + '</h1><p>' + esc(courseLabel(cadet.course)) + ' · ' + esc(T.cloudLastSync) + ': ' + esc(when(cadet.lastSyncAt)) + '</p></header>' +
       '<p class="fineprint">' + esc(T.instructorAsOf) + '</p>' + (invalid ? '<p role="alert">' + esc(T.instructorDataError) + '</p>' : '') +
       '<section class="cloud-progress"><h2>' + esc(T.instructorCoverage) + '</h2><strong dir="ltr">' + cover.done + ' / ' + cover.total + '</strong><progress max="' + (cover.total || 1) + '" value="' + cover.done + '"></progress><p class="fineprint">' + esc(T.instructorCoverageNote) + '</p></section>' +
