@@ -2,14 +2,15 @@
 
 Updated 2026-09-28. Read this and the actual git status before editing. Preserve other agents' or Yish's work. User instructions take precedence over old agent briefings.
 
-## v27 security work
+## Current v27 security release
 
 - User explicitly chose public app/syllabus files and offline access after verification; protect accounts and saved records. Do not promise zero risk. No hosting/repository privacy change, paid plan upgrade, cloud-sharing announcement, data/schema migration or reset.
-- Local v27 / sortie-v27 candidate, not yet deployed. See SECURITY.md for the exact boundaries and operator steps. New callbacks fail closed until Firebase verifies identity and enrollment; local-only legacy sessions need one ordinary sign-in. Restored Firebase sessions remain usable. Existing local history is bound to its original account, including private notebook/draft work. Offline receipts are private, UID-bound, cleared on sign-out/explicit denial, and not exported. They are not cryptographic protection against device control.
-- Firestore rules additionally pin the sole instructor UID in security/instructor and support access.authNotBefore (Unix seconds) for trusted session revocation. Deploy the policy with tools/secure-cloud.cjs BEFORE these rules. Dry-run verified the current owner; the owner pin has now been installed. The tested rules are deployed; frontend deployment/live verification are pending. Provisioning will not silently reactivate revoked accounts.
+- v27 / sortie-v27 is live on main, app commit b78f68c, deployed 2026-09-28. See SECURITY.md for the exact boundaries and operator steps. New callbacks fail closed until Firebase verifies identity and enrollment; local-only legacy sessions need one ordinary sign-in. Restored Firebase sessions remain usable. Existing local history is bound to its original account, including private notebook/draft work. Offline receipts are private, UID-bound, cleared on sign-out/explicit denial, and not exported. They are not cryptographic protection against device control.
+- Firestore rules additionally pin the sole instructor UID in security/instructor and support access.authNotBefore (Unix seconds) for trusted session revocation. Deploy the policy with tools/secure-cloud.cjs BEFORE these rules. Dry-run verified the current owner; the owner pin has now been installed. The tested rules and frontend are deployed. The live audit at 14:53:25Z verified the pin, sole owner IAM, no inherited human/group access and exact rule bytes. Anonymous access remained denied; all 34 cadet assignments were retained. Provisioning will not silently reactivate revoked accounts.
 - CSP now restricts scripts and network destinations; no inline script/event handlers. The Firebase adapter keeps the original persistence stores but omits the unused mobile popup resolver. Rebuild its bundle after adapter edits, then regenerate the release manifest. Preview bootstrap is external to respect CSP.
 - Server denial flushes open work and gates the app without clearing saved data. Checks occur at online launch/reconnect/foreground and every five visible minutes; server rules enforce every record request. Disconnected devices cannot receive revocations. Account/PIN/receipt state is not encryption.
 - All 23 app suites passed in the final combined run; the subsequent session-loss gate passed the four affected browser suites again (19 security, 18 sharing-upgrade, 21 tour and 53 instructor checks); emulator checks passed 37 rules, 13 actual Node SDK and 8 actual browser SDK checks. Logs under C:/Dev/artifacts/sortie-v27-security. The first combined run had a redundant worker on the successful-update step; its isolated rerun passed, and the final combined run passed every suite. Do not claim a product fix for that intermittent test result. Tests use disposable accounts/profiles only.
+- Pages built b78f68c at 14:54:43Z. All 35 live shell hashes and exact worker matched at 14:55:10Z (dev/v27-live-verification.json). The existing owner sidebar session updated from v26 to v27 normally, kept both instructor Settings entries and loaded all 34 assigned roster rows without another sign-in. A transient Firestore network warning occurred on v26 before the update and recovered; no new v27 console errors were observed. No real phone acceptance or actual cadet upload is implied. No training payload was changed by deployment.
 - Google account passkey/2-Step Verification status was asked through the current GatedSpace card; answer pending. Do not claim MFA enabled or inspect password/security dialogs on the user's behalf.
 
 ## Prior v26 demo fix
@@ -35,7 +36,7 @@ Updated 2026-09-28. Read this and the actual git status before editing. Preserve
 
 ## Current state
 
-- Workspace: `C:\Dev\sortie`; current branch/build are in the instructor cloud section above; preceding frontend baseline is `81f3dfa` (v23).
+- Workspace: `C:\Dev\sortie`; current branch/build are in the v27 security section above; preceding frontend baseline is `81f3dfa` (v23).
 - The following notes describe existing v23 features; the instructor cloud section takes precedence for current work.
 - Yish authorized the audit fixes, notebook, progress/sharing, feedback and release announcement. He selected on-device notebook storage with full backup and image/text sharing, not a public progress link.
 - The v23 frontend below was previously released. Current v24 deployment state and remaining verification limits are in the instructor section above.
