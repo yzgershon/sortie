@@ -5,7 +5,7 @@
 - [x] Current-build upgrade regression passes 21 checks: work preserved, restored sign-in, once-only offer, legacy acknowledgments, PIN/Home gating, manual replay, preview isolation and no sharing announcement.
 - [x] BUILD and worker bumped together; 35-file release manifest regenerated.
 - [x] All 22 suites passed; the frontend screenshot suite timed out in the combined run, then passed all 37 checks on its isolated rerun. Cause of timeout is unconfirmed.
-- [ ] Deployment verification pending.
+- [x] 057eeb9 deployed through Pages at 13:54:40Z on 2026-09-28. All 35 live shell hashes and exact worker matched at 13:55:06Z. Evidence: dev/v26-live-verification.json. Sidebar session was unavailable; real phone acceptance is not claimed.
 
 # v25 visibility follow-up
 
