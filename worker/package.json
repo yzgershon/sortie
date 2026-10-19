@@ -1,0 +1,7 @@
+{
+  "name": "sortie-notebook-reader",
+  "private": true,
+  "type": "module",
+  "scripts": { "dev": "wrangler dev", "test": "node ../tests/notebook-worker.cjs" },
+  "devDependencies": { "wrangler": "4.151.0", "miniflare": "4.20260730.0" }
+}

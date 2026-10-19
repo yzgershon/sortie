@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sortie-notebook-reader",
+  "main": "index.mjs",
+  "compatibility_date": "2026-07-30",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": false,
+  "observability": { "enabled": false },
+  "vars": {
+    "NOTEBOOK_ENABLED": "false",
+    "FIREBASE_API_KEY": "AIzaSyAKrKu00GF_NY2NyPD97wmQKQETzeV5gm0"
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "READER", "class_name": "NotebookReader" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["NotebookReader"] }]
+}

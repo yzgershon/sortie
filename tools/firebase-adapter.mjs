@@ -27,6 +27,11 @@ window.FirebaseAdapter = function(config) {
     signIn: async token => identity((await signInWithCredential(auth, GoogleAuthProvider.credential(token))).user),
     signOut: () => signOut(auth),
     access,
+    async notebookToken() {
+      await auth.authStateReady();
+      if (!auth.currentUser || !auth.currentUser.emailVerified) throw Error('SIGN_IN');
+      return auth.currentUser.getIdToken();
+    },
     async put(uid, item, base) {
       if (auth.currentUser?.uid !== uid) throw Error('ACCOUNT_MISMATCH');
       // Hash IDs support old imported record IDs, including slashes and Unicode.

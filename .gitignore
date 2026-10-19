@@ -1,4 +1,9 @@
 node_modules/
+functions/.env*
+functions/.secret.local
+worker/.dev.vars*
+worker/.env*
+worker/.wrangler/
 *.log
 .DS_Store
 Thumbs.db

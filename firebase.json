@@ -9,6 +9,8 @@
       "dev/**",
       "tests/**",
       "tools/**",
+      "functions/**",
+      "worker/**",
       "package*.json",
       "firebase.test.json",
       "firestore.*",

@@ -5,9 +5,10 @@ const mime={'.html':'text/html','.js':'text/javascript','.css':'text/css','.json
 http.createServer((req,res)=>{
  if(req.method!=='GET'){res.writeHead(405);res.end();return;}
  const pathname=decodeURIComponent(new URL(req.url,'http://127.0.0.1').pathname);
- if(pathname==='/sw.js'||/^\/(?:dev|tests|tools|\.)/.test(pathname)){res.writeHead(404);res.end();return;}
+ if(pathname==='/sw.js'||/^\/(?:dev|tests|tools|functions|worker|node_modules|\.)/.test(pathname)){res.writeHead(404);res.end();return;}
  res.setHeader('Cache-Control','no-store');
  if(pathname==='/js/cloud-config.js'){res.setHeader('Content-Type','text/javascript');res.end('window.CLOUD_CONFIG={enabled:false};');return;}
+ if(pathname==='/js/notebook-import-config.js'){res.setHeader('Content-Type','text/javascript');res.end('window.NOTEBOOK_IMPORT_CONFIG={endpoint:""};');return;}
  if(pathname==='/js/auth-config.js'){res.setHeader('Content-Type','text/javascript');res.end('window.AUTH_CONFIG={clientId:"",allow:[],courses:{}};');return;}
  const target=path.resolve(root,'.'+(pathname==='/'?'/index.html':pathname));
  if(!target.startsWith(root+path.sep)){res.writeHead(403);res.end();return;}

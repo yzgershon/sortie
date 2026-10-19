@@ -6,7 +6,7 @@
 (function (global) {
   'use strict';
 
-  var BUILD = 'v27';   // keep in step with VERSION in sw.js
+  var BUILD = 'v28';   // keep in step with VERSION in sw.js
   // The redesign announcement is independent of maintenance/sharing releases.
   // Change this only when the announcement and tour content actually change.
   var ANNOUNCEMENT = 'v23';
@@ -838,6 +838,7 @@
        still matches, an automatic pick may be swapped for another silently;
        once he has typed in it, it is his and swapping asks first. */
     var autoSig = null;
+    var importDraftGuard = null;
 
     renderTopbar({
       title: isBrief ? T.briefTitle : T.debriefTitle,
@@ -870,6 +871,7 @@
     }
 
     var h = '<div class="formprog"><span class="formprog__fill" id="progFill"></span></div>' +
+      '<button type="button" class="btn scan-entry" data-notebook-import>' + icon('notebook') + esc(T.scanTitle) + '</button>' +
       '<div class="stack-4"><ol class="flight-steps" aria-label="' + esc(T.workflowLabel) + '">' +
         '<li' + (isBrief ? ' aria-current="step"' : '') + '><span>01</span><div><b>' + esc(T.briefTitle) + '</b><small>' + esc(T.briefStep) + '</small></div></li>' +
         '<li' + (!isBrief ? ' aria-current="step"' : '') + '><span>02</span><div><b>' + esc(T.debriefTitle) + '</b><small>' + esc(T.debriefStep) + '</small></div></li></ol>' +
@@ -1451,7 +1453,7 @@
                   stage: isBrief ? (rec.stage === 'done' ? 'done' : 'brief') : 'done',
                   answers: {}, createdAt: rec.createdAt, course: rec.course,
                   baseUpdatedAt: baseUpdatedAt, draftNew: isNew, buffers: {}, dismissed: dismissed,
-                  syllabusEntry: rec.syllabusEntry || null };
+                  syllabusEntry: rec.syllabusEntry || null, notebookImport: rec.notebookImport || null };
       ['goalinput', 'iteminput', 'exinput'].forEach(function (kind) {
         $$('[data-' + kind + ']', root).forEach(function (el) { if (el.value) out.buffers[kind + ':' + el.dataset[kind]] = el.value; });
       });
@@ -1522,7 +1524,9 @@
     function writeDraft() {
       clearTimeout(draftTimer);
       if (!viewEl.contains(root)) return;      // the screen is already gone
+      if (importDraftGuard && localStorage.getItem(Store.draftKey(draftId, stage)) !== importDraftGuard.raw) return false;
       var ok = Store.saveDraft(collect(), stage);
+      if (ok && importDraftGuard) importDraftGuard.raw = localStorage.getItem(Store.draftKey(draftId, stage));
       var el = $('#saveState');
       if (el) {
         el.textContent = ok ? T.draftSaved : T.saveFailed;
@@ -1534,6 +1538,56 @@
        Handed to the one set of listeners registered in boot(); registering them
        here would add another three on every render of a form. */
     formFlush = writeDraft;
+
+    on(root, '[data-notebook-import]', 'click', function () {
+      clearTimeout(syllabusTimer);
+      if (!writeDraft()) { toast(T.saveFailedBody, 'alert'); return; }
+      importDraftGuard = { raw: localStorage.getItem(Store.draftKey(draftId, stage)) };
+      var questionVersion = JSON.stringify(Store.settings().questions);
+      NotebookImport.open({ stage: stage, current: collect,
+        questions: function () { return Store.settings().questions; },
+        stash: function (value) { rec.notebookImport = value; return writeDraft(); },
+        apply: function (next) {
+          if (!viewEl.contains(root) || questionVersion !== JSON.stringify(Store.settings().questions)) throw Error('FIELD_CHANGED');
+          if (localStorage.getItem(Store.draftKey(draftId, stage)) !== importDraftGuard.raw) throw Error('FIELD_CHANGED');
+          if (!Store.recoverySnapshot('notebook-import')) throw Error('STORAGE');
+          // Use the same explicit missed-goal carry semantics as the form buttons.
+          if (!isBrief && qGoals && qNext && Array.isArray(next.answers[qGoals.id])) {
+            var oldGoals = collect().answers[qGoals.id] || [];
+            var nextGoals = next.answers[qNext.id] || (next.answers[qNext.id] = []);
+            next.answers[qGoals.id].forEach(function (goal) {
+              var old = oldGoals.find(function (x) { return x.id === goal.id; });
+              if (old && old.status === goal.status) return;
+              if (goal.status === 'missed' && !nextGoals.some(function (x) { return x.carryOf === goal.id || x.text.trim() === goal.text.trim(); })) {
+                nextGoals.push(Store.normalizeGoal({ text: goal.text, carryOf: goal.id }));
+              } else if (goal.status !== 'missed') {
+                nextGoals = nextGoals.filter(function (x) { return x.carryOf !== goal.id; });
+              }
+            });
+            next.answers[qNext.id] = nextGoals;
+          }
+          next.notebookImport = null;
+          if (!Store.saveDraft(next, stage)) throw Error('STORAGE');
+          importDraftGuard.raw = localStorage.getItem(Store.draftKey(draftId, stage));
+          // Update inputs only after the full draft is durable. No Store.save(),
+          // subject change event or chart autofill runs during an import.
+          qs.forEach(function (q) {
+            if (!isBrief && q.stage === 'brief' && q.inDebrief !== 'edit') return;
+            var value = next.answers[q.id], el;
+            if (q.type === 'goals' && (el = $('[data-goals="' + q.id + '"]', root))) {
+              el.innerHTML = (value || []).map(function (x) { return goalRow(x, el.dataset.status === '1'); }).join('');
+            } else if (q.type === 'list' && (el = $('[data-items="' + q.id + '"]', root))) {
+              el.innerHTML = (value || []).map(itemRow).join('');
+            } else if (q.type === 'syllabus' && (el = $('[data-ex="' + q.id + '"]', root))) {
+              el.innerHTML = (value || []).map(function (x, i) { return exRow(x, i, el.dataset.notes === '1'); }).join('');
+            } else if (['text', 'textarea'].indexOf(q.type) !== -1 && (el = $('[data-q="' + q.id + '"]', root))) el.value = value || '';
+          });
+          rec.notebookImport = null; rec.answers = next.answers; autoSig = null;
+          autosizeAll(); progress(); $('#saveState').textContent = T.draftSaved;
+        },
+        done: function (n) { toast(T.scanAdded(n), 'notebook'); }
+      });
+    });
 
     root.addEventListener('input', function (e) {
       if (e.target.matches('.ta, .ex__notes')) autosize(e.target);
@@ -1807,11 +1861,13 @@
     var saving = false;
     on(viewEl, '[data-save]', 'click', function (event) {
       if (saving) return;
+      if (importDraftGuard && localStorage.getItem(Store.draftKey(draftId, stage)) !== importDraftGuard.raw) { toast(T.draftConflictBody, 'alert'); return; }
       // A visible unfinished add-field is still user work; commit it on Save.
       $$('[data-goalinput]', root).forEach(function (el) { if (el.value.trim()) pushGoal(el.dataset.goalinput); });
       $$('[data-iteminput]', root).forEach(function (el) { if (el.value.trim()) pushItem(el.dataset.iteminput); });
       $$('[data-exinput]', root).forEach(function (el) { if (el.value.trim()) pushEx(el.dataset.exinput); });
       var d = collect();
+      delete d.notebookImport; // Unapplied review text remains draft-only/private.
       var any = qs.some(function (q) {
         var v = d.answers[q.id];
         if (q.type === 'goals' || q.type === 'syllabus' || q.type === 'list') {
@@ -1827,7 +1883,13 @@
         // with a copy of what is now saved
         clearTimeout(draftTimer);
         formFlush = null;
-        Store.clearDraft(draftId, stage);
+        if (rec.notebookImport && (rec.notebookImport.sections.length || rec.notebookImport.pastedText)) {
+          // Keep an unapplied transcription private and recoverable after Save.
+          var retained = Object.assign({}, saved, { baseUpdatedAt: saved.updatedAt, notebookImport: rec.notebookImport });
+          var keptReview = Store.saveDraft(retained, stage);
+          if (isNew && keptReview) Store.clearDraft(draftId, stage);
+          if (!keptReview) toast(T.saveFailedBody, 'alert');
+        } else Store.clearDraft(draftId, stage);
         haptic(16);
         toast(isBrief ? T.briefSavedToast : T.debriefSavedToast);
         go(isBrief ? '' : 'flight/' + saved.id);

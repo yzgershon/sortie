@@ -184,6 +184,11 @@
       return engine.link();
     },
     retry: function () { return identify(user); },
+    notebookToken: async function () {
+      if (!enabled() || !user || !access || !['cadet', 'instructor'].includes(access.role)) throw Error('SIGN_IN');
+      requireLocalAccount(user);
+      return api().notebookToken();
+    },
     roster: function () {
       if (!access || access.role !== 'instructor') return Promise.reject(Error('INSTRUCTOR_REQUIRED'));
       return api().roster(user.uid);
