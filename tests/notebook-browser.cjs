@@ -94,6 +94,16 @@ const open = async () => { await b.click('[data-notebook-import]'); await b.unti
  await b.click('[data-scan-resume]');
  check(await b.ev("document.querySelector('[data-scan-row=\"0\"] textarea').value.startsWith('<img') && !document.querySelector('.scan__foot').hidden"), 'failed retry retains the previous editable review');
  check(await b.ev(`Store.get(${JSON.stringify(id)}).answers.q_points.every(x=>!x.text.startsWith('<img'))`), 'provider failure cannot modify saved answers');
+ await b.ev(`window.fetch=async()=>new Response(JSON.stringify({sections:[{kind:'goals',heading:'יעדים',items:[{text:'סימון לא ודאי',mark:'met',uncertain:true},{text:'טקסט [לא ברור]',mark:'missed',uncertain:false}]}]}));`);
+ await b.click('[data-scan-read]');await b.until("document.querySelectorAll('[data-scan-row]').length===2");
+ check(await b.ev("[...document.querySelectorAll('[data-scan-grade]')].every(x=>x.value==='open') && [...document.querySelectorAll('[data-scan-target]')].every(x=>x.value==='-1') && document.querySelectorAll('.scan__uncertain').length===2"), 'uncertain text or unreadable spans never preselect a grade, even when model claims a checkmark');
+ await input('[data-scan-row="0"] textarea','בדיקה שנשמרה');
+ await b.ev(`window.fetch=(url,init)=>new Promise(resolve=>{window.pendingScanSignal=init.signal;window.finishStoppedScan=()=>resolve(new Response(JSON.stringify({sections:[]})));})`);
+ await b.click('[data-scan-read]');await b.until("!!window.finishStoppedScan");
+ check(await b.ev("document.querySelector('.scan').getAttribute('aria-busy')==='true' && !document.querySelector('[data-scan-stop]').hidden && document.querySelector('[data-scan-read]').disabled"), 'active scan offers a stop control and prevents accidental duplicate click');
+ await b.click('[data-scan-stop]');await b.ev('finishStoppedScan()');
+ check(await b.ev("pendingScanSignal.aborted && !document.querySelector('.scan').hasAttribute('aria-busy') && document.querySelector('[data-scan-stop]').hidden && document.querySelector('[data-scan-row=\"0\"] textarea').value==='בדיקה שנשמרה' && document.querySelector('.scan__status').textContent===T.scanStopped"), 'stopping a scan preserves edited review and ignores a late result');
+ check(await b.ev("getComputedStyle(document.querySelector('.scan__photo')).touchAction.includes('pan-y')"), 'photo allows vertical touch scrolling as well as pinch zoom');
  await b.ev(`window.fetch=()=>new Promise(resolve=>{window.finishScan=()=>resolve(new Response(JSON.stringify({sections:[]})));})`);
  await b.click('[data-scan-read]'); await b.until("typeof finishScan==='function'");
  await b.click('[data-scan-close]'); await b.ev('finishScan()');

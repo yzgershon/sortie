@@ -12,7 +12,7 @@
 .scan__file { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .scan__source:focus-within label[for=scanFile] { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .scan summary { cursor: pointer; min-height: 48px; padding-block: 12px; color: var(--fg); }
-.scan__photo { display: block; width: 100%; height: auto; border-radius: var(--r-sm); touch-action: pinch-zoom; }
+.scan__photo { display: block; width: 100%; height: auto; border-radius: var(--r-sm); touch-action: pan-y pinch-zoom; }
 .scan__paste { border-block: 1px solid var(--rule); padding-bottom: 12px; }
 .scan__paste textarea { margin-bottom: 12px; }
 .scan__status { margin-block: 16px; color: var(--fg-mid); overflow-wrap: anywhere; }

@@ -42,9 +42,16 @@ export default {
 export class NotebookReader {
   constructor(ctx,env){this.ctx=ctx;this.env=env;this.active=0;}
   async reserve(uid){
-    await this.ctx.storage.transaction(async tx=>{
+    return this.ctx.storage.transaction(async tx=>{
       const next=core.quota(await tx.get('u:'+uid),await tx.get('global'));
       await tx.put({['u:'+uid]:next.user,global:next.global});
+      return {day:next.global.day,month:next.global.month};
+    });
+  }
+  async settle(reservation,cost){
+    await this.ctx.storage.transaction(async tx=>{
+      const current=await tx.get('global');
+      await tx.put('global',core.settle(current,reservation,cost));
     });
   }
   async fetch(request){
@@ -59,11 +66,12 @@ export class NotebookReader {
       const pin=member.role==='instructor'?(await document(bearer,'security/instructor')).uid:null;
       if(!core.authorized(token,member,pin))throw fail('FORBIDDEN',403);
       const image=core.validateImage(await body(request));
-      await this.reserve(token.uid);
-      const result=await core.transcribe(image,{key:this.env.SORTIE_OPENAI_API_KEY,model:'gpt-6-luna'});
+      const reservation=await this.reserve(token.uid);
+      const result=await core.transcribe(image,{key:this.env.SORTIE_OPENAI_API_KEY,model:core.MODEL,onUsage:cost=>this.settle(reservation,cost)});
       return reply(request,200,result);
     }catch(error){
-      const safe=['SIGN_IN','FORBIDDEN','INVALID_IMAGE','INVALID_RESULT','TOO_MANY','UNAVAILABLE','FAILED'];
+      if(error.name==='TimeoutError')error=fail('TIMEOUT',504);
+      const safe=['SIGN_IN','FORBIDDEN','INVALID_IMAGE','INVALID_RESULT','TOO_MANY','BUDGET','TIMEOUT','UNAVAILABLE','FAILED'];
       return reply(request,safe.includes(error.code)?error.status||502:502,{error:safe.includes(error.code)?error.code:'FAILED'});
     }finally{this.active--;}
   }

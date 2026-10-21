@@ -10,7 +10,7 @@ async function request(overrides = {}, deps = {}) {
   const calls = [], headers = { Origin: 'https://yzgershon.github.io', 'Content-Type': 'application/json', Authorization: 'Bearer ' + 'x'.repeat(30), ...(overrides.headers || {}) };
   const req = { method: 'POST', body: { image }, ...overrides, get: name => headers[name] };
   const res = { code: 200, headers: {}, set(k,v) { this.headers[k] = v; return this; }, status(n) { this.code = n; return this; }, json(value) { this.body = value; return this; }, send(value) { this.body = value; return this; } };
-  await N.handler({ verify: async () => token, member: async () => member, instructor: async () => 'owner', policy: async () => ({ enabled: true, model: 'gpt-6-luna' }), reserve: async () => { calls.push('reserve'); }, transcribe: async () => { calls.push('model'); return result; }, ...deps })(req,res);
+  await N.handler({ verify: async () => token, member: async () => member, instructor: async () => 'owner', policy: async () => ({ enabled: true, model: N.MODEL }), reserve: async () => { calls.push('reserve'); }, transcribe: async () => { calls.push('model'); return result; }, ...deps })(req,res);
   return { ...res, calls };
 }
 (async () => {
@@ -40,6 +40,24 @@ async function request(overrides = {}, deps = {}) {
   await test('untrusted origin and absent token cannot call model', async () => {
     for (const headers of [{ Origin: 'https://evil.example' }, { Authorization: '' }]) { const r = await request({ headers }); assert([401,403].includes(r.code)); assert.deepEqual(r.calls, []); }
   });
+  await test('money budget reserves worst case before work and blocks over-budget scans', () => {
+    const now = Date.UTC(2026, 9, 21), first = N.quota({}, {}, now);
+    for (const global of [{ ...first.global, daySpent: N.DAY_USD_MICRO }, { ...first.global, monthSpent: N.MONTH_USD_MICRO }]) assert.throws(() => N.quota({}, global, now), /BUDGET/);
+    assert.equal(first.global.monthSpent, N.RESERVE_USD_MICRO);
+    const reconciled = N.settle(first.global, first.global, 40000);
+    assert.equal(reconciled.monthSpent,40000); assert.equal(reconciled.daySpent,40000);
+    assert.deepEqual(N.settle(first.global,first.global,null),first.global);
+    const tomorrow = N.quota({},first.global,now+86400000).global;
+    assert.equal(N.settle(tomorrow,first.global,40000).daySpent,N.RESERVE_USD_MICRO);
+    const november = N.quota({},first.global,Date.UTC(2026,10,1)).global;
+    assert.deepEqual(N.settle(november,first.global,40000),november);
+  });
+  await test('invalid or unexpected provider usage cannot release reserved budget', () => {
+    const valid = {model:N.MODEL,service_tier:'default',usage:{input_tokens:3273,output_tokens:2523,input_tokens_details:{cached_tokens:0,cache_write_tokens:3270}}};
+    assert.equal(N.usageCost(valid),36753);
+    assert(N.usageCost({...valid,usage:{...valid.usage,input_tokens_details:{cached_tokens:0}}}) >= N.usageCost(valid));
+    for(const r of [{...valid,model:'other'},{...valid,service_tier:'priority'},{...valid,usage:{...valid.usage,output_tokens:-1}},{...valid,usage:{...valid.usage,input_tokens_details:{cached_tokens:99999}}}]) assert.equal(N.usageCost(r),null);
+  });
   await test('token verified with server dependency before provider call', async () => { const r = await request({}, { verify: async () => { throw Error('secret token detail'); } }); assert.equal(r.code, 401); assert.deepEqual(r.body, { error: 'SIGN_IN' }); assert.deepEqual(r.calls, []); });
   await test('inactive enrollment fails closed', async () => { const r = await request({}, { member: async () => ({ ...member, active: false }) }); assert.equal(r.code, 403); assert.deepEqual(r.calls, []); });
   await test('policy disabled by default', async () => { const r = await request({}, { policy: async () => null }); assert.equal(r.code, 503); assert.deepEqual(r.calls, []); });
@@ -49,14 +67,21 @@ async function request(overrides = {}, deps = {}) {
   await test('internal/provider failures never leak details', async () => { const r = await request({}, { transcribe: async () => { throw Error('SECRET request with private text'); } }); assert.deepEqual(r.body, { error: 'FAILED' }); });
   await test('Responses request contains image only, strict schema and store false', async () => {
     let requestBody;
-    const r = await N.transcribe(image, { key: 'test-key', model: 'test-model', fetchImpl: async (url, init) => {
+    const r = await N.transcribe(image, { key: 'test-key', model: N.MODEL, fetchImpl: async (url, init) => {
+      if(url.endsWith('/input_tokens')) return new Response(JSON.stringify({input_tokens:3000}));
       assert.equal(url, 'https://api.openai.com/v1/responses'); requestBody = JSON.parse(init.body);
       return new Response(JSON.stringify({ status: 'completed', output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify(result) }] }] }));
     } });
-    assert.deepEqual(r, result); assert.equal(requestBody.store, false); assert.equal(requestBody.text.format.strict, true); assert.equal(requestBody.input[0].content.length, 1); assert.equal(requestBody.input[0].content[0].image_url, image); assert.equal(requestBody.reasoning.effort,'max'); assert.equal(requestBody.input[0].content[0].detail,'original'); assert.equal(requestBody.max_output_tokens,32000);
+    assert.deepEqual(r, result); assert.equal(requestBody.store, false); assert.equal(requestBody.text.format.strict, true); assert.equal(requestBody.input[0].content.length, 1); assert.equal(requestBody.input[0].content[0].image_url, image); assert.equal(requestBody.reasoning.effort,'medium'); assert.equal(requestBody.input[0].content[0].detail,'original'); assert.equal(requestBody.max_output_tokens,12000); assert.equal(requestBody.service_tier,'default');
+  });
+  await test('token preflight rejects oversized input before paid generation', async () => {
+    let calls=0;
+    await assert.rejects(N.transcribe(image,{key:'x',fetchImpl:async url=>{calls++;assert(url.endsWith('/input_tokens'));return new Response(JSON.stringify({input_tokens:16000}));}}),/INVALID_IMAGE/);
+    assert.equal(calls,1);
+    await assert.rejects(N.transcribe(image,{key:'x',model:'gpt-6-astra',fetchImpl:async()=>{throw Error('must not fetch');}}),/UNAVAILABLE/);
   });
   await test('incomplete or refused response cannot partially populate a form', async () => {
-    for (const output of [{ status: 'incomplete' }, { status: 'completed', output: [{ type: 'message', content: [{ type: 'refusal', refusal: 'no' }] }] }]) await assert.rejects(N.transcribe(image, { key: 'x', model: 'x', fetchImpl: async () => new Response(JSON.stringify(output)) }), /INVALID_RESULT/);
+    for (const output of [{ status: 'incomplete' }, { status: 'completed', output: [{ type: 'message', content: [{ type: 'refusal', refusal: 'no' }] }] }]) await assert.rejects(N.transcribe(image, { key: 'x', fetchImpl: async url => new Response(JSON.stringify(url.endsWith('/input_tokens')?{input_tokens:100}:output)) }), /INVALID_RESULT/);
   });
   console.log(checks + ' notebook server checks passed (mocked provider; no live OCR)');
 })().catch(err => { console.error(err); process.exitCode = 1; });

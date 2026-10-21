@@ -16,6 +16,6 @@ async function ok(label,expression,expected){assert.deepEqual(await b.ev(express
  await b.ev('window.beforeReload=true');await b.send('Page.reload');await b.until("typeof beforeReload==='undefined'&&document.querySelector('#sheet').open");
  await ok('released version announces after gate to someone with saved work',"document.querySelector('.sheet__title').textContent",await b.ev('T.whatsNew'));
  await b.click('#sheet [data-act="0"]');await b.ev('window.beforeReload=true');await b.send('Page.reload');await b.until("typeof beforeReload==='undefined'&&document.body.dataset.route==='home'");await ok('acknowledged release does not announce again',"document.querySelector('#sheet').open",false);
- await b.route('whatsnew','[data-understood]');await ok('full release notes remain accessible',"document.querySelectorAll('.release__list article').length",9);
+ await b.route('whatsnew','[data-understood]');await ok('full release notes including notebook import remain accessible',"document.querySelectorAll('.release__list article').length",10);
  await ok('no runtime errors','true',b.errors.length===0);console.log(checks+' feedback/release checks passed');b.close();
 })().catch(e=>{console.error(e);if(b)b.close();process.exitCode=1;});

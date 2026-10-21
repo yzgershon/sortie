@@ -46,11 +46,12 @@ async function test(name,fn){await fn();checks++;console.log('PASS '+name);}
     return json({name:url.pathname.slice(4),fields:{active:{booleanValue:mode!=='inactive'},role:{stringValue:['owner','wrong-owner'].includes(mode)?'instructor':'cadet'},...(mode==='old-enrollment'?{authNotBefore:{integerValue:String(now-200)}}:{})}});
    }
    if(url.hostname==='api.openai.com'){
+    if(url.pathname.endsWith('/input_tokens'))return json({input_tokens:100});
     modelCalls++;assert.equal(request.headers.get('Authorization'),'Bearer test-provider-key');
-    const input=await request.json();assert.equal(input.model,'gpt-6-luna');assert.equal(input.reasoning.effort,'max');assert.equal(input.store,false);assert.equal(input.input[0].content[0].image_url,image);
+    const input=await request.json();assert.equal(input.model,'gpt-6.1-sol');assert.equal(input.reasoning.effort,'medium');assert.equal(input.service_tier,'default');assert.equal(input.store,false);assert.equal(input.input[0].content[0].image_url,image);
     if(mode==='wait')await new Promise(r=>releaseModel=r);
     if(mode==='provider-error')return json({error:{message:'private error details'}},500);
-    return json({status:'completed',output:[{type:'message',content:[{type:'output_text',text:JSON.stringify(result)}]}]});
+    return json({model:core.MODEL,service_tier:'default',usage:{input_tokens:100,output_tokens:100,input_tokens_details:{cached_tokens:0,cache_write_tokens:100}},status:'completed',output:[{type:'message',content:[{type:'output_text',text:JSON.stringify(result)}]}]});
    }
    throw Error('Unexpected network request: '+url.hostname);
   }
@@ -90,6 +91,12 @@ async function test(name,fn){await fn();checks++;console.log('PASS '+name);}
  });
  await test('provider failure is sanitized and still counts toward budget',async()=>{
   await reset();mode='provider-error';const r=await req();assert.equal(r.status,502);assert.deepEqual(await r.json(),{error:'FAILED'});assert.equal((await storage.get('global')).daily,1);
+  assert.equal((await storage.get('global')).monthSpent,core.RESERVE_USD_MICRO);
+ });
+ await test('actual SQLite reserves and settles estimated spend with concurrent calls',async()=>{
+  await reset();await Promise.all([req(),req()]);assert.equal((await storage.get('global')).monthSpent,2750);
+  const before=core.quota({},{}).global;before.monthSpent=core.MONTH_USD_MICRO;
+  await storage.put({global:before});const calls=modelCalls;const r=await req();assert.equal(r.status,429);assert.deepEqual(await r.json(),{error:'BUDGET'});assert.equal(modelCalls,calls);
  });
  await test('bad images and unknown JSON properties never consume a scan',async()=>{
   await reset();const calls=modelCalls;
