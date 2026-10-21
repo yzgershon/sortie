@@ -1,14 +1,14 @@
-# Notebook photo import (v28 candidate, not released)
+# Notebook photo import (v28, released)
 
 Updated 2026-10-21. Photo/camera transcription is implemented in both flight forms, with an editable Hebrew review and an authenticated Cloudflare reader. It transcribes only: no model training, flight advice, inferred missing content or syllabus recommendations.
 
 ## Release state
 
-- Branch `feature/notebook-photo-import`, based on `5f86b85` / v27. Candidate BUILD/VERSION are v28/sortie-v28; the manifest verifies 39 files. No frontend push/deployment, data migration, roster or Firestore-rule change.
+- Released to main as b46599f after explicit owner approval. Pages built at 2026-10-21T16:44:00Z; all 39 live shell hashes, exact manifest/worker, enabled reader endpoint, retained cloud configuration and v28 announcement verified at 16:44:08Z. BUILD/VERSION v28/sortie-v28. No data migration, roster or Firestore-rule change. Evidence: dev/v28-live-verification.json.
 - **Selected model: GPT-6.1 Sol, medium reasoning**, original image detail, standard service tier. The actual brother's page completed in 56.6 seconds. Low was faster but lost more wording; high took 231 seconds. Accuracy is still subject to the cadet's mandatory review.
-- Current server code was deployed for a controlled owner-authenticated test on October 21: all 11 checks passed, including six exact synthetic Hebrew content checks. It returned in 9.3 seconds. The reader was then disabled again and disabled state was confirmed by polling.
-- The candidate endpoint is the deployed Cloudflare reader. Previews disable the endpoint and automated browsers block it. No mock is shipped to cadets. Pasted-text import works offline.
-- Code and verification are prepared for the owner's push decision. Release requires enabling the tested reader, polling readiness, then deploying the verified frontend. Handwriting has not been fully confirmed by its author; physical iPhone/S24 acceptance remains unperformed. These limits must accompany release readiness, not be presented as verified accuracy.
+- The pre-release owner-authenticated test passed all 11 checks, including six exact synthetic Hebrew content checks, in 9.3 seconds; it disabled the reader afterward. The authorized release then enabled the same tested reader as Workers version 69f5cd2f-010b-4c3a-8812-7d5f1d52488f. Three readiness polls and seven live rejection/preflight checks passed without further model calls. Evidence: dev/v28-reader-enabled-verification.json.
+- The live endpoint is the deployed Cloudflare reader. Previews disable the endpoint and automated browsers block it. No mock is shipped to cadets. Pasted-text import works offline.
+- Handwriting has not been fully confirmed by its author; physical iPhone/S24 acceptance remains unperformed. The owner approved publication after these limitations were explained. Manual review is required; do not present structural extraction checks as verified word accuracy.
 - The owner subsequently authorized publication and requested a one-time feature announcement. v28 now has its own announcement content version, so users who dismissed v23-v27 still see the notebook notice at Home after verification/PIN unlock. It explains photo selection, review/correction and draft-only saving, with Open brief and Understood actions. Opening a brief preserves its existing draft. Acknowledgment suppresses repeats across reopening/maintenance builds; manual What's New and the old Home tour remain available. Previews do not consume the acknowledgment; open forms are not interrupted.
 
 ## Cadet flow and data preservation
@@ -74,6 +74,8 @@ The October 21 deployed test used a fresh owner Google sign-in:
 - CLI OAuth exchange was rejected for the wrong client audience before scanning; ordinary Google sign-in in Chrome worked. Do not loosen Firebase audiences to make the CLI credential work. The sidebar blocked its popup. The private test server was stopped after completion.
 
 All 28 app suites passed across the combined run and the affected release-copy rerun. The only first-run failure was a stale expected What's New entry count (9 vs 10), corrected for the new notebook entry. Separately: 20 server, 12 Worker authorization/boundary and 11 actual workerd/SQLite checks passed after budget refinements. Notebook browser: 48; real v27-to-v28 update/preservation: 12. Actual workerd mocks Google/OpenAI; it is separate from the live test above. Manifest verification and Wrangler dry-run passed. Physical phone testing remains unperformed.
+
+After adding the requested one-time announcement, all 28 suites passed again in dev/v28-publication-tests.log. The final announcement suite passed 27 checks, including v27 upgrade with restored Google sign-in, prior v23-v27 acknowledgment, once-only behavior, failed acknowledgment writes, PIN deferral, preview isolation, preserved unfinished brief and readable 320/390px scrolling. Screenshots are under C:/Dev/artifacts/sortie-v23/notebook-announcement-{320,390}.png.
 
 ## Operator steps
 
