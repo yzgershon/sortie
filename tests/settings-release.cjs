@@ -70,11 +70,12 @@ const released=(file,data)=>path.relative(root,file).replace(/\\/g,'/')==='js/ap
  /* --- the update message and the tour --- */
  await b.ev("Store.set('releaseSeen',null);window.beforeReload=1;location.hash='#/';location.reload()");
  await b.until("typeof beforeReload==='undefined'&&document.querySelector('#sheet').open");
- ok('the update message offers the tour first',await b.ev("[document.querySelector('.sheet__title').textContent,document.querySelector('#sheet [data-act=\"0\"]').textContent.trim()]"),[await b.ev('T.whatsNew'),await b.ev('T.releaseTour')]);
+ ok('the update message offers notebook import in a brief',await b.ev("[document.querySelector('.sheet__title').textContent,document.querySelector('#sheet [data-act=\"0\"]').textContent.trim()]"),[await b.ev('T.releaseTitle'),await b.ev('T.releaseOpenBrief')]);
  ok('it tells people their work came with them',await b.ev("document.querySelector('.release-safe').textContent"),await b.ev('T.releaseSafe'));
- await b.click('#sheet [data-act="0"]');
+ await b.click('#sheet [data-act="1"]');
+ await b.route('whatsnew','[data-starttour]');await b.click('[data-starttour]');
  await b.until("!!document.querySelector('.tour')&&!document.querySelector('.tour').classList.contains('is-moving')",8000);
- ok('the tour starts on the flight card with the app inert beneath it',await b.ev("[document.querySelector('.tour__title').textContent,document.querySelector('#app').inert,document.querySelector('#sheet').open,Store.settings().releaseSeen]"),[await b.ev('T.tourSteps[0][1]'),true,false,'v23']);
+ ok('the manual tour starts on the flight card with the app inert beneath it',await b.ev("[document.querySelector('.tour__title').textContent,document.querySelector('#app').inert,document.querySelector('#sheet').open,Store.settings().releaseSeen]"),[await b.ev('T.tourSteps[0][1]'),true,false,'v28']);
  await b.ev("Promise.all(document.querySelector('.tour__spot').getAnimations().filter(a=>a.effect.getTiming().iterations!==Infinity).map(a=>a.finished))");
  ok('the spotlight sits on its element',await b.ev("(()=>{const s=document.querySelector('.tour__spot').getBoundingClientRect(),t=document.querySelector('.flightcard').getBoundingClientRect();return Math.abs(s.top-(t.top-8))<3&&Math.abs(s.height-(t.height+16))<3;})()"),true);
  await b.ev("window.oldTourTarget=document.querySelector('.flightcard');const install=new Event('beforeinstallprompt',{cancelable:true});install.prompt=async()=>{};install.userChoice=Promise.resolve({outcome:'dismissed'});dispatchEvent(install)");

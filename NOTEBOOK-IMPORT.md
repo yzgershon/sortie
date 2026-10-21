@@ -9,6 +9,7 @@ Updated 2026-10-21. Photo/camera transcription is implemented in both flight for
 - Current server code was deployed for a controlled owner-authenticated test on October 21: all 11 checks passed, including six exact synthetic Hebrew content checks. It returned in 9.3 seconds. The reader was then disabled again and disabled state was confirmed by polling.
 - The candidate endpoint is the deployed Cloudflare reader. Previews disable the endpoint and automated browsers block it. No mock is shipped to cadets. Pasted-text import works offline.
 - Code and verification are prepared for the owner's push decision. Release requires enabling the tested reader, polling readiness, then deploying the verified frontend. Handwriting has not been fully confirmed by its author; physical iPhone/S24 acceptance remains unperformed. These limits must accompany release readiness, not be presented as verified accuracy.
+- The owner subsequently authorized publication and requested a one-time feature announcement. v28 now has its own announcement content version, so users who dismissed v23-v27 still see the notebook notice at Home after verification/PIN unlock. It explains photo selection, review/correction and draft-only saving, with Open brief and Understood actions. Opening a brief preserves its existing draft. Acknowledgment suppresses repeats across reopening/maintenance builds; manual What's New and the old Home tour remain available. Previews do not consume the acknowledgment; open forms are not interrupted.
 
 ## Cadet flow and data preservation
 

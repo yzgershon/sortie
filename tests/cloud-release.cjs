@@ -31,7 +31,9 @@ const fixture=`window.releaseCloud={notify:null,role:'cadet',active:true,rows:[]
  const state="JSON.stringify({flights:Store.all(),questions:Store.questions(true),goals:Store.nextGoals(),draft:Store.readDraft(),workspace:Workspace.all(),settings:Store.settings()})";
  const before=await b.ev(state);mode='new';await b.send('Page.reload');await b.until("typeof preUpgrade==='undefined'&&typeof Cloud!=='undefined'&&Cloud.status().phase==='connecting'");
  check('upgrade from '+baseline+' preserves every saved record and private workspace',await b.ev(state)===before);
- check('sharing update shows no announcement, tour or connection modal',await b.ev("!document.querySelector('#sheet').open&&!document.querySelector('.tour')&&document.body.dataset.route==='home'"));
+ check('only the notebook update is announced, without sharing or a connection prompt',await b.ev("document.querySelector('.sheet__title').textContent===T.releaseTitle&&!document.querySelector('#sheet').textContent.includes(T.cloudTitle)&&!document.querySelector('.tour')&&document.body.dataset.route==='home'"));
+ // Dismiss presentation only here; this suite still compares every preference.
+ await b.ev("document.querySelector('#sheet').close()");
  check('existing verified Firebase session remains usable without a forced sign-out',await b.ev("!document.querySelector('#app').hidden&&Auth.session().email==='a@example.test'"));
  check('pre-cloud history remembers its original local account',await b.ev("JSON.parse(localStorage.getItem('sortie:cloud-local-owner'))==='a@example.test'"));
  check('no upload before a verified cloud identity',await b.ev('releaseCloud.calls===0'));

@@ -7,9 +7,8 @@
   'use strict';
 
   var BUILD = 'v28';   // keep in step with VERSION in sw.js
-  // The redesign announcement is independent of maintenance/sharing releases.
-  // Change this only when the announcement and tour content actually change.
-  var ANNOUNCEMENT = 'v23';
+  // Content version: maintenance releases must not repeat a dismissed notice.
+  var ANNOUNCEMENT = 'v28';
 
   var appEl, viewEl, topbarEl, tabbarEl, toasterEl, sheetEl, lockEl;
   var route = { name: 'home', param: null };
@@ -377,7 +376,7 @@
       !!(w && ((w.notes || []).length || (w.milestones || []).length));
   }
   function hasSeenRelease() {
-    // Earlier builds stored their build number for this same announcement.
+    // Acknowledging an older release must not hide a newly added feature.
     var seen = /^v(\d+)$/.exec(Store.settings().releaseSeen || '');
     return !!seen && +seen[1] >= +ANNOUNCEMENT.slice(1);
   }
@@ -391,10 +390,10 @@
     releaseSheet();
   }
 
-  /* The update message: what changed, in four lines, the reassurance that
-     nothing saved was touched, and a way to be shown rather than told. */
+  /* Announce notebook import only at Home, after verification and PIN unlock.
+     Opening the existing brief route resumes its draft; it never replaces it. */
   function releaseSheet() {
-    openSheet({ title: T.whatsNew, text: T.releaseIntro, cls: 'sheet__panel--release',
+    openSheet({ title: T.releaseTitle, text: T.releaseIntro, cls: 'sheet__panel--release',
       hero: '<div class="release-hero">' +
           '<div class="release-hero__art" aria-hidden="true">' +
             Visuals.contrail({ values: [1, 2, 1, 3, 2, 3, 4, 5], w: 320, h: 70, animate: !(global.Motion && Motion.reduced()) }) + '</div>' +
@@ -406,12 +405,11 @@
         }).join('') + '</ul>' +
         '<p class="release-safe">' + icon('checkCircle') + '<span>' + esc(T.releaseSafe) + '</span></p>',
       actions: [
-        { label: T.releaseTour, cls: 'btn--lit btn--lg', icon: 'plane', keepOpen: true, run: function (sh) {
+        { label: T.releaseOpenBrief, cls: 'btn--lit btn--lg', icon: 'notebook', keepOpen: true, run: function (sh) {
             if (!acknowledgeRelease()) return toast(T.saveFailedBody, 'alert');
-            sh.close(); startTour();
+            sh.close(); go('brief');
           } },
-        { label: T.releaseLater, cls: 'btn--quiet', keepOpen: true, run: function (sh) { if (acknowledgeRelease()) sh.close(); else toast(T.saveFailedBody, 'alert'); } },
-        { label: T.releaseDetails, cls: 'btn--quiet', run: function () { go('whatsnew'); } }
+        { label: T.understood, cls: 'btn--quiet', keepOpen: true, run: function (sh) { if (acknowledgeRelease()) sh.close(); else toast(T.saveFailedBody, 'alert'); } }
       ]
     });
   }
